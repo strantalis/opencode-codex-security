@@ -44,9 +44,9 @@ Without provider opt-in, the defaults preserve dedicated ChatGPT authentication,
 
 Unknown keys and invalid values fail closed. Credential **values**, arbitrary environment variables, runtime executable paths and approval policies are not configurable here. Only the selected provider's environment-variable **name** is accepted. Owner suggestions remain disabled. Do not place secrets in this file.
 
-## Use an existing Codex/LiteLLM provider without sign-in
+## Use an existing custom provider without sign-in
 
-Source version `0.1.2` supports an opt-in custom Responses provider. Do not assume the published `0.1.0` or `0.1.1` package contains this change; install only a release whose notes include provider routing.
+Published version `0.1.2` adds an opt-in custom Responses provider. It is available under `next` as of November 10, 2026; pin the exact version. The published `0.1.0` and `0.1.1` packages do not contain this feature.
 
 If your existing Codex configuration already defines a custom provider with `base_url` and `env_key`, using `wire_api = "responses"` (also the native default when omitted), add this to your global `codex-security.json`:
 
@@ -94,9 +94,9 @@ If you do not want to import a file, configure the same non-secret routing field
   "codex": {
     "model": "gpt-5.6-sol",
     "provider": {
-      "id": "litellm",
+      "id": "custom-gateway",
       "baseUrl": "https://gateway.example.com/v1",
-      "envKey": "LITELLM_API_KEY",
+      "envKey": "GATEWAY_API_KEY",
       "wireApi": "responses"
     }
   },
@@ -108,7 +108,7 @@ The hostname and model above are examples, not a working service or assurance of
 
 ### Compatibility and cost limits
 
-- Responses API support alone is insufficient. The gateway/model must support Codex Security's streaming, namespaced/function tools and any required web-search tools. No real LiteLLM endpoint has been tested for this change.
+- Responses API support alone is insufficient. The gateway/model must support Codex Security's streaming, namespaced/function tools and any required web-search tools. Routing tests use mocks; they do not establish compatibility with any real custom gateway.
 - Model aliases without SDK pricing fail the scan/policy cost guard. The plugin **does not remove the budget** to make them run. A recognized OpenAI model name's estimate is not proof of the gateway's billing rate or a hard cap. Do not rename a different model merely to obtain an estimate.
 - Static finding validation still has **no SDK cost ceiling** and requires separate uncapped approval.
 - Custom-provider Daybreak is not supported in this plugin version. Set `daybreak` false and omit `cyberAccessProgram` or use `standard`. Some current Codex proxy configurations support Daybreak, but their catalog/capability settings are not imported by this bounded implementation.

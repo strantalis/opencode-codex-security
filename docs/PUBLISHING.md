@@ -2,7 +2,7 @@
 
 `opencode-codex-security` is public on npm under Apache 2.0. Bootstrap is complete, and the GitHub OIDC staging workflow has been exercised successfully. Every release still needs a maintainer's separate review and npm 2FA approval before it is installable. Workflow success means **staged**, not approved or published.
 
-Verified November 10, 2026: `latest` points to `0.1.0`; `0.1.1` is also public under `next`, with npm provenance. Check the registry again before choosing an installation or release version:
+Verified November 10, 2026: `latest` points to `0.1.0`; `next` points to public `0.1.2`, with npm provenance. Check the registry again before choosing an installation or release version:
 
 ```sh
 npm view opencode-codex-security dist-tags versions --json

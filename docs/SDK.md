@@ -25,9 +25,9 @@ Current global configuration is documented in [GLOBAL-CONFIG.md](GLOBAL-CONFIG.m
 
 ## Custom-provider authentication
 
-Provider routing is an upcoming source-version `0.1.2` feature. Published `0.1.0`/`0.1.1` packages do not expose it.
+Provider routing is available in published version `0.1.2` (under `next` as of November 10, 2026). Published `0.1.0`/`0.1.1` packages do not expose it.
 
-See [the no-sign-in setup](GLOBAL-CONFIG.md#use-an-existing-codexlitellm-provider-without-sign-in). Custom-provider readiness validates the non-secret routing and checks only the selected environment key's presence before SDK construction. It does not consult `account()`, log in, read `auth.json`, or import ambient credentials. The SDK's custom `env_key` path skips ambient-auth import; explicit API-key mode avoids stored-auth fallback. The plugin passes a snapshot, never the original SDK profile or unrelated settings.
+See [the no-sign-in setup](GLOBAL-CONFIG.md#use-an-existing-custom-provider-without-sign-in). Custom-provider readiness validates the non-secret routing and checks only the selected environment key's presence before SDK construction. It does not consult `account()`, log in, read `auth.json`, or import ambient credentials. The SDK's custom `env_key` path skips ambient-auth import; explicit API-key mode avoids stored-auth fallback. The plugin passes a snapshot, never the original SDK profile or unrelated settings.
 
 Custom-provider Daybreak, auth commands, inline tokens, custom headers and catalogs are deliberately unsupported. Unknown model aliases can fail SDK cost estimation; the scan/policy limit is retained rather than bypassed. Known model estimates are not verified gateway billing rates. Gateways may route onward to upstream services, and Responses compatibility does not prove the required tool support. Mock tests do not establish real gateway compatibility.
 

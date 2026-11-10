@@ -17,11 +17,11 @@ Patch application and fix verification are not implemented. Findings arrive at s
 
 ## Requirements
 
-- Node.js 24.x or 26.x for installation. Node 22 does not satisfy the plugin's published `>=24` requirement. Repository development/TUI tests use Node 26.4+ (tested on 26.8.1).
+- OpenCode's packaged host uses its own runtime; verify plugin loading there before requiring a change to terminal Node. For a separate npm consumer, the plugin declares Node `>=24` and the pinned SDK supports 24.x or 26.x within that range. Node 22 is outside the plugin's current declared support. Repository development/TUI tests use Node 26.4+ (tested on 26.8.1), not an exclusive consumer requirement.
 - For real SDK operations: Python 3.10+; Python 3.10 also needs `tomli`.
 - Default ChatGPT authentication is currently POSIX-only; its credential guard deliberately rejects Windows. Full Windows SDK operation is unverified.
 - OpenCode V2; 2.2.6 is the original test baseline, not an exact-patch requirement. Verify loading on the installed host. Desktop integration is experimental.
-- For real operations: supported account/model access and either an existing private dedicated ChatGPT sign-in or an explicitly configured custom Responses provider with an existing environment key. The plugin does not perform login or create/import credentials. See [no-sign-in provider setup](docs/GLOBAL-CONFIG.md#use-an-existing-codexlitellm-provider-without-sign-in). Custom-provider routing is an upcoming `0.1.2` change, not functionality in the published `0.1.0`/`0.1.1` packages.
+- For real operations: supported account/model access and either an existing private dedicated ChatGPT sign-in or an explicitly configured custom Responses provider with an existing environment key. The plugin does not perform login or create/import credentials. See [no-sign-in provider setup](docs/GLOBAL-CONFIG.md#use-an-existing-custom-provider-without-sign-in). Custom-provider routing is available in `0.1.2`, not in `0.1.0`/`0.1.1`.
 
 SDK mode uses `@openai/codex-security` 0.9.1. Repository source and selected context are sent to the provider shown in the approval preview, OpenAI by default or the explicitly selected gateway. Gateway upstream routing is not verified. SDK cost limits are estimates, **not guaranteed billing caps**. Account quota/availability can also limit scans.
 
@@ -33,16 +33,16 @@ OpenCode V2 supports npm packages directly. Add this object to your existing `pl
 
 ```json
 {
-  "package": "opencode-codex-security@0.1.0",
+  "package": "opencode-codex-security@0.1.2",
   "options": { "engine": "fixture" }
 }
 ```
 
 Check that no scans, approval dialogs or policy forms are active before editing watched settings or reloading. Open `/security` to verify loading. Fixture mode uses bundled examples, not your repository.
 
-Published `0.1.0`/`0.1.1` real mode supports [dedicated ChatGPT authentication](docs/SDK.md#default-dedicated-chatgpt-authentication). Upcoming `0.1.2` adds [opt-in Codex/LiteLLM provider configuration](docs/GLOBAL-CONFIG.md#use-an-existing-codexlitellm-provider-without-sign-in) without a sign-in flow. It does not automatically inherit OpenCode provider settings. Wait for a release or use an explicitly provided tested build containing this change; do not use an older version for gateway support. Change `engine` to `codex` only when the approved configuration is ready and the host is idle. This starts no scan; real operations still need authorized scope and source-data transfer.
+Version `0.1.2` supports [dedicated ChatGPT authentication](docs/SDK.md#default-dedicated-chatgpt-authentication) or [opt-in custom-provider configuration](docs/GLOBAL-CONFIG.md#use-an-existing-custom-provider-without-sign-in) without a sign-in flow. Provider setup is generic within the supported HTTPS Responses/environment-key route; no particular gateway is required. It does not automatically inherit OpenCode provider settings. Change `engine` to `codex` only when the approved configuration is ready and the host is idle. This starts no scan; real operations still need authorized scope and source-data transfer.
 
-Verified November 10, 2026: `latest` points to `0.1.0`; `0.1.1` is also public under `next`. Pin the full version you want rather than a moving tag. A staged version or `0.0.0-stage` placeholder is not installable functionality.
+Verified November 10, 2026: `latest` points to `0.1.0`; `next` points to the public `0.1.2` release used above. Pin the full version you want rather than a moving tag. A staged version or `0.0.0-stage` placeholder is not installable functionality.
 
 ### Optional: manage the installation yourself
 
@@ -51,7 +51,7 @@ For explicit npm installation/audit control, use a new dedicated consumer outsid
 ```sh
 mkdir security-plugin && cd security-plugin
 npm init -y
-npm install --save-exact --ignore-scripts opencode-codex-security@0.1.0
+npm install --save-exact --ignore-scripts opencode-codex-security@0.1.2
 npm audit --omit=dev --audit-level=high
 ```
 
