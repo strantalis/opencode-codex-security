@@ -5,11 +5,14 @@ import { isAbsolute, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { parse } from 'smol-toml';
 
+export const OPENAI_API_BASE_URL = 'https://api.openai.com/v1';
+
 export interface ProviderSettings {
   id: string;
   baseUrl: string;
   envKey: string;
   wireApi: 'responses';
+  envHttpHeaders?: Record<string, string>;
 }
 export interface ProviderSource {
   path: string;
@@ -28,6 +31,22 @@ const fail = (message: string): never => {
 };
 export const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
+/** Endpoint overrides must not silently redirect an approved built-in API route. */
+export function validateOpenAiApiEndpointEnvironment(
+  environment: Record<string, string | undefined> = process.env,
+) {
+  if (
+    Object.keys(environment).some(
+      (name) =>
+        name.toUpperCase() === 'OPENAI_BASE_URL' &&
+        environment[name] !== undefined &&
+        environment[name] !== '',
+    )
+  )
+    fail(
+      'Built-in OpenAI API-key mode does not accept OPENAI_BASE_URL overrides. Remove the override or explicitly configure an approved custom provider. No endpoint value was exposed and no request was sent.',
+    );
+}
 const reserved = new Set([
   'openai',
   'ollama',
@@ -39,13 +58,62 @@ const reserved = new Set([
   'prototype',
   'constructor',
 ]);
+/** Only variable names, never inline header values, enter settings and previews. */
+export function validateEnvironmentHeaders(raw: unknown): Record<string, string> {
+  if (!record(raw) || Object.keys(raw).length > 16)
+    return fail(
+      'Provider envHttpHeaders must map at most 16 header names to environment-variable names.',
+    );
+  const result: Record<string, string> = {};
+  const forbidden = new Set([
+    'authorization',
+    'proxy-authorization',
+    'host',
+    'content-length',
+    'transfer-encoding',
+    'connection',
+    'proxy-connection',
+    'cookie',
+    'set-cookie',
+    'upgrade',
+    'te',
+    'trailer',
+    'keep-alive',
+    'forwarded',
+    'x-original-url',
+    'x-rewrite-url',
+    'x-original-host',
+    'constructor',
+    'prototype',
+  ]);
+  for (const [header, variable] of Object.entries(raw).sort(([a], [b]) => a.localeCompare(b))) {
+    const name = header.toLowerCase();
+    if (
+      !/^[A-Za-z][A-Za-z0-9-]{0,63}$/.test(header) ||
+      forbidden.has(name) ||
+      name.startsWith('x-forwarded-') ||
+      Object.hasOwn(result, name)
+    )
+      return fail(
+        'Provider environment headers must have unique safe HTTP names; authorization, cookie, routing, and hop-by-hop overrides are unsupported.',
+      );
+    if (typeof variable !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(variable))
+      return fail(
+        'Provider environment header entries must be environment-variable names, never header values.',
+      );
+    result[name] = variable;
+  }
+  return result;
+}
 export function validateProvider(raw: unknown): ProviderSettings {
   if (
     !record(raw) ||
-    Object.keys(raw).some((key) => !['id', 'baseUrl', 'envKey', 'wireApi'].includes(key))
+    Object.keys(raw).some(
+      (key) => !['id', 'baseUrl', 'envKey', 'wireApi', 'envHttpHeaders'].includes(key),
+    )
   )
     return fail(
-      'Provider accepts only id, baseUrl, envKey, and wireApi. Inline credentials, headers, and auth commands are unsupported.',
+      'Provider accepts only id, baseUrl, envKey, wireApi, and envHttpHeaders. Inline credentials, literal headers, and auth commands are unsupported.',
     );
   const { id, baseUrl, envKey, wireApi } = raw;
   if (
@@ -84,7 +152,15 @@ export function validateProvider(raw: unknown): ProviderSettings {
     return fail(
       'Provider baseUrl must be HTTPS without credentials, query parameters, fragments, or encoded paths.',
     );
-  return { id, baseUrl: url.href.replace(/\/$/, ''), envKey, wireApi };
+  return {
+    id,
+    baseUrl: url.href.replace(/\/$/, ''),
+    envKey,
+    wireApi,
+    ...(raw.envHttpHeaders === undefined
+      ? {}
+      : { envHttpHeaders: validateEnvironmentHeaders(raw.envHttpHeaders) }),
+  };
 }
 export function validateConfigFile(value: unknown): asserts value is string {
   if (
@@ -96,7 +172,7 @@ export function validateConfigFile(value: unknown): asserts value is string {
   )
     fail('codex.configFile must be an absolute or ~/ path to a TOML file.');
 }
-/** Standard Codex location; call only after explicit import opt-in. No file or credential reads. */
+/** Standard Codex location for prepare-time discovery. No file or credential reads. */
 export function defaultCodexConfigFile(
   environment: { CODEX_HOME?: string } = process.env,
   home = homedir(),
@@ -124,18 +200,29 @@ export function validateProfile(value: unknown): asserts value is string {
   if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(value))
     fail('codex.profile must be a simple named profile in the selected TOML file.');
 }
-/** Explicit opt-in only. Nothing here resolves ambient config, authentication, or SDK profiles. */
-export async function readProviderConfiguration(configFile: string, profile?: string) {
+/** Read only allowlisted routing settings. Never import authentication or SDK runtime profiles. */
+export async function readProviderConfiguration(
+  configFile: string,
+  profile?: string,
+  allowMissing = false,
+) {
   validateConfigFile(configFile);
   if (profile !== undefined) validateProfile(profile);
   const requested = configFile.startsWith('~/') ? join(homedir(), configFile.slice(2)) : configFile;
   let content: string;
   let path: string;
+  let file;
   try {
-    const file = await open(
-      requested,
-      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    file = await open(requested, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  } catch (error) {
+    if (allowMissing && (error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    return fail(
+      'Cannot read the selected Codex config. Use a regular, nonsymlink TOML file of at most 256 KiB.',
     );
+  }
+  // Only an initially absent file permits default routing. Once opened, errors
+  // (including removal before realpath) must never silently change the provider.
+  try {
     try {
       const info = await file.stat();
       if (!info.isFile() || info.size > 256 * 1024) throw new Error();
@@ -174,7 +261,7 @@ export async function readProviderConfiguration(configFile: string, profile?: st
     profileFields = root.profiles[selectedName];
     selected = { ...root, ...profileFields };
   }
-  const id = selected.model_provider;
+  const id = selected.model_provider ?? 'openai';
   if (typeof id !== 'string')
     return fail(
       'The selected Codex config must define its custom model_provider and model_providers entry.',
@@ -188,6 +275,24 @@ export async function readProviderConfiguration(configFile: string, profile?: st
   const profileProviders = record(profileFields.model_providers)
     ? profileFields.model_providers
     : {};
+  const modelSettings = {
+    ...(selected.model === undefined ? {} : { model: selected.model }),
+    ...(selected.model_reasoning_effort === undefined
+      ? {}
+      : { reasoningEffort: selected.model_reasoning_effort }),
+    ...(selected.daybreak === undefined ? {} : { daybreak: selected.daybreak }),
+  };
+  if (id === 'openai') {
+    if (selected.openai_base_url !== undefined || selected.chatgpt_base_url !== undefined)
+      return fail(
+        'Custom built-in OpenAI endpoints are not imported. Configure an explicit supported custom provider instead; no fallback endpoint was selected.',
+      );
+    if (Object.hasOwn(rootProviders, id) || Object.hasOwn(profileProviders, id))
+      return fail(
+        'Overriding the built-in OpenAI provider is unsupported. Configure a custom Responses provider with env_key, or remove the override to use dedicated Codex Security ChatGPT authentication.',
+      );
+    return { settings: modelSettings, path, profile: selectedName };
+  }
   // Inherit only the selected provider's fields, never whole profile/runtime configuration.
   const inherited = Object.hasOwn(rootProviders, id) ? rootProviders[id] : undefined;
   const override = Object.hasOwn(profileProviders, id) ? profileProviders[id] : undefined;
@@ -200,6 +305,19 @@ export async function readProviderConfiguration(configFile: string, profile?: st
       'The selected Codex config must define its custom model_provider and model_providers entry.',
     );
   const native = { ...(record(inherited) ? inherited : {}), ...(record(override) ? override : {}) };
+  // Native provider profiles deep-merge header maps. Preserve inherited names
+  // when a profile overrides only one header; validation rejects case aliases.
+  if (
+    record(inherited) &&
+    record(override) &&
+    record(inherited.env_http_headers) &&
+    record(override.env_http_headers)
+  )
+    native.env_http_headers = { ...inherited.env_http_headers, ...override.env_http_headers };
+  if (native.env_key === undefined)
+    return fail(
+      'The selected custom Codex provider has no env_key. Keyless network identity is not supported by the current SDK 0.9.1 authentication flow. This plugin currently supports custom providers through an existing environment-variable API key; other authentication methods are not imported. Do not create a dummy or second key to work around this. No credentials were imported, no scan started, and no fallback provider was selected.',
+    );
   const ignoredHints = [
     'env_key_instructions',
     'request_max_retries',
@@ -213,6 +331,7 @@ export async function readProviderConfiguration(configFile: string, profile?: st
           'name',
           'base_url',
           'env_key',
+          'env_http_headers',
           'wire_api',
           'requires_openai_auth',
           ...ignoredHints,
@@ -221,22 +340,16 @@ export async function readProviderConfiguration(configFile: string, profile?: st
     (native.requires_openai_auth !== undefined && native.requires_openai_auth !== false)
   )
     return fail(
-      'The selected provider uses unsupported options. Only Responses routing with env_key and requires_openai_auth=false is supported; headers, inline tokens, auth commands, and OAuth are not imported.',
+      'The selected provider uses unsupported options. Only Responses routing with env_key and requires_openai_auth=false is supported; literal headers, inline tokens, auth commands, and OAuth are not imported.',
     );
   const provider = validateProvider({
     id,
     baseUrl: native.base_url,
     envKey: native.env_key,
+    ...(native.env_http_headers === undefined ? {} : { envHttpHeaders: native.env_http_headers }),
     wireApi: native.wire_api === undefined ? 'responses' : native.wire_api,
   });
-  const settings = {
-    provider,
-    ...(selected.model === undefined ? {} : { model: selected.model }),
-    ...(selected.model_reasoning_effort === undefined
-      ? {}
-      : { reasoningEffort: selected.model_reasoning_effort }),
-    ...(selected.daybreak === undefined ? {} : { daybreak: selected.daybreak }),
-  };
+  const settings = { provider, ...modelSettings };
   // Only known non-secret configuration reaches the digest or callers. Validate
   // model/reasoning/daybreak in sdk-settings before exposing this selection.
   return { settings, path, profile: selectedName };

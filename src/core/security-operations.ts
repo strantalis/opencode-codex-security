@@ -80,6 +80,7 @@ export interface SecurityOperationState {
 export type SecurityOperationsClient = Pick<CodexSecurity, 'generatePolicy' | 'validate' | 'close'>;
 export type SecurityOperationsFactory = (
   config?: CodexSecurityConfig,
+  auth?: 'chatgpt' | 'api-key',
 ) => SecurityOperationsClient | Promise<SecurityOperationsClient>;
 export interface SecurityOperationsOptions {
   createClient?: SecurityOperationsFactory;
@@ -105,8 +106,8 @@ type Entry = {
     cleanup: () => void;
   };
 };
-const realClient: SecurityOperationsFactory = async (config) => {
-  await requireSdkCredentials(config);
+const realClient: SecurityOperationsFactory = async (config, auth) => {
+  await requireSdkCredentials(config, process.env, auth);
   const { CodexSecurity } = await import('@openai/codex-security');
   return new CodexSecurity(config);
 };
@@ -362,7 +363,7 @@ export class SecurityOperationsService {
     const observing = () => !signal.aborted && active(entry.state);
     try {
       signal.throwIfAborted();
-      client = await this.#factory(sdkConfiguration(plan.settings));
+      client = await this.#factory(sdkConfiguration(plan.settings), plan.settings.codex.auth);
       signal.throwIfAborted();
       const context = plan.contextFiles.map((file) => resolve(plan.repository, file.path));
       if (plan.kind === 'policy') {

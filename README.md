@@ -17,11 +17,11 @@ Patch application and fix verification are not implemented. Findings arrive at s
 
 ## Requirements
 
-- For installation and fixture mode: an existing packaged OpenCode V2 host and public npm registry access. OpenCode installs and runs the plugin itself; a separate Node/npm install is **not** required for this step.
+- For installation and a scan-free loading check: an existing packaged OpenCode V2 host and public npm registry access. OpenCode installs and runs the plugin itself; a separate Node/npm install is **not** required for this step.
 - For real SDK operations: Node 24.x or 26.x available to the OpenCode process on its trusted `PATH`, plus Python 3.10+ (`tomli` for Python 3.10). SDK 0.9.1 needs external Node helpers when hosted by Bun. Reuse compatible installed runtimes rather than changing system defaults. See [runtime details](docs/AGENT-SETUP.md#what-you-need).
 - Default ChatGPT authentication is currently POSIX-only; its credential guard deliberately rejects Windows. Full Windows SDK operation is unverified.
 - OpenCode V2; 2.2.6 is the original test baseline, not an exact-patch requirement. Verify loading on the installed host. Desktop integration is experimental.
-- For real operations: supported account/model access and either an existing private dedicated ChatGPT sign-in or an explicitly configured custom Responses provider with an existing environment key. The plugin does not perform login or create/import credentials. See [no-sign-in provider setup](docs/GLOBAL-CONFIG.md#use-an-existing-custom-provider-without-sign-in). Custom-provider routing is available in `0.1.2`, not in `0.1.0`/`0.1.1`.
+- For real operations: supported account/model access and an existing private dedicated ChatGPT sign-in, an explicitly selected OpenAI environment API key, or a supported custom Responses provider with an existing environment key. The plugin does not perform login or create/import credentials. See [no-sign-in provider setup](docs/GLOBAL-CONFIG.md#use-an-existing-custom-provider-without-sign-in). Custom-provider routing is available in `0.1.2`, not in `0.1.0`/`0.1.1`.
 
 SDK mode uses `@openai/codex-security` 0.9.1. Repository source and selected context are sent to the provider shown in the approval preview, OpenAI by default or the explicitly selected gateway. Gateway upstream routing is not verified. SDK cost limits are estimates, **not guaranteed billing caps**. Account quota/availability can also limit scans.
 
@@ -31,22 +31,23 @@ For a self-contained prompt to hand to another coding agent, see [install with a
 
 OpenCode V2 supports npm packages directly.
 
-The terminal view requires the packaging fix in `0.1.3`. Verify that exact version is published before installing; if it is unavailable, wait or use an explicitly supplied [tested tarball](docs/RELEASING.md). Published `0.1.2` has working backend registration but fails to load the terminal view from a clean npm install. A source version alone is not an npm release.
+Real-by-default onboarding is prepared for `0.1.4`. Verify that exact version is published before installing; if it is unavailable, use an explicitly supplied [tested tarball](docs/RELEASING.md) or wait for release. Public `0.1.3` fixes the npm terminal view but still defaults to fixture mode; set `options.engine` to `codex` explicitly on that version. A source version alone is not an npm release.
 
 Add this object to your existing `plugins` array, preserving other settings:
 
 ```json
 {
-  "package": "opencode-codex-security@0.1.3",
-  "options": { "engine": "fixture" }
+  "package": "opencode-codex-security@0.1.4"
 }
 ```
 
-Check that no scans, approval dialogs or policy forms are active before editing watched settings or reloading. Open `/security` to verify loading. Fixture mode uses bundled examples, not your repository.
+Check that no scans, approval dialogs or policy forms are active before editing watched settings or reloading. Open `/security` to verify loading. The normal install opens real SDK mode; opening the panel does not start a scan. Preparing a scan shows the actual repository and scope for review.
 
-Since `0.1.2`, the plugin supports [dedicated ChatGPT authentication](docs/SDK.md#default-dedicated-chatgpt-authentication) or [opt-in custom-provider configuration](docs/GLOBAL-CONFIG.md#use-an-existing-custom-provider-without-sign-in) without a sign-in flow. Provider setup is generic within the supported HTTPS Responses/environment-key route; no particular gateway is required. It does not automatically inherit OpenCode provider settings. Change `engine` to `codex` only when the approved configuration is ready and the host is idle. This starts no scan; real operations still need authorized scope and source-data transfer.
+When preparing a scan, the plugin discovers your existing Codex configuration and uses supported provider/model settings. Explicit plugin settings take precedence. It does not automatically inherit OpenCode provider settings, read credential files, or sign in. Missing or unsupported prerequisites produce a specific setup error, never a fixture result or a silent provider switch. See [authentication compatibility](docs/GLOBAL-CONFIG.md#authentication-compatibility), [provider setup](docs/GLOBAL-CONFIG.md#use-an-existing-custom-provider-without-sign-in) and [dedicated ChatGPT authentication](docs/SDK.md#default-dedicated-chatgpt-authentication). Real operations still need authorized scope, source-data transfer and usage.
 
-Verified November 10, 2026: `latest` points to `0.1.0`; `next` points to public `0.1.2`. Source `0.1.3` is prepared for the terminal fix; recheck registry availability. Pin the full version you want rather than a moving tag. A staged version or `0.0.0-stage` placeholder is not installable functionality.
+Fixture mode is only an explicit developer/test option: `"options": { "engine": "fixture" }`. It scans bundled examples, not your repository. Remove an old fixture option when upgrading, while the host is idle; upgrades preserve explicit choices.
+
+Verified November 10, 2026: exact `0.1.3` is public. Source `0.1.4` is prepared for real-by-default onboarding; recheck registry availability. Pin the full version you want rather than a moving tag. A staged version or `0.0.0-stage` placeholder is not installable functionality.
 
 ### Optional: manage the installation yourself
 
@@ -55,8 +56,8 @@ Skip this if OpenCode manages the package entry above. This alternative needs No
 ```sh
 mkdir security-plugin && cd security-plugin
 npm init -y
-npm view opencode-codex-security@0.1.3 version &&
-  npm install --save-exact --ignore-scripts opencode-codex-security@0.1.3
+npm view opencode-codex-security@0.1.4 version &&
+  npm install --save-exact --ignore-scripts opencode-codex-security@0.1.4
 npm audit --omit=dev --audit-level=high
 ```
 
@@ -102,6 +103,6 @@ CI produces an exact tested tarball with its source commit and SHA-256 checksums
 
 ## Verification limits
 
-The real SDK smoke test authenticated successfully and reached discovery, then stopped at a USD 1 estimated guard. It returned no completed assessment. Mocked integration covers concurrent scans, cancellation, model tools, policy questions and static validation. The `0.1.3` tarball also passed native terminal rendering and a bundled fixture scan on OpenCode 2.2.6 and 2.2.7 with no Node/npm/Bun on its `PATH`. Direct native Desktop inspection remains a separate verification step.
+The real SDK smoke test authenticated successfully and reached discovery, then stopped at a USD 1 estimated guard. It returned no completed assessment. Mocked integration covers concurrent scans, cancellation, model tools, policy questions and static validation. The `0.1.3` tarball also passed native terminal rendering and a bundled fixture scan on OpenCode 2.2.6 and 2.2.7 with no Node/npm/Bun on its `PATH`. The `0.1.4` tests additionally cover a default real repository/scope preview, cancellation without execution, and a visible unsupported-authentication setup error with no fixture fallback, and explicit OpenAI API-key/gateway-header previews without execution. Direct native Desktop inspection remains a separate verification step.
 
 Do not commit credentials, `.runtime/`, evidence captures, scan artifacts or dependency folders. The repository ignores these; package checks also reject them. See [contributing](CONTRIBUTING.md) for the safe development workflow.

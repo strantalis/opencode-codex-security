@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 .runtime/
 dist/*
 !dist/gui-experimental.cjs

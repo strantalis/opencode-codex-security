@@ -1,3 +1,4 @@
+import './helpers/isolated-codex.mjs';
 import test from 'node:test';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
@@ -145,7 +146,7 @@ test('named native profiles select model/provider without passing SDK profiles o
     resolveSettings({ codex: { configFile: codexFile, profile: '../work' } }),
     /simple named/,
   );
-  await assert.rejects(resolveSettings({ codex: { profile: 'work' } }), /requires/);
+  await assert.rejects(resolveSettings({ codex: { profile: 'work' } }), /Cannot read/);
   await writeFile(
     codexFile,
     `profile = "work"\n` + nativeConfig + `\n[profiles.work]\nmodel = "gpt-6.1-sol"\n`,
@@ -156,7 +157,7 @@ test('named native profiles select model/provider without passing SDK profiles o
   );
 });
 
-test('configuration is never imported implicitly; existing ChatGPT defaults stay intact', async (t) => {
+test('absent discovered config retains dedicated ChatGPT defaults', async (t) => {
   const { root } = await fixture(t, {});
   const settings = await resolveSettings({});
   assert.deepEqual(settings.codex, {
@@ -167,10 +168,7 @@ test('configuration is never imported implicitly; existing ChatGPT defaults stay
   });
   assert.equal((await prepareScan(root)).settings.codex.source, undefined);
   assert.deepEqual(sdkConfiguration().codexOverrides, { model_provider: 'openai' });
-  await assert.rejects(
-    resolveSettings({ codex: { auth: 'api-key' } }),
-    /requires an explicit custom provider/,
-  );
+  assert.equal((await resolveSettings({ codex: { auth: 'api-key' } })).codex.auth, 'api-key');
 });
 
 test('explicit provider settings support no-login routing but reject contradictory or unsupported auth and Daybreak', async (t) => {
@@ -227,7 +225,6 @@ test('TOML parsing, unsupported provider fields, bounded files, and symlinks fai
   const { root, codexFile } = await fixture(t);
   for (const extra of [
     'http_headers = { Authorization = "SYNTHETIC_HIDDEN" }',
-    'env_http_headers = { X = "OTHER_ENV" }',
     'auth = { command = "DO_NOT_RUN" }',
     'api_key = "SYNTHETIC_HIDDEN"',
     'model_catalog_url = "https://other.example.test"',
@@ -566,6 +563,7 @@ for (const action of ['cancel', 'dispose'])
     await mkdir(join(root, 'config', 'opencode'), { recursive: true });
     await writeFile(join(root, 'config', 'opencode', 'codex-security.json'), '{}');
     process.env.XDG_CONFIG_HOME = join(root, 'config');
+    process.env.CODEX_HOME = join(root, 'missing-codex');
     let created = 0, runs = 0;
     const service = new PlannedScanService(root, { createClient: () => {
       created++; return { run: async () => { runs++; return { findings: { scanId: 'synthetic', findings: [] } }; }, close: async () => {} };
@@ -734,10 +732,10 @@ test('unset and empty CODEX_HOME opt-in resolves the synthetic home config', asy
   );
 });
 
-test('without import opt-in, malformed ambient location is ignored and ChatGPT defaults remain; explicit path also wins', async (t) => {
+test('explicit route and discovery opt-out ignore malformed ambient location; explicit path also wins', async (t) => {
   const { codexFile } = await fixture(t);
   setEnvironmentPath(t, 'CODEX_HOME', 'SYNTHETIC_INVALID_RELATIVE_HOME');
-  for (const source of [{}, { codex: { useCodexConfig: false } }]) {
+  for (const source of [{ codex: { auth: 'chatgpt' } }, { codex: { useCodexConfig: false } }]) {
     const settings = await resolveSettings(source);
     assert.equal(settings.codex.auth, 'chatgpt');
     assert.equal(settings.codex.provider, undefined);
@@ -745,6 +743,7 @@ test('without import opt-in, malformed ambient location is ignored and ChatGPT d
   }
   for (const codex of [{ configFile: codexFile }, { useCodexConfig: true, configFile: codexFile }])
     assert.equal((await resolveSettings({ codex })).codex.source.path, codexFile);
+  await assert.rejects(resolveSettings({}), /CODEX_HOME must be/);
   await assert.rejects(
     resolveSettings({ codex: { useCodexConfig: true } }),
     (error) =>
@@ -825,4 +824,228 @@ test('changed CODEX_HOME invalidates scan, policy, and validation even with iden
       /changed after preview/,
     );
   assert.equal(created, 0);
+});
+
+test('automatic prepare-time discovery selects existing config and binds changes to approval', async (t) => {
+  const { root } = await fixture(t, {});
+  const directory = join(root, 'discovered');
+  await mkdir(directory);
+  const config = join(directory, 'config.toml');
+  await writeFile(config, nativeConfig + '\n[profiles.work]\nmodel = "gpt-6.1-sol"\n');
+  setEnvironmentPath(t, 'CODEX_HOME', directory);
+  const plan = await prepareScan(root);
+  assert.deepEqual(plan.settings.codex.provider, provider);
+  assert.equal(plan.settings.codex.source.path, config);
+  const profiled = await resolveSettings({ codex: { profile: 'work', reasoningEffort: 'low' } });
+  assert.equal(profiled.codex.model, 'gpt-6.1-sol');
+  assert.equal(profiled.codex.reasoningEffort, 'low');
+  await writeFile(config, nativeConfig.replace('gateway.example.test', 'changed.example.test'));
+  await assert.rejects(validatePlan(plan), /changed after preview/);
+  assert.equal(
+    (await resolveSettings({ codex: { useCodexConfig: false } })).codex.source,
+    undefined,
+  );
+  assert.equal((await resolveSettings({ codex: { auth: 'chatgpt' } })).codex.provider, undefined);
+  const direct = await resolveSettings({ codex: { provider } });
+  assert.deepEqual(direct.codex.provider, provider);
+  assert.equal(direct.codex.source, undefined);
+});
+
+test('automatic discovery never silently falls back for an unsupported existing provider', async (t) => {
+  const { root } = await fixture(t, {});
+  setEnvironmentPath(t, 'CODEX_HOME', root);
+  const config = join(root, 'config.toml');
+  await writeFile(config, nativeConfig.replace('env_key = "SYNTHETIC_LITELLM_KEY"\n', ''));
+  await assert.rejects(
+    resolveSettings({}),
+    /no env_key.*Keyless network identity.*no fallback provider/s,
+  );
+  await assert.rejects(prepareScan(root), /no env_key/);
+  await writeFile(config, 'model = "SYNTHETIC_HIDDEN\n');
+  await assert.rejects(
+    resolveSettings({}),
+    (error) => /Cannot parse/.test(error.message) && !error.message.includes('SYNTHETIC_HIDDEN'),
+  );
+  await rm(config);
+  await symlink(join(root, 'codex.toml'), config);
+  await assert.rejects(resolveSettings({}), /nonsymlink/);
+});
+
+test('built-in OpenAI discovery imports safe model settings but still requires dedicated authentication', async (t) => {
+  const { root } = await fixture(t, {});
+  setEnvironmentPath(t, 'CODEX_HOME', root);
+  const config = join(root, 'config.toml');
+  for (const prefix of ['', 'model_provider = "openai"\n']) {
+    await writeFile(config, prefix + 'model = "gpt-6.1-sol"\nmodel_reasoning_effort = "high"\n');
+    const settings = await resolveSettings({});
+    assert.equal(settings.codex.auth, 'chatgpt');
+    assert.equal(settings.codex.provider, undefined);
+    assert.equal(settings.codex.model, 'gpt-6.1-sol');
+    const before = await readdir(root);
+    await assert.rejects(
+      requireSdkCredentials(sdkConfiguration(settings), { CODEX_HOME: root }),
+      DedicatedSecurityCredentialsRequiredError,
+    );
+    assert.deepEqual(await readdir(root), before);
+  }
+  await writeFile(
+    config,
+    'model_provider = "openai"\n[model_providers.openai]\nbase_url = "https://gateway.example.test/v1"\n',
+  );
+  await assert.rejects(resolveSettings({}), /Overriding the built-in OpenAI/);
+});
+
+test('normal plugin boot defaults to SDK without reading config, creating clients, or starting work; fixture is explicit', async (t) => {
+  const { root } = await fixture(t);
+  setEnvironmentPath(t, 'CODEX_HOME', 'INVALID_RELATIVE_LOCATION');
+  let created = 0;
+  for (const engine of [undefined, 'codex', 'fixture']) {
+    let handlers;
+    const plugin = createSecurityPlugin({
+      createClient: () => {
+        created++;
+        throw new Error('Must not create.');
+      },
+    });
+    const cleanup = await plugin.setup({
+      options: engine === undefined ? {} : { engine },
+      location: { directory: root },
+      rpc: {
+        register: async (_definition, h) => {
+          handlers = h;
+          return { events: { emit: async () => {} }, dispose: async () => {} };
+        },
+      },
+      tool: { transform: async () => ({ dispose: async () => {} }) },
+    });
+    try {
+      const state = await handlers.status({});
+      assert.equal(
+        state.engine,
+        engine === 'fixture' ? 'local-patterns (prototype)' : 'codex-security-sdk',
+      );
+      assert.equal(state.status, 'idle');
+      assert.equal(created, 0);
+    } finally {
+      await cleanup();
+    }
+  }
+  await assert.rejects(
+    createSecurityPlugin().setup({ options: { engine: 'typo' } }),
+    /Unknown Security engine/,
+  );
+});
+
+test('automatic discovery fails closed if an opened config disappears before canonicalization', () => {
+  const script = `
+    import { mock } from 'node:test';
+    import assert from 'node:assert/strict';
+    import * as fs from 'node:fs/promises';
+    import { tmpdir } from 'node:os';
+    import { join } from 'node:path';
+    const root = await fs.mkdtemp(join(tmpdir(), 'provider-read-race-'));
+    const config = join(root, 'config.toml');
+    let removed = false;
+    mock.module('node:fs/promises', { namedExports: { ...fs, realpath: async path => {
+      if (path === config) { await fs.rm(config); removed = true; }
+      return fs.realpath(path);
+    } } });
+    const { readProviderConfiguration } = await import('./src/core/provider-config.ts');
+    try {
+      assert.equal(await readProviderConfiguration(config, undefined, true), undefined);
+      await fs.writeFile(config, 'model_provider = "openai"\\n');
+      await assert.rejects(readProviderConfiguration(config, undefined, true), /Cannot read/);
+      assert.equal(removed, true);
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
+  `;
+  const child = spawnSync(
+    process.execPath,
+    ['--experimental-test-module-mocks', '--input-type=module', '-e', script],
+    {
+      cwd: new URL('..', import.meta.url),
+      encoding: 'utf8',
+      timeout: 10000,
+      env: { PATH: process.env.PATH },
+    },
+  );
+  assert.equal(child.status, 0, child.stderr);
+});
+
+test('native RPC declares and returns safe setup errors while withholding unknown diagnostics', async (t) => {
+  const { root, codexFile } = await fixture(t);
+  const { Security } = await import('../src/rpc.ts');
+  const { ProviderConfigurationError } = await import('../src/core/provider-config.ts');
+  let handlers;
+  const cleanup = await createSecurityPlugin({
+    createClient: () => {
+      throw new Error('Must not create.');
+    },
+    createOperationsClient: () => {
+      throw new Error('Must not create.');
+    },
+  }).setup({
+    options: {},
+    location: { directory: root },
+    rpc: {
+      register: async (_definition, h) => {
+        handlers = h;
+        return { events: { emit: async () => {} }, dispose: async () => {} };
+      },
+    },
+    tool: { transform: async () => ({ dispose: async () => {} }) },
+  });
+  t.after(cleanup);
+  const context = { error: (type, message, data) => ({ type, message, data }) };
+  await writeFile(codexFile, nativeConfig.replace('env_key = "SYNTHETIC_LITELLM_KEY"\n', ''));
+  for (const [name, input] of [
+    ['prepare', {}],
+    ['operationPrepare', { kind: 'policy' }],
+  ]) {
+    const result = await handlers[name](input, context);
+    assert.equal(result.type, 'security.setup');
+    assert.match(result.message, /Keyless network identity/);
+    assert.deepEqual(result.data, {});
+  }
+  for (const [name, prototype, method] of [
+    ['prepare', PlannedScanService.prototype, 'prepare'],
+    ['start', PlannedScanService.prototype, 'start'],
+    ['operationPrepare', SecurityOperationsService.prototype, 'prepare'],
+    ['operationStart', SecurityOperationsService.prototype, 'start'],
+  ]) {
+    assert.ok(Security.methods[name].errors['security.setup']);
+    const original = prototype[method];
+    try {
+      for (const error of [
+        new ProviderConfigurationError('Safe provider guidance.'),
+        new DedicatedSecurityCredentialsRequiredError(),
+        new ProviderCredentialsRequiredError(),
+      ]) {
+        prototype[method] = async () => {
+          throw error;
+        };
+        assert.deepEqual(await handlers[name]({}, context), {
+          type: 'security.setup',
+          message: error.message,
+          data: {},
+        });
+      }
+      for (const error of [
+        new Error('SYNTHETIC_PRIVATE_SDK_OUTPUT'),
+        Object.assign(new Error('SYNTHETIC_PRIVATE_FILESYSTEM_OUTPUT'), {
+          name: 'ProviderConfigurationError',
+        }),
+      ]) {
+        prototype[method] = async () => {
+          throw error;
+        };
+        await assert.rejects(handlers[name]({}, context), (failure) => {
+          assert.doesNotMatch(failure.message, /SYNTHETIC_PRIVATE/);
+          assert.match(failure.message, /Security request failed/);
+          return true;
+        });
+      }
+    } finally {
+      prototype[method] = original;
+    }
+  }
 });

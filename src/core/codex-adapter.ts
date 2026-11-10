@@ -42,9 +42,10 @@ export interface CodexScanApproval {
 export type SecurityClient = Pick<CodexSecurity, 'run' | 'close'>;
 export type SecurityFactory = (
   config?: CodexSecurityConfig,
+  auth?: 'chatgpt' | 'api-key',
 ) => SecurityClient | Promise<SecurityClient>;
-const realClient: SecurityFactory = async (config) => {
-  await requireSdkCredentials(config);
+const realClient: SecurityFactory = async (config, auth) => {
+  await requireSdkCredentials(config, process.env, auth);
   const { CodexSecurity } = await import('@openai/codex-security');
   return new CodexSecurity(config ?? sdkConfiguration());
 };
@@ -208,15 +209,14 @@ export class CodexScanService {
     let terminalPhase = 'Codex Security scan failed';
     try {
       signal.throwIfAborted();
-      if (
-        approval.settings?.codex.provider &&
-        approval.auth &&
-        approval.auth !== approval.settings.codex.auth
-      )
+      if (approval.settings && approval.auth && approval.auth !== approval.settings.codex.auth)
         throw new ProviderConfigurationError(
           'Approved authentication does not match the selected provider.',
         );
-      client = await this.#factory(sdkConfiguration(approval.settings));
+      client = await this.#factory(
+        sdkConfiguration(approval.settings, approval.auth),
+        approval.settings?.codex.auth ?? approval.auth ?? 'chatgpt',
+      );
       signal.throwIfAborted();
       const telemetry = (this.#state.telemetry ??= emptyTelemetry());
       const options: ScanOptions = {

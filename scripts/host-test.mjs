@@ -15,10 +15,19 @@ const isolated = await mkdtemp(`${root}/.runtime/host-`);
 const configPath = `${isolated}/config/opencode/opencode.json`;
 await mkdir(`${isolated}/config/opencode`, { recursive: true });
 await mkdir(`${isolated}/home`, { recursive: true });
+const project = codexGate ? `${isolated}/project` : root;
+if (codexGate) {
+  await mkdir(`${project}/src`, { recursive: true });
+  await writeFile(`${project}/src/example.js`, '// Synthetic scan-free onboarding target.\n');
+}
 await writeFile(
   configPath,
   JSON.stringify({
-    plugins: [{ package: packageRoot, options: { engine: codexGate ? 'codex' : 'fixture' } }],
+    plugins: [
+      codexGate
+        ? { package: packageRoot }
+        : { package: packageRoot, options: { engine: 'fixture' } },
+    ],
   }),
 );
 const processEnv = {
@@ -52,7 +61,7 @@ try {
     baseUrl: 'http://127.0.0.1:4109',
     headers: { Authorization: `Basic ${Buffer.from('opencode:' + password).toString('base64')}` },
   });
-  const location = { directory: root };
+  const location = { directory: project };
   await client.location.get({ location });
   let plugins, plugin;
   for (let i = 0; i < 50 && !plugin; i++) {
@@ -77,7 +86,60 @@ try {
     assert.equal(state.engine, 'codex-security-sdk');
     await assert.rejects(rpc.start({}, { location }));
     assert.equal((await rpc.status({}, { location })).status, 'idle');
-    console.log('Actual OpenCode rejected unapproved SDK scan; SDK remains idle, no model calls.');
+    const catalog = await rpc.list({}, { location });
+    assert.equal(catalog.engine, 'codex-security-sdk');
+    assert.equal(catalog.runs.length, 0);
+    assert.equal(catalog.drafts.length, 0);
+    const prepared = await rpc.prepare({ scopePaths: ['src'] }, { location });
+    assert.equal(prepared.status, 'idle');
+    assert.equal(prepared.plan.repository, project);
+    assert.deepEqual(prepared.plan.scopePaths, ['src']);
+    assert.equal((await rpc.list({}, { location })).runs.length, 0);
+    await assert.rejects(rpc.start({ planId: prepared.plan.id }, { location }));
+    assert.equal((await rpc.list({}, { location })).runs.length, 0);
+    await mkdir(`${isolated}/home/.codex`, { recursive: true });
+    await writeFile(
+      `${isolated}/home/.codex/config.toml`,
+      'model_provider = "network"\n[model_providers.network]\nbase_url = "https://gateway.example.test/v1"\nrequires_openai_auth = false\n',
+    );
+    for (const prepare of [
+      () => rpc.prepare({}, { location }),
+      () => rpc.operationPrepare({ kind: 'policy' }, { location }),
+    ])
+      await assert.rejects(
+        prepare(),
+        (error) =>
+          error.type === 'security.setup' && /Keyless network identity/.test(error.message),
+      );
+    assert.equal((await rpc.list({}, { location })).runs.length, 0);
+    await writeFile(
+      `${isolated}/config/opencode/codex-security.json`,
+      JSON.stringify({ codex: { auth: 'api-key' } }),
+    );
+    const openAi = await rpc.prepare({}, { location });
+    assert.equal(openAi.plan.settings.codex.auth, 'api-key');
+    assert.equal(openAi.plan.settings.codex.provider, undefined);
+    await assert.rejects(rpc.start({ planId: openAi.plan.id }, { location }));
+    const provider = {
+      id: 'gateway',
+      baseUrl: 'https://gateway.example.test/v1',
+      envKey: 'SYNTHETIC_GATEWAY_KEY',
+      wireApi: 'responses',
+      envHttpHeaders: { 'X-Workspace': 'SYNTHETIC_WORKSPACE' },
+    };
+    await writeFile(
+      `${isolated}/config/opencode/codex-security.json`,
+      JSON.stringify({ codex: { provider } }),
+    );
+    const gateway = await rpc.prepare({}, { location });
+    assert.deepEqual(gateway.plan.settings.codex.provider.envHttpHeaders, {
+      'x-workspace': 'SYNTHETIC_WORKSPACE',
+    });
+    await assert.rejects(rpc.start({ planId: gateway.plan.id }, { location }));
+    assert.equal((await rpc.list({}, { location })).runs.length, 0);
+    console.log(
+      'Actual OpenCode defaults to real SDK, prepares workspace scope, rejects unapproved start, and surfaces unsupported setup errors and prepares explicit API-key/header routes without fallback; no model calls.',
+    );
   } else {
     state = await rpc.start({}, { location });
     assert.equal(state.status, 'running');

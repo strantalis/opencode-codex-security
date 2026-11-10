@@ -9,7 +9,7 @@ There are **no project overrides**. Session tools provide repository, scoped pat
 
 The file is read whenever a scan is prepared. Changing it invalidates an outstanding preview, so changed settings cannot silently reach an already-approved scan. No application restart is needed for setting changes.
 
-Without provider opt-in, the defaults preserve dedicated ChatGPT authentication, the SDK model/reasoning settings, and a USD 1 estimated stop threshold:
+The normal plugin defaults to real SDK mode. At preparation time it discovers the standard Codex configuration unless you explicitly select a provider/authentication route or disable discovery. With no discovered configuration, defaults use dedicated ChatGPT authentication, the SDK model/reasoning settings, and a USD 1 estimated stop threshold:
 
 ```json
 {
@@ -30,11 +30,11 @@ Without provider opt-in, the defaults preserve dedicated ChatGPT authentication,
 - `codex.model`: model ID, forwarded to SDK constructor `codexOverrides.model`.
 - `codex.reasoningEffort`: none, minimal, low, medium, high or xhigh; forwarded as `model_reasoning_effort`. Actual support depends on the selected model.
 - `codex.daybreak`: boolean, forwarded as `codexOverrides.daybreak`. Custom-provider Daybreak is currently unsupported by this plugin.
-- `codex.useCodexConfig`: set `true` to import the existing Codex provider from the standard config location without specifying a path. Omitted or `false` alone leaves import off. An explicit `configFile` independently opts in when the flag is omitted.
+- `codex.useCodexConfig`: omitted discovers an existing standard Codex file unless an explicit provider/auth route was chosen. `true` requires that file. `false` disables discovery. An explicit `configFile` selects a required file when the flag is omitted.
 - `codex.configFile`: explicit absolute or `~/` TOML path that overrides the standard location. Existing configurations using this field alone remain supported.
 - `codex.profile`: optional native `[profiles.name]` selection inside the imported file. Without it, the file's top-level `profile` is used if present.
 - `codex.provider`: explicit custom-provider object as an alternative to `configFile`.
-- `codex.auth`: optional `chatgpt` or `api-key`. Defaults to `chatgpt` without a custom provider and `api-key` with one. Contradictory choices fail closed.
+- `codex.auth`: optional `chatgpt` or `api-key`. Defaults to `chatgpt` without a custom provider and `api-key` with one. Explicit `api-key` without a custom provider uses OpenAI and its existing environment keys. Contradictory choices fail closed.
 - `scan.mode`: standard or deep, used only when no per-scan mode is supplied. The built-in fallback is standard.
 - `scan.maxCostUsd`: positive estimated stop threshold. This is **not a hard billing cap**; in-flight usage may exceed it.
 - `scan.maxTimeMinutes`: positive time limit.
@@ -44,11 +44,39 @@ Without provider opt-in, the defaults preserve dedicated ChatGPT authentication,
 
 Unknown keys and invalid values fail closed. Credential **values**, arbitrary environment variables, runtime executable paths and approval policies are not configurable here. Only the selected provider's environment-variable **name** is accepted. Owner suggestions remain disabled. Do not place secrets in this file.
 
+## Authentication compatibility
+
+Choose one supported route; loading never logs in or starts work. Discovery may reuse supported non-secret configuration, but does not authorize inference or create credentials.
+
+| Existing setup                                      | Plugin support                                  | Required choice                                                                              |
+| --------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Private dedicated ChatGPT sign-in                   | Supported on POSIX                              | Default built-in OpenAI route; credentials are never copied from ordinary Codex              |
+| OpenAI environment API key                          | Supported                                       | Explicit `codex.auth: "api-key"`; no custom provider required                                |
+| Custom HTTPS Responses provider and environment key | Supported                                       | Discover its Codex configuration or set `codex.provider`                                     |
+| Extra environment-backed gateway headers            | Supported with the custom environment-key route | Non-secret header/variable mapping; values are resolved by the SDK during authorized work    |
+| Native command/credential helper                    | Not yet supported by this plugin                | SDK support exists; needs a separate helper-execution/approval integration                   |
+| Account-authenticated custom gateway                | Not yet supported by this plugin                | SDK support exists; account credential forwarding needs explicit destination/approval design |
+| Keyless network identity                            | Unsupported by the SDK's local scan API         | No dummy key or fallback; see limitation below                                               |
+| AWS or another built-in provider                    | Not yet supported by this plugin                | Requires its own reviewed integration; do not rename it as a custom key provider             |
+| Inline tokens or literal secret headers             | Not supported                                   | Keep values outside configuration                                                            |
+
+### OpenAI with an existing API key
+
+Set this in the global plugin settings if you want API-key usage rather than dedicated ChatGPT authentication:
+
+```json
+{
+  "codex": { "auth": "api-key" }
+}
+```
+
+The OpenCode service must already have `OPENAI_API_KEY` or `CODEX_API_KEY`. SDK precedence is `OPENAI_API_KEY` first, then `CODEX_API_KEY`; the preview discloses both. No key values are read into settings, printed, hashed or saved by the plugin. Missing keys fail locally before the SDK is created, without falling back to a sign-in. Ambient endpoint overrides are rejected for this route so a preview labeled OpenAI cannot silently send data to a gateway; use an explicit custom provider instead.
+
 ## Use an existing custom provider without sign-in
 
-Published version `0.1.2` adds an opt-in custom Responses provider. It is available under `next` as of November 10, 2026; pin the exact version. The published `0.1.0` and `0.1.1` packages do not contain this feature.
+Custom Responses providers have been supported since `0.1.2`. Prepare-time automatic discovery is new in `0.1.4`; pin a published exact version or use an explicitly supplied tested build. Earlier releases require import opt-in.
 
-If your existing Codex configuration already defines a custom provider with `base_url` and `env_key`, using `wire_api = "responses"` (also the native default when omitted), add this to your global `codex-security.json`:
+If your existing Codex configuration defines a custom provider with `base_url` and `env_key`, using `wire_api = "responses"` (also the native default when omitted), no additional import setting is needed in `0.1.4`. To require that the standard config exists, add this to your global `codex-security.json`:
 
 ```json
 {
@@ -58,17 +86,18 @@ If your existing Codex configuration already defines a custom provider with `bas
 }
 ```
 
-The default path is `$CODEX_HOME/config.toml` when `CODEX_HOME` is set and nonempty, otherwise `~/.codex/config.toml`. Exactly empty `CODEX_HOME` behaves as unset; whitespace-only, relative (including literal `~/...`) or control-character values fail clearly. `CODEX_HOME` must be an absolute directory; explicit `configFile` still supports `~/` expansion. Spaces in valid absolute directory names are preserved. A missing or invalid selected file fails without switching providers or falling back to ChatGPT.
+The default path is `$CODEX_HOME/config.toml` when `CODEX_HOME` is set and nonempty, otherwise `~/.codex/config.toml`. Exactly empty `CODEX_HOME` behaves as unset; whitespace-only, relative (including literal `~/...`) or control-character values fail clearly. `CODEX_HOME` must be an absolute directory; explicit `configFile` still supports `~/` expansion. Spaces in valid absolute directory names are preserved. An absent automatically discovered file uses the dedicated ChatGPT route. A missing explicitly selected file, or an invalid/unsupported existing file, fails without switching providers or falling back to ChatGPT.
 
-For another location, add `"configFile": "/approved/path/config.toml"`; this takes precedence without inspecting `CODEX_HOME`. The existing `configFile`-only syntax also works. Add `"profile": "work"` to select `[profiles.work]` inside the imported file. To read a standalone `work.config.toml`, point `configFile` at that file instead. These are plugin import options, **not** SDK `profile` overrides. The plugin reads no Codex configuration without import opt-in, and does not import OpenCode provider settings. This feature is provider-agnostic for the supported custom HTTPS Responses + environment-key route; it is not support for every Codex transport, authentication method or feature.
+For another location, add `"configFile": "/approved/path/config.toml"`; this takes precedence without inspecting `CODEX_HOME`. The existing `configFile`-only syntax also works. Add `"profile": "work"` to select `[profiles.work]` inside the imported file. To read a standalone `work.config.toml`, point `configFile` at that file instead. These are plugin import options, **not** SDK `profile` overrides. Discovery reads only the standard Codex file during preparation. It does not read credential files or import OpenCode provider settings. This feature is provider-agnostic for the supported custom HTTPS Responses + environment-key route; it is not support for every Codex transport, authentication method or feature.
 
 Option combinations are explicit:
 
 - `useCodexConfig: true` selects the standard location; an explicit `configFile` overrides it.
 - `configFile` without `useCodexConfig` remains an import opt-in.
-- Neither option, or `useCodexConfig: false` alone, preserves the default ChatGPT route.
+- Neither import option nor explicit provider/authentication choice discovers the standard config during preparation. An absent automatic file uses the dedicated ChatGPT route.
+- `useCodexConfig: false` or explicit `auth: "chatgpt"` disables automatic discovery and selects the dedicated ChatGPT route unless a different explicit supported provider is supplied.
 - `useCodexConfig: false` with `configFile` is contradictory and rejected.
-- Explicit `provider` settings work with import omitted/false, but cannot be combined with import enabled.
+- Explicit `provider` settings work with import omitted/false, skip automatic discovery and cannot be combined with explicitly enabled import.
 
 The resolved source path appears in the approval preview. Changing `CODEX_HOME` to select another file invalidates existing scan, policy and validation previews, even when the selected model/provider fields match.
 
@@ -77,13 +106,19 @@ The named environment key must already be available to the OpenCode service proc
 Only these fields are imported:
 
 - Selected `model`, `model_reasoning_effort`, and `daybreak`.
-- Selected `model_provider` and its provider's `base_url`, `env_key`, `wire_api`, and optional `requires_openai_auth = false`. The provider's display name is replaced by its ID. Root provider fields are inherited when the selected profile overrides only some fields.
+- Selected `model_provider` and its provider's `base_url`, `env_key`, `wire_api`, optional `requires_openai_auth = false`, and bounded `env_http_headers` mappings of header names to environment-variable names. The provider's display name is replaced by its ID. Root provider fields are inherited when the selected profile overrides only some fields.
 
 Explicit global JSON model/reasoning/Daybreak options override the imported values, which override plugin defaults. To inherit the Codex model, remove an old explicit `codex.model` from the plugin JSON. Provider routing cannot be overridden by a session tool or project file. Do not combine `configFile` and `provider`.
 
-The selected provider must use a custom ID. Built-in IDs such as `openai`, `ollama`, `lmstudio`, `amazon-bedrock`, and `gcp` have different authentication semantics and are rejected. An `OPENAI_BASE_URL` environment override or built-in OpenAI provider is not automatically converted into a custom route. Missing profiles, undefined providers, missing `env_key`, unsupported wire APIs, and `requires_openai_auth = true` fail closed.
+A custom provider must use a custom ID. A discovered built-in `openai` selection (or omitted `model_provider`) imports model/reasoning settings while preserving dedicated ChatGPT authentication; overriding its provider table is rejected. Other built-in IDs such as `ollama`, `lmstudio`, `amazon-bedrock`, and `gcp` have different authentication semantics and are rejected. An `OPENAI_BASE_URL` environment override or built-in OpenAI provider is not automatically converted into a custom route. Missing profiles, undefined custom providers, missing `env_key`, unsupported wire APIs, and custom `requires_openai_auth = true` fail closed. `env_key` is the name of an existing variable, not a request for a second key.
 
-Only credential-free HTTPS base URLs are supported. URL userinfo, query strings, fragments, encoded paths, inline keys, custom headers (including environment headers), auth commands, model catalogs and other provider extensions are rejected. Harmless `env_key_instructions`, `request_max_retries`, `stream_max_retries`, and `stream_idle_timeout_ms` hints are ignored, not forwarded or included in the digest. MCP servers, plugins, shell commands, hooks and security settings elsewhere in the source file are never copied. The import accepts a regular nonsymlink TOML file up to 256 KiB; parser errors do not echo source lines. The retained source digest covers only the validated selection, not raw TOML or credential values.
+Only credential-free HTTPS base URLs are supported. URL userinfo, query strings, fragments, encoded paths, inline keys, literal headers, auth commands, model catalogs and other provider extensions are rejected. Harmless `env_key_instructions`, `request_max_retries`, `stream_max_retries`, and `stream_idle_timeout_ms` hints are ignored, not forwarded or included in the digest. MCP servers, plugins, shell commands, hooks and security settings elsewhere in the source file are never copied. The import accepts a regular nonsymlink TOML file up to 256 KiB; parser errors do not echo source lines. The retained source digest covers only the validated selection, not raw TOML or credential values.
+
+### Keyless network identity
+
+A gateway protected by Cloudflare WARP or another network identity system may legitimately need no API key. The plugin does not yet support this route. Pinned SDK 0.9.1 accepts `auto`, `chatgpt` or `api-key` authentication but does not expose a credential-free network mode: a custom provider without `env_key` is treated as stored-credential authentication and can try to import ambient credentials before failing. Setting `requires_openai_auth = false` does not remove that SDK gate.
+
+Do not create a dummy key, add a credential helper, copy a sign-in, switch providers, or fall back to fixtures to hide this limitation. Keep the real SDK install in place and report the unsupported authentication route. No network security settings are changed and no gateway request is made during loading or preparation.
 
 ### Explicit provider alternative
 
@@ -105,6 +140,26 @@ If you do not want to import a file, configure the same non-secret routing field
 ```
 
 The hostname and model above are examples, not a working service or assurance of model access. Use your organization's approved gateway and its supported model name. Never substitute a credential value for `envKey` or embed credentials in the URL.
+
+### Environment-backed gateway headers
+
+A custom provider may need additional headers as well as its API key. Use `envHttpHeaders` in explicit plugin provider settings, or `env_http_headers` in an imported native Codex provider. Only names are stored:
+
+```json
+{
+  "codex": {
+    "provider": {
+      "id": "custom-gateway",
+      "baseUrl": "https://gateway.example.com/v1",
+      "envKey": "GATEWAY_API_KEY",
+      "wireApi": "responses",
+      "envHttpHeaders": { "X-Workspace": "GATEWAY_WORKSPACE" }
+    }
+  }
+}
+```
+
+The preview names every extra header and its variable. Required variables must be nonempty, and header values must not contain control characters. Header names are validated case-insensitively; authentication, host/routing and hop-by-hop overrides are rejected. Literal header values are not accepted. Headers alone do not supply a supported SDK authentication mechanism, and cannot be used to hide the keyless-network limitation. The plugin stores only names in settings, previews and history. During authorized operations, the SDK forwards values to workers and subprocesses and can materialize them in mode-0600 private temporary Deep-worker configuration. Normal SDK cleanup removes those files, but interrupted or crashed processes may leave them behind. Do not treat environment-backed headers as a guarantee that credentials remain only in memory; use an approved runtime without unrelated secrets.
 
 ### Compatibility and cost limits
 

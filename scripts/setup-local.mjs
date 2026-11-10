@@ -20,7 +20,7 @@ for (const path of [
   await mkdir(path, { recursive: true });
 await writeFile(
   env.XDG_CONFIG_HOME + '/opencode/opencode.json',
-  JSON.stringify({ plugins: [root] }, null, 2),
+  JSON.stringify({ plugins: [{ package: root, options: { engine: 'fixture' } }] }, null, 2),
 );
 const child = spawnSync(process.execPath, ['node_modules/@opencode/cli/postinstall.mjs'], {
   cwd: root,
