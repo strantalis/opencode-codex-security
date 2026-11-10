@@ -1,8 +1,10 @@
+import { ProviderConfigurationError, record } from './provider-validation.ts';
 import { open, realpath } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { validateBedrock } from './bedrock-config.ts';
 import { parse } from 'smol-toml';
 
 export const OPENAI_API_BASE_URL = 'https://api.openai.com/v1';
@@ -20,17 +22,10 @@ export interface ProviderSource {
   /** Hash of the allowlisted selection only. Never hash credentials or the full source file. */
   digest: string;
 }
-export class ProviderConfigurationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ProviderConfigurationError';
-  }
-}
+export { ProviderConfigurationError, record } from './provider-validation.ts';
 const fail = (message: string): never => {
   throw new ProviderConfigurationError(message);
 };
-export const record = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === 'object' && !Array.isArray(value);
 /** Endpoint overrides must not silently redirect an approved built-in API route. */
 export function validateOpenAiApiEndpointEnvironment(
   environment: Record<string, string | undefined> = process.env,
@@ -292,6 +287,35 @@ export async function readProviderConfiguration(
         'Overriding the built-in OpenAI provider is unsupported. Configure a custom Responses provider with env_key, or remove the override to use dedicated Codex Security ChatGPT authentication.',
       );
     return { settings: modelSettings, path, profile: selectedName };
+  }
+  if (id === 'amazon-bedrock') {
+    const base = rootProviders[id];
+    const override = profileProviders[id];
+    if ((base !== undefined && !record(base)) || (override !== undefined && !record(override)))
+      return fail('The native Bedrock provider table must be an object.');
+    const native = { ...(record(base) ? base : {}), ...(record(override) ? override : {}) };
+    if (
+      Object.keys(native).some(
+        (key) => !['name', 'aws', 'wire_api', 'requires_openai_auth'].includes(key),
+      ) ||
+      (native.wire_api !== undefined && native.wire_api !== 'responses') ||
+      (native.requires_openai_auth !== undefined && native.requires_openai_auth !== false) ||
+      (native.aws !== undefined && !record(native.aws)) ||
+      (record(base) && base.aws !== undefined && !record(base.aws))
+    )
+      return fail(
+        'Native Bedrock import supports AWS region/profile only, without endpoint, credential, or authentication overrides.',
+      );
+    const aws = {
+      ...(record(base) && record(base.aws) ? base.aws : {}),
+      ...(record(native.aws) ? native.aws : {}),
+    };
+    // Snapshot the public region during preparation so later environment changes invalidate approval.
+    const bedrock = validateBedrock({
+      ...aws,
+      region: aws.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION,
+    });
+    return { settings: { bedrock, ...modelSettings }, path, profile: selectedName };
   }
   // Inherit only the selected provider's fields, never whole profile/runtime configuration.
   const inherited = Object.hasOwn(rootProviders, id) ? rootProviders[id] : undefined;

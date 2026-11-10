@@ -41,6 +41,8 @@ requires_openai_auth = false
 `;
 async function fixture(t, settings) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'provider-routing-')));
+  // Isolate policy root discovery from any enclosing checkout or sandbox marker.
+  await mkdir(join(root, '.git'), { recursive: true });
   const codexFile = join(root, 'codex.toml');
   const configHome = join(root, 'config');
   await mkdir(join(configHome, 'opencode'), { recursive: true });
@@ -186,7 +188,7 @@ test('explicit provider settings support no-login routing but reject contradicto
     await assert.rejects(resolveSettings({ codex }));
   await assert.rejects(
     resolveSettings({ codex: { provider }, scan: { cyberAccessProgram: 'daybreak_blue' } }),
-    /Daybreak is not supported/,
+    /Daybreak access-program toggle is not supported/,
   );
   assert.equal(
     (await resolveSettings({ codex: { provider }, scan: { cyberAccessProgram: 'standard' } })).codex

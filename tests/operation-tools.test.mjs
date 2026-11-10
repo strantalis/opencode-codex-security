@@ -1,13 +1,15 @@
 import './helpers/isolated-codex.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, realpath, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createSecurityPlugin } from '../src/plugin.ts';
 const tick = () => new Promise((r) => setImmediate(r));
 test('registered model operations check separate permissions and exact question answers', async (t) => {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'operation-tools-')));
+  // Isolate policy root discovery from any enclosing checkout or sandbox marker.
+  await mkdir(join(root, '.git'), { recursive: true });
   t.after(() => rm(root, { recursive: true, force: true }));
   let allowed = false,
     policyCalls = 0,

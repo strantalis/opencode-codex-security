@@ -7,6 +7,8 @@ import {
   ProviderConfigurationError,
 } from './provider-config.ts';
 
+import { validateBedrock, validateBedrockEnvironment, bedrockBaseUrl } from './bedrock-config.ts';
+
 type Environment = Record<string, string | undefined>;
 
 /** Fixed, non-sensitive guidance is safe for UI/model errors. Never attach filesystem errors. */
@@ -102,10 +104,37 @@ export class ProviderCredentialsRequiredError extends Error {
 export async function requireSdkCredentials(
   config: import('@openai/codex-security').CodexSecurityConfig | undefined,
   environment: Environment = process.env,
-  auth?: 'chatgpt' | 'api-key',
+  auth?: 'chatgpt' | 'api-key' | 'aws',
 ): Promise<void> {
   const routing = config?.codexOverrides;
   const id = routing?.model_provider;
+  if (id === 'amazon-bedrock') {
+    const providers = routing?.model_providers;
+    const { record } = await import('./provider-config.ts');
+    const native = record(providers) ? providers['amazon-bedrock'] : undefined;
+    if (
+      auth !== 'aws' ||
+      !record(native) ||
+      Object.keys(native).some((key) => !['aws', 'base_url'].includes(key))
+    )
+      throw new ProviderConfigurationError(
+        'Invalid native Bedrock routing or authentication. No authentication was initialized.',
+      );
+    const bedrock = validateBedrock(native.aws);
+    if (native.base_url !== bedrockBaseUrl(bedrock))
+      throw new ProviderConfigurationError(
+        'Native Bedrock inference must use the approved regional AWS endpoint.',
+      );
+    validateBedrockEnvironment(environment);
+    // AWS credentials may be supplied by SSO, workload identity, or the default
+    // credential chain. Checking env-key presence would incorrectly reject them.
+    // The SDK resolves and verifies that identity during the approved operation.
+    return;
+  }
+  if (auth === 'aws')
+    throw new ProviderConfigurationError(
+      'AWS authentication requires the native Bedrock provider.',
+    );
   if (id === undefined || id === 'openai') {
     if (auth !== 'api-key') return requireDedicatedSecurityCredentials(environment);
     validateOpenAiApiEndpointEnvironment(environment);

@@ -29,12 +29,13 @@ The normal plugin defaults to real SDK mode. At preparation time it discovers th
 
 - `codex.model`: model ID, forwarded to SDK constructor `codexOverrides.model`.
 - `codex.reasoningEffort`: none, minimal, low, medium, high or xhigh; forwarded as `model_reasoning_effort`. Actual support depends on the selected model.
-- `codex.daybreak`: boolean, forwarded as `codexOverrides.daybreak`. Custom-provider Daybreak is currently unsupported by this plugin.
+- `codex.daybreak`: boolean, forwarded as `codexOverrides.daybreak`. The OpenAI Daybreak program toggle is unsupported for custom providers or native Bedrock; Bedrock Daybreak is selected by its model ID.
 - `codex.useCodexConfig`: omitted discovers an existing standard Codex file unless an explicit provider/auth route was chosen. `true` requires that file. `false` disables discovery. An explicit `configFile` selects a required file when the flag is omitted.
 - `codex.configFile`: explicit absolute or `~/` TOML path that overrides the standard location. Existing configurations using this field alone remain supported.
 - `codex.profile`: optional native `[profiles.name]` selection inside the imported file. Without it, the file's top-level `profile` is used if present.
 - `codex.provider`: explicit custom-provider object as an alternative to `configFile`.
-- `codex.auth`: optional `chatgpt` or `api-key`. Defaults to `chatgpt` without a custom provider and `api-key` with one. Explicit `api-key` without a custom provider uses OpenAI and its existing environment keys. Contradictory choices fail closed.
+- `codex.bedrock`: native AWS region and optional profile name; mutually exclusive with a custom provider and explicit config import.
+- `codex.auth`: optional `chatgpt`, `api-key`, or `aws`. Native Bedrock resolves to `aws`. Defaults to `chatgpt` without a custom provider and `api-key` with one. Explicit `api-key` without a custom provider uses OpenAI and its existing environment keys. Contradictory choices fail closed.
 - `scan.mode`: standard or deep, used only when no per-scan mode is supplied. The built-in fallback is standard.
 - `scan.maxCostUsd`: positive estimated stop threshold. This is **not a hard billing cap**; in-flight usage may exceed it.
 - `scan.maxTimeMinutes`: positive time limit.
@@ -57,7 +58,8 @@ Choose one supported route; loading never logs in or starts work. Discovery may 
 | Native command/credential helper                    | Not yet supported by this plugin                | SDK support exists; needs a separate helper-execution/approval integration                   |
 | Account-authenticated custom gateway                | Not yet supported by this plugin                | SDK support exists; account credential forwarding needs explicit destination/approval design |
 | Keyless network identity                            | Unsupported by the SDK's local scan API         | No dummy key or fallback; see limitation below                                               |
-| AWS or another built-in provider                    | Not yet supported by this plugin                | Requires its own reviewed integration; do not rename it as a custom key provider             |
+| Native Amazon Bedrock                               | Supported in the next source build              | Explicit AWS region/model and existing AWS identity; no OpenAI sign-in or fake key           |
+| Other built-in providers                            | Not yet supported by this plugin                | Require their own reviewed integration; do not rename them as custom key providers           |
 | Inline tokens or literal secret headers             | Not supported                                   | Keep values outside configuration                                                            |
 
 ### OpenAI with an existing API key
@@ -71,6 +73,31 @@ Set this in the global plugin settings if you want API-key usage rather than ded
 ```
 
 The OpenCode service must already have `OPENAI_API_KEY` or `CODEX_API_KEY`. SDK precedence is `OPENAI_API_KEY` first, then `CODEX_API_KEY`; the preview discloses both. No key values are read into settings, printed, hashed or saved by the plugin. Missing keys fail locally before the SDK is created, without falling back to a sign-in. Ambient endpoint overrides are rejected for this route so a preview labeled OpenAI cannot silently send data to a gateway; use an explicit custom provider instead.
+
+### Amazon Bedrock with an existing AWS identity
+
+The next source build adds native `amazon-bedrock` routing. It does not replace a custom gateway automatically. Select it explicitly or import a Codex configuration that already selects that provider:
+
+```json
+{
+  "codex": {
+    "bedrock": { "region": "us-east-2", "profile": "security-scan" },
+    "model": "openai.gpt-daybreak-blue-5.6-sol",
+    "reasoningEffort": "high"
+  },
+  "scan": { "maxCostUsd": 1 }
+}
+```
+
+Use your existing authorized profile and exact Bedrock model. The profile is optional; without it, the native AWS credential chain supplies the identity. The plugin records only the region and profile name. It never reads AWS credential files, copies keys, signs in, or verifies entitlement during preparation. During an approved operation, native AWS authentication can read its existing profile, invoke an existing credential helper, and contact AWS identity services. This is not a promise of environment-only authentication or zero credential-related network traffic. Review the existing AWS setup before approving inference.
+
+`codex.auth` resolves to `aws`; the SDK receives `auth: "auto"` with `model_provider: "amazon-bedrock"`, which selects its AWS credential path instead of OpenAI credentials. No API-key variable or dedicated ChatGPT sign-in is required by the plugin. An explicit configured AWS profile takes priority over ambient credentials in the bundled native provider. The preview identifies the requested profile/credential chain, not a verified identity.
+
+Only commercial and GovCloud region names are accepted; China and isolated AWS partitions are unsupported. Region syntax validation does not establish Mantle or model availability. An explicit region and Bedrock model are required; the OpenAI default model is never substituted. Imported Codex settings may use `[model_providers.amazon-bedrock.aws]` with `region` and optional `profile`. If that imported region is absent, preparation snapshots `AWS_REGION`, then `AWS_DEFAULT_REGION`, and fails if neither is present. A subsequent selection change invalidates the preview. No AWS profile files are inspected to guess a region. Configured endpoint overrides, `credential_export`, `auth_refresh`, inline credentials, and other AWS provider options are not imported. Native inference is pinned to the displayed regional Mantle Responses endpoint. Ambient `AWS_ENDPOINT_URL*` overrides are rejected; existing AWS credential-chain configuration is still owned by the native AWS runtime.
+
+For Bedrock, Daybreak access is selected by the provisioned model ID. Blue uses `openai.gpt-daybreak-blue-5.6-sol` in `us-east-2`; it does not use the OpenAI `daybreak` switch or `cyberAccessProgram: "daybreak_blue"`. Keep `daybreak` false and omit `cyberAccessProgram` (or use `standard`). This leaves the selected model unchanged and does not downgrade a Bedrock Daybreak model. AWS model access must already be provisioned. See the [versioned SDK Bedrock guide](https://github.com/openai/codex-security/blob/npm-v0.9.1/docs/bedrock.md).
+
+Standard and Deep scans, policy drafts, and validation use the same approved routing snapshot. Scan/policy estimated cost stops remain enabled, using the SDK's region-aware Bedrock pricing. Unknown model/region pricing fails without removing the limit. Validation remains separately authorized and has no SDK cost cap. Offline tests verify routing and public SDK classification/pricing, not account access, streaming, live worker behavior, or billable end-to-end scans.
 
 ## Use an existing custom provider without sign-in
 
@@ -110,13 +137,15 @@ Only these fields are imported:
 
 Explicit global JSON model/reasoning/Daybreak options override the imported values, which override plugin defaults. To inherit the Codex model, remove an old explicit `codex.model` from the plugin JSON. Provider routing cannot be overridden by a session tool or project file. Do not combine `configFile` and `provider`.
 
-A custom provider must use a custom ID. A discovered built-in `openai` selection (or omitted `model_provider`) imports model/reasoning settings while preserving dedicated ChatGPT authentication; overriding its provider table is rejected. Other built-in IDs such as `ollama`, `lmstudio`, `amazon-bedrock`, and `gcp` have different authentication semantics and are rejected. An `OPENAI_BASE_URL` environment override or built-in OpenAI provider is not automatically converted into a custom route. Missing profiles, undefined custom providers, missing `env_key`, unsupported wire APIs, and custom `requires_openai_auth = true` fail closed. `env_key` is the name of an existing variable, not a request for a second key.
+A custom provider must use a custom ID. A discovered built-in `openai` selection (or omitted `model_provider`) imports model/reasoning settings while preserving dedicated ChatGPT authentication; overriding its provider table is rejected. Native `amazon-bedrock` has the separate AWS integration described above. Other built-in IDs such as `ollama`, `lmstudio`, and `gcp` have different authentication semantics and are rejected. An `OPENAI_BASE_URL` environment override or built-in OpenAI provider is not automatically converted into a custom route. Missing profiles, undefined custom providers, missing `env_key`, unsupported wire APIs, and custom `requires_openai_auth = true` fail closed. `env_key` is the name of an existing variable, not a request for a second key.
 
 Only credential-free HTTPS base URLs are supported. URL userinfo, query strings, fragments, encoded paths, inline keys, literal headers, auth commands, model catalogs and other provider extensions are rejected. Harmless `env_key_instructions`, `request_max_retries`, `stream_max_retries`, and `stream_idle_timeout_ms` hints are ignored, not forwarded or included in the digest. MCP servers, plugins, shell commands, hooks and security settings elsewhere in the source file are never copied. The import accepts a regular nonsymlink TOML file up to 256 KiB; parser errors do not echo source lines. The retained source digest covers only the validated selection, not raw TOML or credential values.
 
 ### Keyless network identity
 
 A gateway protected by Cloudflare WARP or another network identity system may legitimately need no API key. The plugin does not yet support this route. Pinned SDK 0.9.1 accepts `auto`, `chatgpt` or `api-key` authentication but does not expose a credential-free network mode: a custom provider without `env_key` is treated as stored-credential authentication and can try to import ambient credentials before failing. Setting `requires_openai_auth = false` does not remove that SDK gate.
+
+The public SDK preflight reports this route as unverified stored credentials, not a supported network-identity mode. The actual local runner still requires a supported authentication path. Its separate hosted-executor API supports Standard scans but would require a separate execution, persistence, cancellation and cost-control integration; it is not an equivalent drop-in replacement for this plugin.
 
 Do not create a dummy key, add a credential helper, copy a sign-in, switch providers, or fall back to fixtures to hide this limitation. Keep the real SDK install in place and report the unsupported authentication route. No network security settings are changed and no gateway request is made during loading or preparation.
 
@@ -166,13 +195,13 @@ The preview names every extra header and its variable. Required variables must b
 - Responses API support alone is insufficient. The gateway/model must support Codex Security's streaming, namespaced/function tools and any required web-search tools. Routing tests use mocks; they do not establish compatibility with any real custom gateway.
 - Model aliases without SDK pricing fail the scan/policy cost guard. The plugin **does not remove the budget** to make them run. A recognized OpenAI model name's estimate is not proof of the gateway's billing rate or a hard cap. Do not rename a different model merely to obtain an estimate.
 - Static finding validation still has **no SDK cost ceiling** and requires separate uncapped approval.
-- Custom-provider Daybreak is not supported in this plugin version. Set `daybreak` false and omit `cyberAccessProgram` or use `standard`. Some current Codex proxy configurations support Daybreak, but their catalog/capability settings are not imported by this bounded implementation.
+- The OpenAI Daybreak access-program toggle is not supported for custom providers. Set `daybreak` false and omit `cyberAccessProgram` or use `standard`. A gateway may independently route a model alias to a provisioned Bedrock Daybreak model; this plugin does not verify that upstream route. Some current Codex proxy configurations support the OpenAI program through catalog/capability settings, but those settings are not imported by this bounded implementation. Exact model IDs and aliases have different SDK pricing support; never rename the requested model or disable the cost guard merely to make a run start.
 - Cloud publication, embedding configuration, patching, and fix verification are not enabled by this route. Native analytics are explicitly disabled for custom routes; unrelated telemetry settings are not imported. SDK private runtime state is still created during real operations. No-login does not mean no local state or no network activity.
 - Previews and native permission prompts identify the selected provider/base URL, auth mode, key name, model and source selection. Source/context go to that gateway, which can route onward to its upstream providers. The plugin does not verify those upstream destinations.
 
-## Daybreak is not a model
+## OpenAI Daybreak access program
 
-SDK 0.9.1 documents Daybreak as a separate toggle, available with Codex 0.163.0 or later. Set `codex.daybreak` to true to request it. Compatible OpenAI account access is still required; the toggle does not grant entitlement. A separate explicit `scan.cyberAccessProgram` selection takes precedence over the toggle. Omit that option when you want Codex to select the available program.
+For the built-in OpenAI provider, SDK 0.9.1 documents Daybreak as a separate toggle, available with Codex 0.163.0 or later. Set `codex.daybreak` to true to request it. Compatible OpenAI account access is still required; the toggle does not grant entitlement. A separate explicit `scan.cyberAccessProgram` selection takes precedence over the toggle. Omit that option when you want Codex to select the available program.
 
 The plugin does not check entitlement, sign in, copy credentials or switch accounts while loading configuration. The existing Desktop Daybreak toggle does not configure the SDK's isolated runner. The default OpenAI route still needs appropriately authorized dedicated sign-in and inference; an explicitly selected custom route uses its environment key instead. Neither model availability nor Daybreak entitlement has been verified on this account.
 

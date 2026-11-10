@@ -63,6 +63,7 @@ try {
     ['--keyless-config'],
     ['--openai-key'],
     ['--header-config'],
+    ['--bedrock-config'],
   ])
     process.stdout.write(
       run('python3', ['scripts/packed-tui-test.py', '--package', packageRoot, ...mode]),

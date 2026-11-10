@@ -44,6 +44,8 @@ function environment(t, name, value) {
 }
 async function fixture(t, settings = {}) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'auth-parity-')));
+  // Isolate policy root discovery from any enclosing checkout or sandbox marker.
+  await mkdir(join(root, '.git'), { recursive: true });
   await mkdir(join(root, 'config', 'opencode'), { recursive: true });
   await mkdir(join(root, 'src'));
   await writeFile(join(root, 'src', 'example.js'), '// synthetic fixture');

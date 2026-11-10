@@ -1,16 +1,20 @@
+import { bedrockBaseUrl } from './core/bedrock-config.ts';
 import type { ResolvedSdkSettings } from './core/sdk-settings';
 import type { ScanState } from './types';
 import type { ScanInputs, ScanPlan } from './core/scan-plan';
 /** Public route details only: never resolve credentials or read configuration in the UI. */
 export function describeInferenceRoute(settings: ResolvedSdkSettings): string {
-  const { provider, auth, source, model } = settings.codex;
-  const destination = provider
-    ? `${provider.id} (${provider.baseUrl})`
+  const { provider, bedrock, auth, source, model } = settings.codex;
+  const destination = bedrock
+    ? `Amazon Bedrock (${bedrockBaseUrl(bedrock)}, region ${bedrock.region})`
+    : provider
+      ? `${provider.id} (${provider.baseUrl})`
+      : auth === 'api-key'
+        ? 'OpenAI (https://api.openai.com/v1)'
+        : 'OpenAI';
+  const authentication = bedrock
+    ? `existing AWS ${bedrock.profile ? `profile ${bedrock.profile}` : 'credential chain'} (access unverified; may use existing AWS credential helpers and identity services); no OpenAI sign-in or key`
     : auth === 'api-key'
-      ? 'OpenAI (https://api.openai.com/v1)'
-      : 'OpenAI';
-  const authentication =
-    auth === 'api-key'
       ? provider
         ? `API key from environment variable ${provider.envKey} (name only)`
         : 'OpenAI API key from OPENAI_API_KEY, otherwise CODEX_API_KEY (names only; no sign-in or credential import)'

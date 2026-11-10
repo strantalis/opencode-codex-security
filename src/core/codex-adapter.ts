@@ -23,7 +23,7 @@ import type {
   ScanResult,
   Finding as SdkFinding,
 } from '@openai/codex-security';
-import { sdkConfiguration, type ResolvedSdkSettings } from './sdk-settings.ts';
+import { sdkConfiguration, sdkAuthentication, type ResolvedSdkSettings } from './sdk-settings.ts';
 import { ProviderConfigurationError } from './provider-config.ts';
 import type { Finding, ScanState } from '../types.js';
 
@@ -33,7 +33,7 @@ export interface CodexScanApproval {
   repository: string;
   allowNetworkModelInference: true;
   maxCostUsd: number;
-  auth?: 'chatgpt' | 'api-key';
+  auth?: 'chatgpt' | 'api-key' | 'aws';
   settings?: ResolvedSdkSettings;
   scopePaths?: string[];
   scanPrompt?: string;
@@ -42,7 +42,7 @@ export interface CodexScanApproval {
 export type SecurityClient = Pick<CodexSecurity, 'run' | 'close'>;
 export type SecurityFactory = (
   config?: CodexSecurityConfig,
-  auth?: 'chatgpt' | 'api-key',
+  auth?: 'chatgpt' | 'api-key' | 'aws',
 ) => SecurityClient | Promise<SecurityClient>;
 const realClient: SecurityFactory = async (config, auth) => {
   await requireSdkCredentials(config, process.env, auth);
@@ -225,7 +225,7 @@ export class CodexScanService {
         knowledgeBasePaths: [...(approval.contextFiles ?? [])],
         ...approval.settings?.scan,
         mode: approval.settings?.scan.mode ?? 'standard',
-        auth: approval.settings?.codex.auth ?? approval.auth ?? 'chatgpt',
+        auth: sdkAuthentication(approval.settings?.codex.auth ?? approval.auth ?? 'chatgpt'),
         maxCostUsd: approval.maxCostUsd,
         ownerSuggestions: false,
         signal,
