@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 
 const staging = await readFile(
@@ -26,7 +29,7 @@ test('npm workflow stages only and never executes repository code under OIDC', (
     /npm stage publish "\.\/\$ARCHIVE" --access public --tag "\$NPM_TAG" --provenance --ignore-scripts/,
   );
   assert.match(staging, /NPM_CONFIG_IGNORE_SCRIPTS: 'true'/);
-  assert.match(staging, /NPM_CONFIG_USERCONFIG=\/dev\/null NPM_CONFIG_GLOBALCONFIG=\/dev\/null/);
+  assert.match(staging, /NPM_CONFIG_USERCONFIG="\$config_dir\/user\.npmrc"/);
   assert.match(
     staging,
     /if \[\[ "\$version" == \*-\* \]\]; then \[\[ "\$NPM_TAG" == next \]\]; fi/,
@@ -56,5 +59,30 @@ test('both promotion paths retain source, policy and exact-byte verification', (
     ]) {
       assert.ok(workflow.includes(guard), `Missing guard: ${guard}`);
     }
+  }
+});
+
+test('isolated npm configuration loads distinct empty user and global files', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'npm-stage-config-'));
+  try {
+    const user = join(dir, 'user.npmrc');
+    const global = join(dir, 'global.npmrc');
+    await writeFile(user, '');
+    await writeFile(global, '');
+    const result = spawnSync('npm', ['config', 'get', 'registry'], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        NPM_CONFIG_USERCONFIG: user,
+        NPM_CONFIG_GLOBALCONFIG: global,
+        NPM_CONFIG_REGISTRY: 'https://registry.npmjs.org/',
+        NPM_CONFIG_IGNORE_SCRIPTS: 'true',
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), 'https://registry.npmjs.org/');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });

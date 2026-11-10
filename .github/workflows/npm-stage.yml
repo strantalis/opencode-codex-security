@@ -99,6 +99,10 @@ jobs:
           [[ "$(gh api "repos/$REPOSITORY" --jq '.visibility')" == public ]]
           cd assets
           # No repo .npmrc is present; ignore user/global configuration and lifecycle hooks.
-          export NPM_CONFIG_USERCONFIG=/dev/null NPM_CONFIG_GLOBALCONFIG=/dev/null
+          config_dir=$(mktemp -d)
+          : > "$config_dir/user.npmrc"
+          : > "$config_dir/global.npmrc"
+          export NPM_CONFIG_USERCONFIG="$config_dir/user.npmrc"
+          export NPM_CONFIG_GLOBALCONFIG="$config_dir/global.npmrc"
           npm stage publish "./$ARCHIVE" --access public --tag "$NPM_TAG" --provenance --ignore-scripts
           printf '### Staged, not published\n\nArchive: `%s`\nSource: `%s`\nRequested tag: `%s`\n\nReview the returned stage ID with npm stage view/download. A maintainer must approve with 2FA. No approval runs in CI.\n' "$ARCHIVE" "$SOURCE_SHA" "$NPM_TAG" >> "$GITHUB_STEP_SUMMARY"
