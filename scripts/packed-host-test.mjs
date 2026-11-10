@@ -34,6 +34,8 @@ run('npm', [
   consumer,
   archivePath,
 ]);
+// The consumer resolves transitive dependencies afresh; audit that tree too.
+run('npm', ['audit', '--prefix', consumer, '--omit=dev', '--audit-level=high']);
 const packageRoot = join(consumer, 'node_modules', 'opencode-codex-security');
 for (const extra of [[], ['--codex-gate']]) {
   process.stdout.write(
