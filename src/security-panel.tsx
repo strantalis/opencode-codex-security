@@ -638,7 +638,11 @@ export function SecurityPanel(props: {
               </Show>
             }
           >
-            <details ref={historyElement} class="gs-runs" aria-label="Scan history">
+            <details
+              ref={(element) => (historyElement = element)}
+              class="gs-runs"
+              aria-label="Scan history"
+            >
               <summary>
                 Switch scan <span>{catalog().runs.length} recent</span>
               </summary>
@@ -675,7 +679,11 @@ export function SecurityPanel(props: {
           </Show>
           <Show when={current()}>
             {(run) => (
-              <article ref={detailElement} class="gs-detail" aria-label="Selected scan">
+              <article
+                ref={(element) => (detailElement = element)}
+                class="gs-detail"
+                aria-label="Selected scan"
+              >
                 <div class="gs-detail-title">
                   <h3>{runTitle(run())}</h3>
                   <p>Target: {run().repository}</p>
