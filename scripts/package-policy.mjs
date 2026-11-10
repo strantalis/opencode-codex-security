@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 const allowedDocs = new Set([
+  'LICENSE',
   'README.md',
   'CONTRIBUTING.md',
   'SECURITY.md',
@@ -15,8 +16,8 @@ export function assertPackagePolicy(archive, manifest) {
   assert.equal(manifest.private, true, 'Publishing stays disabled until explicitly approved.');
   assert.equal(
     manifest.license,
-    'UNLICENSED',
-    'Choose release terms explicitly before changing this guard.',
+    'Apache-2.0',
+    'License changes require an explicit maintainer decision.',
   );
   assert.equal(archive.name, 'opencode-codex-security');
   assert.equal(archive.version, manifest.version);
@@ -26,6 +27,7 @@ export function assertPackagePolicy(archive, manifest) {
     'Unsafe package version.',
   );
   const paths = archive.files.map((file) => file.path);
+  assert.ok(paths.includes('LICENSE'), 'Apache 2.0 license must accompany the package.');
   for (const entry of Object.values(manifest.exports)) {
     assert.ok(paths.includes(entry.replace(/^\.\//, '')), `Missing export: ${entry}`);
   }

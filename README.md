@@ -2,7 +2,7 @@
 
 Security scans, policy drafts and finding validation inside **OpenCode V2**, with a native terminal view, an experimental Desktop panel and tools for your session's model.
 
-This is an early project, not an official OpenCode or OpenAI product. It is **not published to npm**. npm publication remains disabled and the code remains unlicensed for redistribution until release terms are chosen. Repository visibility and npm publication are separate decisions.
+This is an early project, not an official OpenCode or OpenAI product. It is **not published to npm**. The code is licensed under [Apache 2.0](LICENSE). npm publication remains disabled; GitHub release tarballs provide the installation path. Repository visibility and npm publication are separate decisions.
 
 ## What works
 
@@ -81,7 +81,7 @@ These launchers isolate configuration under `.runtime/`. The plan-host tests inj
 
 ## Tested builds and releases
 
-CI produces an exact tested tarball with its source commit and SHA-256 checksums. A manual workflow can promote a successful main build to a GitHub prerelease at the explicitly selected repository visibility without npm tokens. See [testing and release readiness](docs/RELEASING.md) and [security reporting](SECURITY.md). Public visibility, an open-source license and npm publication remain explicit decisions.
+CI produces an exact tested tarball with its source commit and SHA-256 checksums. A manual workflow can promote a successful main build to a GitHub prerelease at the explicitly selected repository visibility without npm tokens. See [testing and release readiness](docs/RELEASING.md) and [security reporting](SECURITY.md). The maintainer approved public GitHub distribution under Apache 2.0. npm registry publication remains a separate step.
 
 ## Verification limits
 

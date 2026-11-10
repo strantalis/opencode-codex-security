@@ -42,17 +42,17 @@ The tarball does not bundle its dependency tree: npm still fetches dependencies.
 
 Develop in a separate checkout/worktree, push fixes, inspect that commit's CI, merge reviewed changes and create a new preview. Report the full `sourceCommit`, OpenCode/OS versions and a minimal redacted reproduction with test feedback. Avoid attaching real scan payloads or credentials. GitHub's hosted checks continue when the development Mac is unavailable, but interactive assistant work still needs an available authorized checkout/computer.
 
-## Before making it open source or publishing npm
+## Public distribution and remaining npm decisions
 
-These are explicit maintainer decisions, not automatic pipeline steps:
+Public GitHub distribution under Apache 2.0 has been approved. npm registry publication is not part of this pipeline. The remaining steps are explicit maintainer decisions:
 
-1. Choose an open-source license and copyright holder; review dependency redistribution obligations. `UNLICENSED` and `private: true` are deliberate guards, not an open-source license.
+1. Retain the approved Apache 2.0 LICENSE and review dependency redistribution obligations. `private: true` only disables npm publication; it does not change the source license.
 2. Review the full Git history, examples, issues and release assets for private data before changing repository visibility. Private artifacts and releases could become accessible when visibility changes.
 3. Configure and verify private vulnerability reporting/contact; add branch protection requiring Checks and human review, and enable supported secret/dependency alerts. These account/repository settings are not changed by this code.
 4. Choose npm name/scope and public/private distribution; verify ownership and applicable npm security/dual-use requirements. The unscoped name is always public. Review the separate [publishing checklist](PUBLISHING.md).
 5. Prefer npm trusted publishing with GitHub OIDC and provenance if supported for the chosen package/account/policy. That trust is persistent access and needs explicit setup approval. No OIDC permission, npm token or npm publish job has been added now. Never fall back to a long-lived token silently.
 6. Recheck dependencies/advisories, validate native Desktop and the supported platforms, and complete a separately approved real SDK assessment. Mocked CI does not prove those claims.
 
-A public GitHub release is a direct download/install path, not an npm registry release. It avoids creating npm publishing credentials while registry ownership, policy and licensing are settled.
+A public GitHub release is a direct download/install path, not an npm registry release. It avoids creating npm publishing credentials while registry ownership and publishing policy are settled.
 
 Source references: [GitHub workflow permissions](https://docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions#permissions), [GitHub Actions artifacts](https://docs.github.com/en/actions/using-workflows/storing-workflow-data-as-artifacts), [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/).

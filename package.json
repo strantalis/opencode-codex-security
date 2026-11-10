@@ -52,7 +52,7 @@
     "node": ">=24"
   },
   "description": "Codex Security scans, policy drafts and finding validation inside OpenCode V2.",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/strantalis/opencode-codex-security.git"
@@ -61,6 +61,7 @@
     "src/",
     "dist/gui-experimental.cjs",
     "fixtures/vulnerable/",
+    "LICENSE",
     "README.md",
     "CONTRIBUTING.md",
     "SECURITY.md",

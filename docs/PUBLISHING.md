@@ -1,6 +1,6 @@
 # Distribution and release checklist
 
-Nothing has been published to npm. `private: true` and `UNLICENSED` deliberately prevent an accidental npm release or an implied redistribution grant. Public GitHub source/release assets are a separate distribution decision; see [the release guide](RELEASING.md).
+Nothing has been published to npm. `private: true` deliberately prevents an accidental npm release. The source is licensed under Apache 2.0; retain the LICENSE when redistributing it. Public GitHub source/release assets are a separate distribution decision; see [the release guide](RELEASING.md).
 
 ## Choose distribution first
 
@@ -11,7 +11,7 @@ Nothing has been published to npm. `private: true` and `UNLICENSED` deliberately
 
 ## Before approving any publish
 
-1. Choose public versus private distribution, the owner/scope and a license. Obtain explicit publication approval.
+1. Apache 2.0 and public GitHub distribution are approved. For npm, verify the owner/scope and obtain explicit registry-publication approval before removing the package publication guard.
 2. Review current npm security/dual-use rules for a security-research tool. If classified as dual-use, npm's policy requires `contentPolicy.class: dual-use`, a root `DISCLOSURE` and the applicable interactive-2FA/staged approval flow. Do not assume ordinary direct OIDC publishing applies.
 3. Recheck SDK/OpenCode compatibility, platform requirements and dependency advisories. Keep dependencies external; do not redistribute bundled native binaries without reviewing their licenses.
 4. Run `npm ci --ignore-scripts`, `npm run check`, `npm run pack:check` and offline host integration tests from a clean checkout.
