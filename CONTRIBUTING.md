@@ -6,6 +6,8 @@ ESLint checks JavaScript and TypeScript correctness, including unused variables.
 
 For TUI changes, `npm run test:tui` uses the actual OpenTUI renderer with an in-memory synthetic RPC client. It requires Bun (use a version supported by `@opentui/core`). It checks the summary at a terminal-sized viewport, scan switching, technical-detail disclosure and exact-run cancellation, without starting an OpenCode service or using model credentials.
 
+`npm run build` also precompiles the TUI into `dist/tui.js`, keeping the host's Solid/OpenTUI modules external. Installed `node_modules` TSX does not receive OpenCode's workspace JSX transform. Do not point the published TUI export back at raw TSX or add duplicate host-runtime dependencies to mask that problem. `npm run test:package` and release-artifact verification run the installed tarball through the native TUI using a Python 3 PTY harness with no Node/npm/Bun on the host `PATH`. It verifies `/security`, the bundled fixture and a clean exit; it does not start real SDK operations.
+
 Use the isolated fixture and injected-mock host tests for development. Do not start paid SDK operations, copy sign-ins, or send repository data merely to test the plugin. Real runs require explicit authorization for the target and expected usage.
 
 The normal installed plugin may be watched by OpenCode. Develop in a separate checkout and do not edit/reload an installation while scans or policy questions are active. Local history does not automatically resume an interrupted scan.

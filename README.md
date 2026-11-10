@@ -17,8 +17,8 @@ Patch application and fix verification are not implemented. Findings arrive at s
 
 ## Requirements
 
-- OpenCode's packaged host uses its own runtime; verify plugin loading there before requiring a change to terminal Node. For a separate npm consumer, the plugin declares Node `>=24` and the pinned SDK supports 24.x or 26.x within that range. Node 22 is outside the plugin's current declared support. Repository development/TUI tests use Node 26.4+ (tested on 26.8.1), not an exclusive consumer requirement.
-- For real SDK operations: Python 3.10+; Python 3.10 also needs `tomli`.
+- For installation and fixture mode: an existing packaged OpenCode V2 host and public npm registry access. OpenCode installs and runs the plugin itself; a separate Node/npm install is **not** required for this step.
+- For real SDK operations: Node 24.x or 26.x available to the OpenCode process on its trusted `PATH`, plus Python 3.10+ (`tomli` for Python 3.10). SDK 0.9.1 needs external Node helpers when hosted by Bun. Reuse compatible installed runtimes rather than changing system defaults. See [runtime details](docs/AGENT-SETUP.md#what-you-need).
 - Default ChatGPT authentication is currently POSIX-only; its credential guard deliberately rejects Windows. Full Windows SDK operation is unverified.
 - OpenCode V2; 2.2.6 is the original test baseline, not an exact-patch requirement. Verify loading on the installed host. Desktop integration is experimental.
 - For real operations: supported account/model access and either an existing private dedicated ChatGPT sign-in or an explicitly configured custom Responses provider with an existing environment key. The plugin does not perform login or create/import credentials. See [no-sign-in provider setup](docs/GLOBAL-CONFIG.md#use-an-existing-custom-provider-without-sign-in). Custom-provider routing is available in `0.1.2`, not in `0.1.0`/`0.1.1`.
@@ -29,29 +29,34 @@ SDK mode uses `@openai/codex-security` 0.9.1. Repository source and selected con
 
 For a self-contained prompt to hand to another coding agent, see [install with an agent](https://github.com/strantalis/opencode-codex-security/blob/main/docs/AGENT-SETUP.md).
 
-OpenCode V2 supports npm packages directly. Add this object to your existing `plugins` array, preserving other settings:
+OpenCode V2 supports npm packages directly.
+
+The terminal view requires the packaging fix in `0.1.3`. Verify that exact version is published before installing; if it is unavailable, wait or use an explicitly supplied [tested tarball](docs/RELEASING.md). Published `0.1.2` has working backend registration but fails to load the terminal view from a clean npm install. A source version alone is not an npm release.
+
+Add this object to your existing `plugins` array, preserving other settings:
 
 ```json
 {
-  "package": "opencode-codex-security@0.1.2",
+  "package": "opencode-codex-security@0.1.3",
   "options": { "engine": "fixture" }
 }
 ```
 
 Check that no scans, approval dialogs or policy forms are active before editing watched settings or reloading. Open `/security` to verify loading. Fixture mode uses bundled examples, not your repository.
 
-Version `0.1.2` supports [dedicated ChatGPT authentication](docs/SDK.md#default-dedicated-chatgpt-authentication) or [opt-in custom-provider configuration](docs/GLOBAL-CONFIG.md#use-an-existing-custom-provider-without-sign-in) without a sign-in flow. Provider setup is generic within the supported HTTPS Responses/environment-key route; no particular gateway is required. It does not automatically inherit OpenCode provider settings. Change `engine` to `codex` only when the approved configuration is ready and the host is idle. This starts no scan; real operations still need authorized scope and source-data transfer.
+Since `0.1.2`, the plugin supports [dedicated ChatGPT authentication](docs/SDK.md#default-dedicated-chatgpt-authentication) or [opt-in custom-provider configuration](docs/GLOBAL-CONFIG.md#use-an-existing-custom-provider-without-sign-in) without a sign-in flow. Provider setup is generic within the supported HTTPS Responses/environment-key route; no particular gateway is required. It does not automatically inherit OpenCode provider settings. Change `engine` to `codex` only when the approved configuration is ready and the host is idle. This starts no scan; real operations still need authorized scope and source-data transfer.
 
-Verified November 10, 2026: `latest` points to `0.1.0`; `next` points to the public `0.1.2` release used above. Pin the full version you want rather than a moving tag. A staged version or `0.0.0-stage` placeholder is not installable functionality.
+Verified November 10, 2026: `latest` points to `0.1.0`; `next` points to public `0.1.2`. Source `0.1.3` is prepared for the terminal fix; recheck registry availability. Pin the full version you want rather than a moving tag. A staged version or `0.0.0-stage` placeholder is not installable functionality.
 
 ### Optional: manage the installation yourself
 
-For explicit npm installation/audit control, use a new dedicated consumer outside source repositories:
+Skip this if OpenCode manages the package entry above. This alternative needs Node 24.x or 26.x and npm. For explicit npm installation/audit control, use a new dedicated consumer outside source repositories:
 
 ```sh
 mkdir security-plugin && cd security-plugin
 npm init -y
-npm install --save-exact --ignore-scripts opencode-codex-security@0.1.2
+npm view opencode-codex-security@0.1.3 version &&
+  npm install --save-exact --ignore-scripts opencode-codex-security@0.1.3
 npm audit --omit=dev --audit-level=high
 ```
 
@@ -65,7 +70,7 @@ See [global configuration](docs/GLOBAL-CONFIG.md), [scan lifecycle and tools](do
 
 ## Development
 
-Use a separate source checkout, not an installed or watched consumer. The published package already contains its Desktop bundle; consumers do not need to build it.
+Use a separate source checkout, not an installed or watched consumer. Development/TUI tests use Node 26.4+ (tested on 26.8.1); the TUI smoke test also needs Bun. These are contributor prerequisites. The published package already contains its Desktop bundle; consumers do not need to build it.
 
 ```sh
 npm ci --ignore-scripts
@@ -74,7 +79,7 @@ npm run lint          # ESLint, including TypeScript
 npm run format:check  # Prettier
 npm run typecheck
 npm test              # offline unit tests
-npm run build         # Desktop bundle
+npm run build         # Desktop and TUI bundles
 npm run check         # all checks above
 npm run pack:check    # inspect package allowlist; no publish
 ```
@@ -97,6 +102,6 @@ CI produces an exact tested tarball with its source commit and SHA-256 checksums
 
 ## Verification limits
 
-The real SDK smoke test authenticated successfully and reached discovery, then stopped at a USD 1 estimated guard. It returned no completed assessment. Mocked integration covers concurrent scans, cancellation, model tools, policy questions and static validation. Direct native Desktop inspection remains a separate verification step.
+The real SDK smoke test authenticated successfully and reached discovery, then stopped at a USD 1 estimated guard. It returned no completed assessment. Mocked integration covers concurrent scans, cancellation, model tools, policy questions and static validation. The `0.1.3` tarball also passed native terminal rendering and a bundled fixture scan on OpenCode 2.2.6 and 2.2.7 with no Node/npm/Bun on its `PATH`. Direct native Desktop inspection remains a separate verification step.
 
 Do not commit credentials, `.runtime/`, evidence captures, scan artifacts or dependency folders. The repository ignores these; package checks also reject them. See [contributing](CONTRIBUTING.md) for the safe development workflow.

@@ -4,6 +4,12 @@ Pinned SDK: `@openai/codex-security@0.9.1`; plugin API package: `@opencode/plugi
 
 Current global configuration is documented in [GLOBAL-CONFIG.md](GLOBAL-CONFIG.md). No per-project SDK overrides are loaded. Session-supplied target/focus/context is distinct from global model, reasoning and Daybreak settings. Optional per-scan Standard/Deep mode overrides only the global mode fallback; no other SDK settings are overridden by session inputs.
 
+## Host runtime versus SDK helpers
+
+Packaged OpenCode installs npm plugins in-process and runs them with its bundled runtime. A separate system Node/npm installation is not required to load this plugin or run its fixture mode. Installing OpenCode through npm or developing the plugin is a different workflow.
+
+Real SDK operations have additional requirements: SDK 0.9.1's workbench helpers and deep-scan engine explicitly resolve external Node from a trusted `PATH` when hosted by Bun. Missing Node fails those paths; bundled Bun is not a substitute. The plugin currently supports Node 24.x or 26.x, and real scans require Python 3.10+ (`tomli` for Python 3.10). Ensure the OpenCode service can see existing compatible runtimes before proposing installation or changes. npm is not required to run the helpers. Fixture/consent-gate tests do not establish successful real inference.
+
 ## Pipeline
 
 1. `security_prepare_scan` or the native review action resolves the current OpenCode location (or explicit repository), canonical scope paths, focused instructions and bounded documentation files. It reads and hashes the global settings file and, when explicitly configured, imports an allowlisted custom-provider selection from a Codex TOML file. `codex.useCodexConfig: true` defaults to `$CODEX_HOME/config.toml`, or `~/.codex/config.toml` when that variable is unset/empty. An explicit `codex.configFile` wins without consulting `CODEX_HOME`; no import occurs by default. Only validated selection fields, not raw TOML or secret values, enter the source digest. No SDK client, login or inference is created.

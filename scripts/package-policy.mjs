@@ -6,6 +6,7 @@ const allowedDocs = new Set([
   'README.md',
   'CONTRIBUTING.md',
   'SECURITY.md',
+  'docs/AGENT-SETUP.md',
   'docs/GLOBAL-CONFIG.md',
   'docs/MULTI-SCAN.md',
   'docs/SDK.md',
@@ -60,6 +61,7 @@ export function assertPackagePolicy(archive, manifest) {
     const allowed =
       path === 'package.json' ||
       path === 'dist/gui-experimental.cjs' ||
+      path === 'dist/tui.js' ||
       allowedDocs.has(path) ||
       /^src\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:ts|tsx|mjs)$/.test(path) ||
       /^fixtures\/vulnerable\/(?:src\/[a-z-]+\.js|docs\/ARCHITECTURE\.md)$/.test(path);

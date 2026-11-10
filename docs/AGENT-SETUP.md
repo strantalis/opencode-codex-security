@@ -3,49 +3,51 @@
 Copy this into your coding agent on the machine where you use OpenCode:
 
 ```text
-Install opencode-codex-security@0.1.2 in my existing OpenCode V2 setup (project: https://github.com/strantalis/opencode-codex-security). Follow its agent setup guide, preserve unrelated settings and use my existing approved provider configuration when supported. Verify the plugin loads without starting a scan. Do not switch providers, request a sign-in or secrets, interrupt active work, or send source/run paid operations without my approval. Check the actual host before proposing runtime changes. Ask only when blocked or permission is needed, then give a brief status.
+Install opencode-codex-security@0.1.3 through my existing OpenCode V2 plugin configuration after verifying that exact release is available (project: https://github.com/strantalis/opencode-codex-security). Follow its agent setup guide, preserve unrelated settings and use my existing approved provider configuration when supported. Verify loading without a scan. Do not require a separate Node/npm install for this setup check. Do not switch providers, request sign-in or secrets, interrupt active work, or send source or run paid operations without approval. Ask only when blocked or permission is needed, then give a brief status.
 ```
 
-**Release status:** `0.1.2` is published under `next`, verified November 10, 2026; `latest` remains `0.1.0`. Pin `0.1.2` rather than a moving tag and recheck availability before installing. It adds optional custom-provider routing, which is not in `0.1.0` or `0.1.1`. Installing a public npm package needs no npm login.
+**Release status:** verified November 10, 2026, `next` is public `0.1.2` and `latest` remains `0.1.0`. Source `0.1.3` fixes the npm-installed terminal view by shipping compiled TUI code. Verify that `0.1.3` is published before following its install example; a source version alone is not a release. If unavailable, use only an explicitly supplied tested build or report the release blocker. Do not fall back to `0.1.2` for terminal setup: its raw TSX fails to load from a clean npm installation. Public npm package installation needs no npm login.
 
 The setup is provider-neutral. Import an existing supported Codex configuration, use an explicit supported custom provider, or keep an already configured dedicated ChatGPT route. No particular gateway is required, and arbitrary OpenCode provider settings are not automatically inherited. If the user's configuration is unsupported or ambiguous, explain the specific limitation rather than inventing settings or switching routes.
 
-## Compatibility notes
+## What you need
 
-- **Runtime:** OpenCode's packaged host uses its own runtime; a different `node --version` in a terminal does not by itself prove the plugin cannot load. Verify the actual host first. For a separate npm consumer, the published plugin declares Node `>=24`, with SDK 0.9.1 supporting **24.x or 26.x** in that range. Node 22 is outside the plugin's current declared support. Node 26.4+ is the repository's development/TUI baseline, not an exclusive consumer requirement. Do not change system Node or bypass engine checks just to match the development baseline.
-- **OpenCode:** use V2. Version 2.2.6 is the original test baseline, not an exact-patch requirement. Isolated host tests with plugin 0.1.1 also pass on 2.2.4 and 2.2.7 with Node 24.22.1. Verify the actual host before recommending a change; a different patch number alone is not a blocker.
-- **Real scans:** Python 3.10+ is required; Python 3.10 also needs `tomli`. The interpreter must be available to the OpenCode process. macOS/Linux are the tested host platforms. The ChatGPT credential guard rejects Windows; custom-provider key checks are platform-neutral, but a complete Windows SDK operation has not been verified.
+- **Install and check loading:** an existing packaged OpenCode V2 host and access to the public npm registry. Add the npm package entry below; OpenCode downloads dependencies and runs the plugin using its bundled runtime. You do **not** need to install Node, npm, Bun or a separate Codex CLI just to load the plugin or use its bundled fixture. Do not make terminal `node --version` a gate for this step.
+- **Run real SDK operations:** a supported Node runtime must be on the OpenCode process's trusted `PATH`; SDK 0.9.1 calls external Node helpers when hosted by Bun. Use Node 24.x or 26.x for the plugin's current supported range. Real scans also require Python 3.10+ (`tomli` for Python 3.10), supported provider/model access, and permission for source transfer and usage. Reuse existing compatible runtimes; install or change them only when actually needed and approved. npm is not needed to run those helpers.
+- **Host compatibility:** use OpenCode V2. Version 2.2.6 is the original test baseline, not an exact-patch requirement; verify the installed host before recommending an update. macOS/Linux are the tested host platforms. The ChatGPT credential guard rejects Windows; custom-provider key checks are platform-neutral, but a complete Windows SDK operation has not been verified.
 
-npm installs the pinned Codex Security SDK and its bundled Codex runtime, OpenCode plugin API and Solid dependencies. OpenCode itself is a separate host. OpenTUI is an optional peer supplied by the terminal integration; Bun is only needed for this repository's developer TUI smoke test. No separate global Codex CLI, SDK or publishing toolchain is required.
+The plugin package includes its Desktop bundle and depends on the pinned Codex Security SDK, its bundled Codex runtime, OpenCode plugin API and Solid. OpenTUI is an optional peer supplied by terminal integration. Repository development/TUI tests use Node 26.4+ and Bun; those are **contributor tools**, not prerequisites for the normal plugin installation above. Installing OpenCode itself through npm is a separate workflow with its own prerequisites.
 
-**Node 22.14 check:** SDK 0.9.1 itself permits 22.13+, but the tested dependency tree includes packages requiring 22.19+. Importing its `undici@8.12.4` dependency fails on 22.14.0. SDK construction and fixture checks alone do not establish full runtime support. The published engine range is unchanged; a working bundled OpenCode host should be assessed separately from terminal Node.
+**Node 22.14 check:** this is not a supported runtime for executing the full dependency tree directly. SDK 0.9.1 itself permits 22.13+, but dependencies require 22.19+ and importing `undici@8.12.4` fails on 22.14.0. That does not prevent a working packaged OpenCode host from installing and loading the plugin with its own runtime. The package's declared Node `>=24` range is unchanged.
 
 ## Installation reference
+
+Find the effective OpenCode configuration rather than creating a competing file. Standard locations are `$XDG_CONFIG_HOME/opencode/opencode.json` or `~/.config/opencode/opencode.json`, with JSONC and explicit host overrides also supported. Preserve comments, unrelated settings and existing plugins. Keep a private backup outside repositories with restrictive permissions; show only plugin-specific changes, not the full configuration.
+
+Check for active scans, approvals or policy forms **before editing watched settings or reloading**. Ask if their status is unknown. Offline installation can continue separately. Open `/security` to verify loading; fixture results come from bundled examples and do not assess the user's repository. Keep the old consumer for rollback.
 
 [OpenCode supports npm package entries](https://opencode.ai/docs/plugins) in its V2 `plugins` array. Its [2.2.7 installer disables lifecycle scripts](https://github.com/anomalyco/opencode/blob/v2.2.7/packages/util/src/npm.ts). Add this object to the existing array:
 
 ```json
 {
-  "package": "opencode-codex-security@0.1.2",
+  "package": "opencode-codex-security@0.1.3",
   "options": { "engine": "fixture" }
 }
 ```
 
-For explicit installation/audit control, use a dedicated consumer outside source repositories and active installations:
+### Optional: manage npm installation yourself
+
+Skip this for the ordinary OpenCode-managed install above. This alternative needs Node 24.x or 26.x and npm. For explicit installation/audit control, use a dedicated consumer outside source repositories and active installations:
 
 ```sh
 mkdir security-plugin && cd security-plugin
 npm init -y
-npm view opencode-codex-security@0.1.2 version &&
-  npm install --save-exact --ignore-scripts opencode-codex-security@0.1.2
+npm view opencode-codex-security@0.1.3 version &&
+  npm install --save-exact --ignore-scripts opencode-codex-security@0.1.3
 npm audit --omit=dev --audit-level=high
 ```
 
 For that route, replace `package` with the absolute installed directory, such as `/absolute/path/to/security-plugin/node_modules/opencode-codex-security`. Keep its lockfile for repeat installs. Report audit findings; do not force dependency fixes or enable lifecycle scripts as a workaround.
-
-Find the effective OpenCode configuration rather than creating a competing file. Standard locations are `$XDG_CONFIG_HOME/opencode/opencode.json` or `~/.config/opencode/opencode.json`, with JSONC and explicit host overrides also supported. Preserve comments, unrelated settings and existing plugins. Keep a private backup outside repositories with restrictive permissions; show only plugin-specific changes, not the full configuration.
-
-Check for active scans, approvals or policy forms **before editing watched settings or reloading**. Ask if their status is unknown. Offline installation can continue separately. Open `/security` to verify loading; fixture results come from bundled examples and do not assess the user's repository. Keep the old consumer for rollback.
 
 ## Use your existing provider configuration
 
@@ -79,4 +81,6 @@ Get approval for the target, source/context destination and expected usage. Prev
 
 Scan cost thresholds are estimates, not hard caps or verified gateway prices. Finding validation has no SDK cost ceiling and needs separate approval. Respect native permissions and do not use scans as authentication tests. See [SDK boundaries](SDK.md) and [local-scan permissions](https://learn.chatgpt.com/docs/security/cli/reference#local-scan-permissions).
 
-The host smoke tests cover plugin registration, fixture RPC, repeat-start behavior, the SDK consent gate and the GUI bundle endpoint. The npm entry for published 0.1.0 also passed on OpenCode 2.2.7 from a neutral project with an empty cache. These checks do not establish native Desktop/TUI rendering or real scan quality.
+Verified November 10, 2026: the native OpenCode 2.2.7 server installed exact public `0.1.2` from empty caches with (a) Node 22.14 on `PATH` and no npm, and (b) neither Node nor npm on `PATH`. Both registered the backend, completed the bundled fixture with four seeded findings, preserved repeat-start behavior, served the Desktop GUI bundle, and rejected an unapproved SDK start. The host never invoked shell Node/npm. An actual terminal check then caught `0.1.2`'s missing TSX compilation, which those backend checks did not cover.
+
+The corrected `0.1.3` tarball passed separate native OpenCode 2.2.6 and 2.2.7 TUI tests from an installed `node_modules` consumer: `/security` rendered, the terminal fixture showed four findings, and the app exited cleanly, with no Node/npm/Bun on its `PATH`. This is not direct Desktop rendering or a successful real SDK operation.

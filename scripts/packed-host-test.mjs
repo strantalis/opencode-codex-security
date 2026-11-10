@@ -43,8 +43,9 @@ try {
       run(process.execPath, ['scripts/host-test.mjs', '--package', packageRoot, ...extra]),
     );
   }
+  process.stdout.write(run('python3', ['scripts/packed-tui-test.py', '--package', packageRoot]));
   console.log(
-    'Exact packed artifact passed fixture and unapproved-SDK tests in the real OpenCode host. Nothing published.',
+    'Exact packed artifact passed fixture, unapproved-SDK and native TUI tests in OpenCode. Nothing published.',
   );
 } finally {
   // These tarball/consumer files are disposable; never remove the supplied archive.
