@@ -1,6 +1,6 @@
 # npm staging and human approval
 
-The source is public under Apache 2.0. The manifest is now **npm-ready**, with `private: false`, public registry/access settings, a conservative `contentPolicy.class: dual-use` declaration and a root `DISCLOSURE`. This preparation does not reserve the name, create an npm package, configure trust, stage or publish anything. GitHub previews remain available independently. The unscoped npm name is public; registry HTTP 404 on November 10, 2026 did not prove ownership or reserve it.
+The source is public under Apache 2.0. Version `0.1.0` is live on npm under `latest`, verified November 10, 2026. The manifest retains `private: false`, public registry/access settings, a conservative `contentPolicy.class: dual-use` declaration and a root `DISCLOSURE`. Version `0.1.1` is prepared for staging; a version bump alone does not stage or publish it. GitHub previews remain available independently.
 
 ## Security boundaries
 
@@ -12,7 +12,7 @@ This utility uses Codex Security for source scans, policy drafting and static fi
 
 ## One-time bootstrap: separate maintainer action
 
-Do not run these steps until the maintainer approves the exact npm destination, public contents and account. Confirm name availability/ownership again. Review current npm policy, archive contents, license/dependency obligations and account eligibility. npm trust requires an **existing package**; do not try to grant trust to a nonexistent package.
+Bootstrap is already complete for `opencode-codex-security`; use the later-version flow below for updates. The following steps document first-time setup only. Do not run them for another package until the maintainer approves the exact npm destination, public contents and account. Confirm name availability/ownership again. Review current npm policy, archive contents, license/dependency obligations and account eligibility. npm trust requires an **existing package**; do not try to grant trust to a nonexistent package.
 
 Use a workstation with Node 26.13.0/npm 11.20.0 (staging needs npm 11.15.0+). Enable npm 2FA. Download all three assets from a successful current-main CI run or matching GitHub preview, inspect `build-manifest.json` and verify `SHA256SUMS` before continuing. Use the actual archive filename:
 
@@ -26,7 +26,7 @@ npm stage list opencode-codex-security
 npm stage view STAGE_ID
 ```
 
-Login and staging are intentionally not performed by this PR. A 401 from `npm whoami` means the CLI is not authenticated, not that no account exists. Do not share or commit passwords, tokens or OTPs. **Staging a new name creates a public `0.0.0-stage` placeholder**, even before the first real version is approved. The staged payload itself is not a live published version. Review the stage, download and compare its tarball with the tested SHA-256, and approve only the intended version/tag. Human approval is a separate action:
+Login and bootstrap staging are separate maintainer actions, not effects of changing repository files. A 401 from `npm whoami` means the CLI is not authenticated, not that no account exists. Do not share or commit passwords, tokens or OTPs. **Staging a new name creates a public `0.0.0-stage` placeholder**, even before the first real version is approved. The staged payload itself is not a live published version. Review the stage, download and compare its tarball with the tested SHA-256, and approve only the intended version/tag. Human approval is a separate action:
 
 ```sh
 npm stage download STAGE_ID
