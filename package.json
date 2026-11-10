@@ -25,7 +25,9 @@
     "pack:check": "npm run build && node scripts/check-package.mjs",
     "prepack": "npm run build",
     "test:package": "npm run build && node scripts/packed-host-test.mjs",
-    "test:tui": "bun --preload @opentui/solid/preload scripts/tui-preview-smoke.tsx"
+    "test:tui": "bun --preload @opentui/solid/preload scripts/tui-preview-smoke.tsx",
+    "audit:runtime": "npm audit --omit=dev --audit-level=high",
+    "release:artifact": "npm run build && node scripts/release-artifact.mjs"
   },
   "dependencies": {
     "@openai/codex-security": "0.9.1",
@@ -50,7 +52,7 @@
     "node": ">=24"
   },
   "description": "Codex Security scans, policy drafts and finding validation inside OpenCode V2.",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/strantalis/opencode-codex-security.git"
@@ -59,11 +61,14 @@
     "src/",
     "dist/gui-experimental.cjs",
     "fixtures/vulnerable/",
+    "LICENSE",
     "README.md",
     "CONTRIBUTING.md",
+    "SECURITY.md",
     "docs/GLOBAL-CONFIG.md",
     "docs/MULTI-SCAN.md",
     "docs/SDK.md",
-    "docs/PUBLISHING.md"
+    "docs/PUBLISHING.md",
+    "docs/RELEASING.md"
   ]
 }
