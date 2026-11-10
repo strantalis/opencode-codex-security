@@ -1,19 +1,33 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const runtime = join(root, '.runtime');
 await mkdir(runtime, { recursive: true });
-const temporary = await mkdtemp(join(runtime, 'packed-host-'));
+// A consumer below the checkout could silently resolve missing dependencies
+// from the checkout's developer node_modules, hiding packaging regressions.
+const temporary = await mkdtemp(join(tmpdir(), 'opencode-security-package-'));
 function run(command, args) {
   const result = spawnSync(command, args, { cwd: root, env: process.env, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   return result.stdout;
 }
 try {
+  for (let parent = dirname(await realpath(temporary)); ; parent = dirname(parent)) {
+    let hasModules = false;
+    try {
+      await access(join(parent, 'node_modules'));
+      hasModules = true;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    assert.ok(!hasModules, 'Choose a neutral TMPDIR without ancestor node_modules.');
+    if (parent === dirname(parent)) break;
+  }
   const archiveArgument = process.argv.indexOf('--archive');
   let archivePath;
   if (archiveArgument >= 0) {
@@ -43,8 +57,9 @@ try {
       run(process.execPath, ['scripts/host-test.mjs', '--package', packageRoot, ...extra]),
     );
   }
+  process.stdout.write(run('python3', ['scripts/packed-tui-test.py', '--package', packageRoot]));
   console.log(
-    'Exact packed artifact passed fixture and unapproved-SDK tests in the real OpenCode host. Nothing published.',
+    'Exact packed artifact passed fixture, unapproved-SDK and native TUI tests in OpenCode. Nothing published.',
   );
 } finally {
   // These tarball/consumer files are disposable; never remove the supplied archive.
