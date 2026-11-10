@@ -1,6 +1,6 @@
 # Security
 
-This is an early private project, not an official OpenCode or OpenAI product. Only the latest reviewed commit is supported. Do not assume its results constitute a complete assessment or that SDK cost estimates are hard billing caps.
+This is an early project, not an official OpenCode or OpenAI product. Only the latest reviewed commit is supported. Do not assume its results constitute a complete assessment or that SDK cost estimates are hard billing caps.
 
 ## Report a vulnerability privately
 
@@ -14,7 +14,7 @@ Include the affected commit, OS/OpenCode/Node versions, a minimal synthetic repr
 - SDK operations can transmit the selected repository and context to OpenAI. Use synthetic fixtures and mock-host tests for ordinary development.
 - Runtime/history data, credentials and evidence are excluded from both Git and package artifacts. Package checks enforce a small file allowlist; they are not a complete secret scanner.
 - CI uses a lockfile, disables dependency lifecycle scripts, pins Actions by commit, uses read-only repository access and blocks known high/critical runtime advisories. Dependency updates require review; no auto-merge is configured.
-- The manual private-release job runs no repository or dependency code with its write token. It promotes only an exact tested artifact from successful main CI, checks repository privacy and checksums, and does not publish to npm.
+- The manual release job runs no repository or dependency code with its write token. It promotes only an exact tested artifact from successful main CI, checks explicitly selected repository visibility and checksums, and does not publish to npm.
 - Checksums detect corruption and pin bytes. They are not a signature, independent provenance or a guarantee against a compromised maintainer/dependency/runner. A package's transitive dependencies still resolve during installation.
 
 As of November 10, 2026, `npm audit --omit=dev` reports 26 moderate advisory entries in the runtime dependency graph, rooted in `glob` filesystem traversal after cancellation and `minimatch` resource-exhaustion advisories. The affected chains include OpenCode tooling dependencies; npm reports no available fix for those root advisories. No high/critical runtime advisories were reported in that check. This is a known limitation to reassess before public release, not a claim that those dependencies are safe or unreachable. Do not apply unreviewed breaking overrides just to silence the audit.

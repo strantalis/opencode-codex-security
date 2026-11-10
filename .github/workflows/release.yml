@@ -1,4 +1,4 @@
-name: Private preview release
+name: Preview release
 on:
   workflow_dispatch:
     inputs:
@@ -6,10 +6,18 @@ on:
         description: Successful Checks push run on main (Actions run ID)
         type: string
         required: true
+      visibility:
+        description: Expected repository visibility (public assets are accessible to anyone)
+        type: choice
+        options:
+          - private
+          - public
+        default: private
+        required: true
 permissions:
   contents: read
 concurrency:
-  group: private-preview-release
+  group: preview-release
   cancel-in-progress: false
 jobs:
   release:
@@ -23,6 +31,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       REPOSITORY: ${{ github.repository }}
       RUN_ID: ${{ inputs.run_id }}
+      EXPECTED_VISIBILITY: ${{ inputs.visibility }}
     steps:
       # No checkout, dependency install or package code runs with a write token.
       - name: Verify source and download exact tested artifact
@@ -30,8 +39,9 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$EXPECTED_VISIBILITY" == private || "$EXPECTED_VISIBILITY" == public ]]
           gh api "repos/$REPOSITORY" > repository.json
-          jq -e '.private == true' repository.json >/dev/null
+          jq -e --arg visibility "$EXPECTED_VISIBILITY" '.visibility == $visibility' repository.json >/dev/null
           repo_id=$(jq -r '.id' repository.json)
           workflow_id=$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml" --jq '.id')
           gh api "repos/$REPOSITORY/actions/runs/$RUN_ID" > run.json
@@ -64,21 +74,21 @@ jobs:
           cmp SHA256SUMS expected-checksums
           rm expected-checksums
           printf 'SOURCE_SHA=%s\nARCHIVE=%s\n' "$sha" "$archive" >> "$GITHUB_ENV"
-      - name: Create private preview
+      - name: Create preview
         shell: bash
         run: |
           set -euo pipefail
-          # Recheck privacy immediately before uploading private source artifacts.
-          [[ "$(gh api "repos/$REPOSITORY" --jq '.private')" == true ]]
+          # Recheck the explicitly selected visibility immediately before uploading assets.
+          [[ "$(gh api "repos/$REPOSITORY" --jq '.visibility')" == "$EXPECTED_VISIBILITY" ]]
           tag="preview-${SOURCE_SHA:0:12}"
           # Existing releases/tags are deliberately not overwritten.
           if gh api "repos/$REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
             echo "Tag $tag already exists. Refusing to overwrite it." >&2
             exit 1
           fi
-          printf 'Private testing build from commit %s.\n\nVerified Checks run: https://github.com/%s/actions/runs/%s\n\nDownload all three assets and verify SHA256SUMS before installation. No npm publication. Requires existing authorized repository access; see docs/RELEASING.md.\n' "$SOURCE_SHA" "$REPOSITORY" "$RUN_ID" > release-notes.md
+          printf 'Testing build from commit %s.\n\nVerified Checks run: https://github.com/%s/actions/runs/%s\n\nDownload all three assets and verify SHA256SUMS before installation. No npm publication. Repository visibility controls access; see docs/RELEASING.md.\n' "$SOURCE_SHA" "$REPOSITORY" "$RUN_ID" > release-notes.md
           gh release create "$tag" \
             --repo "$REPOSITORY" --target "$SOURCE_SHA" --prerelease \
-            --title "Private preview ${SOURCE_SHA:0:12}" --notes-file release-notes.md \
+            --title "Preview ${SOURCE_SHA:0:12}" --notes-file release-notes.md \
             "assets/$ARCHIVE" assets/build-manifest.json assets/SHA256SUMS
-          printf '### Private preview\n\nhttps://github.com/%s/releases/tag/%s\n\nSource: `%s`\n' "$REPOSITORY" "$tag" "$SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
+          printf '### Preview\n\nhttps://github.com/%s/releases/tag/%s\n\nSource: `%s`\n' "$REPOSITORY" "$tag" "$SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"

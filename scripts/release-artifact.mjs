@@ -56,6 +56,4 @@ await writeFile(
   join(output, 'SHA256SUMS'),
   `${artifact.archiveSha256}  ${archive.filename}\n${sha256(artifactBytes)}  build-manifest.json\n`,
 );
-console.log(
-  `Verified private artifact: ${archivePath}\nSource: ${sourceCommit}\nNothing published.`,
-);
+console.log(`Verified artifact: ${archivePath}\nSource: ${sourceCommit}\nNothing published.`);

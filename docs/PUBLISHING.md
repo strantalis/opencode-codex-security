@@ -1,10 +1,10 @@
 # Distribution and release checklist
 
-Nothing has been published. `private: true` and `UNLICENSED` deliberately prevent an accidental npm release or an implied redistribution grant.
+Nothing has been published to npm. `private: true` and `UNLICENSED` deliberately prevent an accidental npm release or an implied redistribution grant. Public GitHub source/release assets are a separate distribution decision; see [the release guide](RELEASING.md).
 
 ## Choose distribution first
 
-- A private GitHub repository is appropriate now. OpenCode supports Git-hosted plugins; pin a verified full commit and use the user's existing Git access. The repository retains the single built GUI entry for Git installation; CI checks it against source. Build it before a local-path installation when source changes.
+- GitHub source and checked release tarballs can be distributed at the explicitly approved repository visibility. OpenCode supports Git-hosted plugins; pin a verified full commit and use the user's existing Git access. The repository retains the single built GUI entry for Git installation; CI checks it against source. Build it before a local-path installation when source changes.
 - An unscoped npm name such as `opencode-codex-security` is always **public**, even if the source repository is private.
 - Private npm packages need a scoped name and an eligible paid user/organization account.
 - The unscoped name returned registry HTTP 404 on November 10, 2026. This neither reserves it nor proves ownership.
