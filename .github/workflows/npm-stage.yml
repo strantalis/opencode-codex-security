@@ -92,6 +92,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Provenance records this workflow commit; it must identify the tested bytes.
+          [[ "$SOURCE_SHA" == "$GITHUB_SHA" ]] || {
+            echo "Tested source differs from this workflow commit; refusing mismatched provenance." >&2
+            exit 1
+          }
           [[ "$(npm --version)" == "11.20.0" ]]
           # Refuse credentials/token fallback. Trust must permit staging only.
           [[ -z "${NODE_AUTH_TOKEN:-}" && -z "${NPM_TOKEN:-}" ]]

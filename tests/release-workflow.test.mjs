@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { readFile, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -84,5 +84,61 @@ test('isolated npm configuration loads distinct empty user and global files', as
     assert.equal(result.stdout.trim(), 'https://registry.npmjs.org/');
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('actual staging shell requires provenance commit to match the tested artifact', async () => {
+  const step = staging.split('      - name: Stage exact tested tarball with OIDC\n')[1];
+  assert.ok(step, 'Staging step must exist');
+  const shell = step
+    .split('        run: |\n')[1]
+    .split('\n')
+    .map((line) => line.replace(/^ {10}/, ''))
+    .join('\n');
+  const source = 'a'.repeat(40);
+  for (const [label, workflowSha, allowed] of [
+    ['matching commit', source, true],
+    ['different workflow commit despite current main matching', 'b'.repeat(40), false],
+    ['missing provenance commit', undefined, false],
+  ]) {
+    const dir = await mkdtemp(join(tmpdir(), 'npm-provenance-'));
+    try {
+      await mkdir(join(dir, 'assets'));
+      // Execute the real workflow shell, but replace both network-capable commands
+      // with inert functions. Any attempted staging is observable without npm access.
+      const mocks = `
+        npm() {
+          if [[ "$*" == "--version" ]]; then printf '11.20.0\\n';
+          elif [[ "$1 $2" == "stage publish" ]]; then printf 'STAGING_ATTEMPT\\n';
+          else return 91; fi
+        }
+        gh() {
+          if [[ "$*" == *git/ref/heads/main* ]]; then printf '%s\\n' "$SOURCE_SHA";
+          else printf 'public\\n'; fi
+        }
+      `;
+      const env = {
+        ...process.env,
+        SOURCE_SHA: source,
+        REPOSITORY: 'strantalis/opencode-codex-security',
+        ARCHIVE: 'opencode-codex-security-0.1.0.tgz',
+        NPM_TAG: 'latest',
+        NODE_AUTH_TOKEN: '',
+        NPM_TOKEN: '',
+        TMPDIR: dir,
+        GITHUB_STEP_SUMMARY: join(dir, 'summary'),
+      };
+      delete env.GITHUB_SHA;
+      if (workflowSha !== undefined) env.GITHUB_SHA = workflowSha;
+      const result = spawnSync('bash', ['--noprofile', '--norc', '-c', mocks + shell], {
+        cwd: dir,
+        encoding: 'utf8',
+        env,
+      });
+      assert.equal(result.status === 0, allowed, `${label}: ${result.stderr}`);
+      assert.equal(result.stdout.includes('STAGING_ATTEMPT'), allowed, label);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   }
 });
