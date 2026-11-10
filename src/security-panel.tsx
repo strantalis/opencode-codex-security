@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show, onCleanup } from 'solid-js';
+import { createMemo, createSignal, createEffect, on, For, Show, onCleanup } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 import { asState, type ScanState } from './types';
 import type { ScanInputs, ScanPlan } from './core/scan-plan';
@@ -110,6 +110,8 @@ export function SecurityPanel(props: {
   const [error, setError] = createSignal('');
   const [connectionError, setConnectionError] = createSignal('');
   const [now, setNow] = createSignal(Date.now());
+  let detailElement: HTMLElement | undefined;
+  let historyElement: HTMLDetailsElement | undefined;
   let stopped = false,
     refreshing = false,
     touched = false,
@@ -119,6 +121,17 @@ export function SecurityPanel(props: {
   const activeCount = createMemo(() => catalog().runs.filter((r) => r.status === 'running').length);
   const current = createMemo(
     () => catalog().runs.find((r) => r.runId === selectedId()) ?? catalog().runs[0],
+  );
+  createEffect(
+    on(
+      () => current()?.runId,
+      () => {
+        detailElement
+          ?.querySelectorAll('details[open]')
+          .forEach((detail) => detail.removeAttribute('open'));
+        if (historyElement) historyElement.open = false;
+      },
+    ),
   );
   const availableDraft = createMemo(() =>
     catalog().drafts.find((d) => d.plan && !d.planConsumed && Date.parse(d.plan.expiresAt) > now()),
@@ -603,15 +616,10 @@ export function SecurityPanel(props: {
               </Show>
             }
           >
-            <section class="gs-runs" aria-label="Scan history">
-              <div class="gs-section-heading">
-                <h3>Scans</h3>
-                <span>
-                  {activeCount()
-                    ? `${activeCount()} of ${catalog().maxConcurrent} running`
-                    : `${catalog().runs.length} recent`}
-                </span>
-              </div>
+            <details ref={historyElement} class="gs-runs" aria-label="Scan history">
+              <summary>
+                Switch scan <span>{catalog().runs.length} recent</span>
+              </summary>
               <ul class="gs-run-list">
                 <For each={catalog().runs}>
                   {(run) => (
@@ -640,17 +648,20 @@ export function SecurityPanel(props: {
                   )}
                 </For>
               </ul>
-            </section>
+            </details>
           </Show>
           <Show when={current()}>
             {(run) => (
-              <article class="gs-detail" aria-label="Selected scan">
+              <article ref={detailElement} class="gs-detail" aria-label="Selected scan">
                 <div class="gs-detail-title">
                   <h3>{runTitle(run())}</h3>
-                  <p>{run().repository}</p>
+                  <p>
+                    {projectName(run().repository)} ·{' '}
+                    {run().mode ?? run().plan?.settings.scan.mode ?? 'Fixture'} · {scanScope(run())}
+                  </p>
                 </div>
                 <div class="gs-progress-heading" role="status" aria-live="polite">
-                  <strong>{runPhaseLabel(run())}</strong>
+                  <h3>{runPhaseLabel(run())}</h3>
                   <span>{elapsedLabel(run().startedAt, run().finishedAt, now())}</span>
                 </div>
                 <Show when={hasDeterminateProgress(run())}>
@@ -667,22 +678,16 @@ export function SecurityPanel(props: {
                     <span>{phaseContext(run())}</span>
                   </div>
                 </Show>
-                <Show when={run().status === 'running' && run().deepProgress}>
-                  <p class="gs-progress-meta">{deepProgressLabel(run())}</p>
-                </Show>
-                <Show when={run().status === 'running'}>
-                  <p class="gs-live-note">{findingsPendingLabel(run())}</p>
-                </Show>
-                <div class="gs-facts">
-                  <span>{usageLabel(run())}</span>
-                  <Show when={workerSummary(run())}>
-                    <span>{workerSummary(run())}</span>
+                <div class="gs-scan-actions">
+                  <span class="gs-muted gs-small">{usageLabel(run())}</span>
+                  <Show when={run().status === 'running'}>
+                    <button class="gs-link" disabled={!!busy()} onClick={() => void cancel(run())}>
+                      {busy() === 'cancel' ? 'Requesting stop…' : 'Cancel scan'}
+                    </button>
                   </Show>
                 </div>
                 <Show when={run().status === 'running'}>
-                  <button class="gs-button" disabled={!!busy()} onClick={() => void cancel(run())}>
-                    {busy() === 'cancel' ? 'Requesting stop…' : 'Cancel this scan'}
-                  </button>
+                  <p class="gs-live-note">{findingsPendingLabel(run())}</p>
                 </Show>
                 <Show when={run().error}>
                   <p class="gs-notice gs-error" role="alert">
@@ -697,59 +702,8 @@ export function SecurityPanel(props: {
                 <Show when={run().status === 'completed' && run().findings.length === 0}>
                   <div class="gs-empty">
                     <h3>No reportable findings shown</h3>
-                    <p>
-                      This view contains no reportable findings. Review coverage and any omitted
-                      items before relying on the result. No findings does not guarantee security.
-                    </p>
+                    <p>No findings does not guarantee security. Check coverage below.</p>
                   </div>
-                </Show>
-                <Show when={run().status === 'completed'}>
-                  <section class="gs-outcome" aria-label="Scan outcome">
-                    <p class="gs-outcome-summary">{resultCountsLabel(run())}</p>
-                    <p class="gs-muted gs-small">{coverageLabel(run())}</p>
-                    <details class="gs-coverage">
-                      <summary>Coverage and repository matching</summary>
-                      <p class="gs-muted">
-                        Reported review metadata, not proof that every path was assessed.
-                      </p>
-                      <dl class="gs-details-list">
-                        <For each={coverageDetails(run())}>
-                          {(row) => (
-                            <>
-                              <Show when={row.label}>
-                                <dt>{row.label}</dt>
-                              </Show>
-                              <dd>{row.value}</dd>
-                            </>
-                          )}
-                        </For>
-                        <dt>Repository matching</dt>
-                        <dd>{repositoryMatchingLabel(run())}</dd>
-                        <Show when={run().assessment?.repositoryFindings.available}>
-                          <dd class="gs-muted">
-                            {run().assessment?.repositoryFindings.withMatchedFindingIds ??
-                              'Unknown'}{' '}
-                            records have matching finding IDs.{' '}
-                            {run().assessment?.repositoryFindings.notConfirmedInLatestScan ??
-                              'Unknown'}{' '}
-                            were not confirmed in this scan. These are repository records, not
-                            additional findings or deduplication progress.
-                          </dd>
-                        </Show>
-                      </dl>
-                      <For each={run().assessment?.notes ?? []}>
-                        {(note) => <p class="gs-muted">{note}</p>}
-                      </For>
-                      <Show
-                        when={run().skipped || run().assessment?.returnedFindings.informational}
-                      >
-                        <p class="gs-muted">
-                          Informational and unclassified items are not shown in the four-severity
-                          findings list. Review the full local SDK result for those items.
-                        </p>
-                      </Show>
-                    </details>
-                  </section>
                 </Show>
                 <Show when={run().findings.length}>
                   <section class="gs-findings" aria-label="Scan findings">
@@ -804,11 +758,57 @@ export function SecurityPanel(props: {
                     </For>
                   </section>
                 </Show>
-                <section class="gs-activity" aria-label="Scan activity">
-                  <div class="gs-section-heading">
-                    <h3>Activity</h3>
-                    <span>Latest reported</span>
-                  </div>
+                <Show when={run().status === 'completed'}>
+                  <section class="gs-outcome" aria-label="Scan outcome">
+                    <p class="gs-outcome-summary">{resultCountsLabel(run())}</p>
+                    <details class="gs-coverage">
+                      <summary>Coverage and repository matching</summary>
+                      <p>{coverageLabel(run())}</p>
+                      <p class="gs-muted">Reported metadata, not proof of exhaustive review.</p>
+                      <dl class="gs-details-list">
+                        <For each={coverageDetails(run())}>
+                          {(row) => (
+                            <>
+                              <Show when={row.label}>
+                                <dt>{row.label}</dt>
+                              </Show>
+                              <dd>{row.value}</dd>
+                            </>
+                          )}
+                        </For>
+                        <dt>Repository matching</dt>
+                        <dd>{repositoryMatchingLabel(run())}</dd>
+                        <Show when={run().assessment?.repositoryFindings.available}>
+                          <dd class="gs-muted">
+                            {run().assessment?.repositoryFindings.withMatchedFindingIds ??
+                              'Unknown'}{' '}
+                            records have matching finding IDs.{' '}
+                            {run().assessment?.repositoryFindings.notConfirmedInLatestScan ??
+                              'Unknown'}{' '}
+                            were not confirmed in this scan. These are repository records, not
+                            additional findings or deduplication progress.
+                          </dd>
+                        </Show>
+                      </dl>
+                      <For each={run().assessment?.notes ?? []}>
+                        {(note) => <p class="gs-muted">{note}</p>}
+                      </For>
+                      <Show
+                        when={run().skipped || run().assessment?.returnedFindings.informational}
+                      >
+                        <p class="gs-muted">
+                          Informational and unclassified items are not shown in the four-severity
+                          findings list. Review the full local SDK result for those items.
+                        </p>
+                      </Show>
+                    </details>
+                  </section>
+                </Show>
+                <details class="gs-activity" aria-label="Scan activity">
+                  <summary>Activity and workers</summary>
+                  <Show when={workerSummary(run())}>
+                    <p class="gs-muted gs-small">{workerSummary(run())}</p>
+                  </Show>
                   <Show when={dispatchLabel(run())}>
                     <p class="gs-muted gs-small">{dispatchLabel(run())}</p>
                   </Show>
@@ -876,7 +876,7 @@ export function SecurityPanel(props: {
                       </Show>
                     </details>
                   </Show>
-                </section>
+                </details>
                 <details class="gs-advanced">
                   <summary>Usage and scan details</summary>
                   <dl class="gs-details-list">
@@ -918,6 +918,8 @@ export function SecurityPanel(props: {
                       <dt>Connection</dt>
                       <dd>{reconnectLabel(run())}</dd>
                     </Show>
+                    <dt>Repository</dt>
+                    <dd>{run().repository}</dd>
                     <dt>Run ID</dt>
                     <dd class="gs-id">{run().runId}</dd>
                     <Show when={run().scanId}>

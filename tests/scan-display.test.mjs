@@ -80,7 +80,7 @@ test('core lifecycle completion does not present completed findings or a full pr
   };
   assert.equal(runPhaseLabel(state), 'Finalizing results');
   assert.equal(hasDeterminateProgress(state), false);
-  assert.match(findingsPendingLabel(state), /SDK is finishing its final result/);
+  assert.match(findingsPendingLabel(state), /Waiting for the SDK’s final result/);
   assert.deepEqual(state.findings, []);
   assert.equal(activityStatusLabel('running', state), 'Last reported running');
   state.status = 'completed';
@@ -198,4 +198,8 @@ test('SDK failure or cancellation while cleanup is pending hides ordinary progre
     assert.equal(activityStatusLabel('running', state), 'Last reported running');
     assert.equal(state.status, 'running');
   }
+});
+
+test('single legacy finding uses singular copy', () => {
+  assert.equal(resultCountsLabel({ ...emptyState(), findings: [{}] }), '1 finding shown');
 });

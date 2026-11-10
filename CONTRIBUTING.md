@@ -4,6 +4,8 @@ Use Node 26.4+ in the 26.x line (`nvm use`). Install with `npm ci --ignore-scrip
 
 ESLint checks JavaScript and TypeScript correctness, including unused variables. Explicit `any` remains permitted at existing host/RPC integration boundaries; this does not replace the separate TypeScript check. Prefer typed boundaries for new code.
 
+For TUI changes, `npm run test:tui` uses the actual OpenTUI renderer with an in-memory synthetic RPC client. It requires Bun (use a version supported by `@opentui/core`). It checks the summary at a terminal-sized viewport, scan switching, technical-detail disclosure and exact-run cancellation, without starting an OpenCode service or using model credentials.
+
 Use the isolated fixture and injected-mock host tests for development. Do not start paid SDK operations, copy sign-ins, or send repository data merely to test the plugin. Real runs require explicit authorization for the target and expected usage.
 
 The normal installed plugin may be watched by OpenCode. Develop in a separate checkout and do not edit/reload an installation while scans or policy questions are active. Local history does not automatically resume an interrupted scan.

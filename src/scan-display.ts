@@ -93,8 +93,8 @@ export function findingsPendingLabel(run: ScanState) {
   if (sdkResultPending(run) && !finalizingRun(run))
     return `The SDK reported ${run.telemetry?.lifecycle?.status === 'failed' ? 'a scan failure' : 'cancellation'}. Waiting for the final result; this is not a completed assessment.`;
   return finalizingRun(run)
-    ? 'Core analysis is complete. The SDK is finishing its final result; findings are not available yet.'
-    : 'Findings appear with the final result. Activity is not a live findings feed.';
+    ? 'Analysis complete. Waiting for the SDK’s final result and findings.'
+    : 'Findings will appear when the scan finishes.';
 }
 const usd = (value: number) => (value > 0 && value < 0.01 ? '<0.01' : value.toFixed(2));
 export function usageLabel(run: ScanState) {
@@ -173,7 +173,7 @@ export function reconnectLabel(run: ScanState) {
 export function resultCountsLabel(run: ScanState) {
   const counts = run.assessment?.returnedFindings;
   if (!counts)
-    return `${run.findings.length} findings shown${run.skipped ? ` · ${run.skipped} other items omitted` : ''}`;
+    return `${run.findings.length} ${run.findings.length === 1 ? 'finding' : 'findings'} shown${run.skipped ? ` · ${run.skipped} other items omitted` : ''}`;
   if (counts.total === null) return 'Returned finding counts unavailable';
   return [
     `${counts.reportable ?? 'Unknown'} reportable`,

@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 import { Plugin } from '@opencode/plugin/tui';
-import { createSignal, For, Show } from 'solid-js';
+import { createSignal, createEffect, on, For, Show } from 'solid-js';
 import { Security } from './rpc';
 import { asState, type ScanList } from './types';
 import type { ScanInputs, ScanPlan } from './core/scan-plan';
@@ -35,6 +35,7 @@ export default Plugin.define({
   setup(ctx) {
     const [catalog, setCatalog] = createSignal<ScanList>();
     const [selected, select] = createSignal<string>();
+    const [details, setDetails] = createSignal(false);
     const [error, setError] = createSignal('');
     const [busy, setBusy] = createSignal(false);
     const [now, setNow] = createSignal(Date.now());
@@ -45,6 +46,12 @@ export default Plugin.define({
     const client = ctx.client.rpc(Security);
     const runs = () => catalog()?.runs ?? [];
     const current = () => runs().find((run) => run.runId === selected()) ?? runs()[0];
+    createEffect(
+      on(
+        () => current()?.runId,
+        () => setDetails(false),
+      ),
+    );
     const open = () => ctx.ui.router.navigate({ type: 'plugin', name: 'security' });
     const operations = createTuiOperations(ctx, location, current, open);
     const active = () => runs().filter((run) => run.status === 'running').length;
@@ -228,7 +235,9 @@ export default Plugin.define({
               ? `${active()} of ${catalog()?.maxConcurrent ?? 2} scans running`
               : 'Review code, then follow each scan here.'}
           </text>
-          <text>/security-scan: new scan · /security-scans: switch scan · Esc: back</text>
+          <text fg="#b5b5b5">
+            /security-scan: new · /security-scans: switch · Ctrl+D: details · Esc: back
+          </text>
           <Show when={operations.questionCount()}>
             <text fg="#9be4c6">
               {operations.questionCount()} operation(s) need your answer. /security-operations to
@@ -245,7 +254,7 @@ export default Plugin.define({
             <Show when={catalog()?.historyError}>
               <text fg="#ffb3b3">{catalog()?.historyError}</text>
             </Show>
-            <Show when={runs().length}>
+            <Show when={details() && runs().length}>
               <box flexDirection="column" gap={0}>
                 <text>RECENT SCANS</text>
                 <For each={runs().slice(0, 6)}>
@@ -271,13 +280,14 @@ export default Plugin.define({
               {(run) => (
                 <box flexDirection="column" gap={1}>
                   <text fg="#9be4c6">{runTitle(run())}</text>
-                  <text>{run().repository}</text>
-                  <text>
+                  <text fg="#b5b5b5">
                     {scanScope(run())} · {run().mode ?? 'Fixture pattern checks'}
                   </text>
                   <text>
-                    {runPhaseLabel(run())} ·{' '}
-                    {elapsedLabel(run().startedAt, run().finishedAt, now())}
+                    <b>{runPhaseLabel(run())}</b>
+                    <Show when={elapsedLabel(run().startedAt, run().finishedAt, now())}>
+                      {(elapsed) => <> · {elapsed()}</>}
+                    </Show>
                   </text>
                   <Show when={hasPhaseProgress(run())}>
                     <text>
@@ -286,21 +296,9 @@ export default Plugin.define({
                   </Show>
                   <Show when={run().status === 'running'}>
                     <text>{findingsPendingLabel(run())}</text>
-                    <text>/security-cancel stops only this scan.</text>
+                    <text fg="#b5b5b5">/security-cancel: stop this scan</text>
                   </Show>
                   <text>{usageLabel(run())}</text>
-                  <Show when={run().telemetry?.measurement?.coverage !== 'complete'}>
-                    <text>{usageContext(run())}</text>
-                  </Show>
-                  <Show when={workerSummary(run())}>
-                    <text>{workerSummary(run())}</text>
-                  </Show>
-                  <Show when={dispatchLabel(run())}>
-                    <text>{dispatchLabel(run())}</text>
-                  </Show>
-                  <Show when={run().status === 'running' && run().deepProgress}>
-                    <text>{deepProgressLabel(run())}. The cap is not a completion target.</text>
-                  </Show>
                   <Show when={run().error}>
                     <text fg="#ffb3b3">{run().error}</text>
                   </Show>
@@ -309,49 +307,82 @@ export default Plugin.define({
                   </Show>
                   <Show when={run().status === 'completed'}>
                     <text>
-                      {resultCountsLabel(run())}. /security-findings to inspect evidence. No
-                      findings does not guarantee the repository is secure.
-                    </text>
-                  </Show>
-                  <Show when={run().status === 'completed'}>
-                    <text>{coverageLabel(run())}</text>
-                    <text>Repository matching: {repositoryMatchingLabel(run())}</text>
-                    <text>
-                      Coverage is reported metadata, not proof of exhaustive review. See local SDK
-                      artifacts for details.
+                      <b>{resultCountsLabel(run())}</b> · /security-findings: evidence
                     </text>
                   </Show>
                   <For each={run().findings.slice(0, 5)}>
                     {(finding) => (
                       <text>
-                        {finding.severity.toUpperCase()} · {finding.title} · {finding.path}:
-                        {finding.line}
+                        <span
+                          style={{
+                            fg:
+                              finding.severity === 'high' || finding.severity === 'critical'
+                                ? '#ffb3b3'
+                                : '#ebc28c',
+                          }}
+                        >
+                          {finding.severity.toUpperCase()}
+                        </span>{' '}
+                        · {finding.title}
                       </text>
                     )}
                   </For>
-                  <text>ACTIVITY · latest reported</text>
-                  <Show
-                    when={activityRows(run()).length}
-                    fallback={<text>No detailed SDK activity recorded.</text>}
-                  >
-                    <For each={workerActivityRows(run()).slice(0, 5)}>
-                      {(activity) => (
-                        <text>
-                          {activityActor(activity.worker)} · {activity.label} ·{' '}
-                          {activityStatusLabel(activity.status, run())}
-                        </text>
-                      )}
-                    </For>
+                  <Show when={run().status === 'completed' && !run().findings.length}>
+                    <text fg="#b5b5b5">
+                      No findings does not guarantee security. Check coverage in details.
+                    </text>
                   </Show>
-                  <Show when={run().events.length}>
-                    <text>RECENT MILESTONES</text>
-                    <For each={[...run().events].reverse().slice(0, 3)}>
-                      {(event) => (
-                        <text>
-                          {new Date(event.time).toLocaleTimeString()} · {event.message}
-                        </text>
-                      )}
-                    </For>
+                  <text fg="#b5b5b5">
+                    Ctrl+D: {details() ? 'hide' : 'show'} activity, coverage and scan details
+                  </text>
+                  <Show when={details()}>
+                    <text>SCAN DETAILS</text>
+                    <text>{run().repository}</text>
+                    <text>Run: {run().runId}</text>
+                    <Show when={run().telemetry?.measurement?.coverage !== 'complete'}>
+                      <text>{usageContext(run())}</text>
+                    </Show>
+                    <Show when={workerSummary(run())}>
+                      <text>{workerSummary(run())}</text>
+                    </Show>
+                    <Show when={dispatchLabel(run())}>
+                      <text>{dispatchLabel(run())}</text>
+                    </Show>
+                    <Show when={run().status === 'running' && run().deepProgress}>
+                      <text>{deepProgressLabel(run())}. The cap is not a completion target.</text>
+                    </Show>
+                    <Show when={run().status === 'completed'}>
+                      <text>{coverageLabel(run())}</text>
+                      <text>Repository matching: {repositoryMatchingLabel(run())}</text>
+                      <text>
+                        Coverage is reported metadata, not proof of exhaustive review. See local SDK
+                        artifacts for details.
+                      </text>
+                    </Show>
+                    <text>ACTIVITY · latest reported</text>
+                    <Show
+                      when={activityRows(run()).length}
+                      fallback={<text>No detailed SDK activity recorded.</text>}
+                    >
+                      <For each={workerActivityRows(run()).slice(0, 5)}>
+                        {(activity) => (
+                          <text>
+                            {activityActor(activity.worker)} · {activity.label} ·{' '}
+                            {activityStatusLabel(activity.status, run())}
+                          </text>
+                        )}
+                      </For>
+                    </Show>
+                    <Show when={run().events.length}>
+                      <text>RECENT MILESTONES</text>
+                      <For each={[...run().events].reverse().slice(0, 3)}>
+                        {(event) => (
+                          <text>
+                            {new Date(event.time).toLocaleTimeString()} · {event.message}
+                          </text>
+                        )}
+                      </For>
+                    </Show>
                   </Show>
                 </box>
               )}
@@ -365,6 +396,27 @@ export default Plugin.define({
       mode: 'global',
       commands: [
         ...operations.commands,
+        {
+          id: 'security.details',
+          title: 'Security: toggle scan details',
+          bind: 'ctrl+d',
+          group: 'Security',
+          palette: true,
+          slash: { name: 'security-details' },
+          enabled: () => {
+            const route = ctx.ui.router.current();
+            return (
+              !busy() &&
+              !operations.visible() &&
+              !!current() &&
+              route.type === 'plugin' &&
+              route.name === 'security'
+            );
+          },
+          run: () => {
+            setDetails((value) => !value);
+          },
+        },
         {
           id: 'security.back',
           title: 'Security: return home',
