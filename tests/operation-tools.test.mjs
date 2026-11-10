@@ -86,6 +86,8 @@ test('registered model operations check separate permissions and exact question 
   let state = await call('security_operation_status', { operationId: policy.operationId });
   assert.equal(state.status, 'awaiting_answers');
   assert.equal(permissions.at(-1).action, 'codex_security_policy');
+  assert.match(permissions.at(-1).metadata.inferenceRoute, /OpenAI.*dedicated ChatGPT sign-in/);
+  assert.ok(permissions.at(-1).resources.includes(permissions.at(-1).metadata.settings));
   allowed = false;
   await assert.rejects(
     call('security_answer_questions', {
@@ -105,6 +107,8 @@ test('registered model operations check separate permissions and exact question 
   await tick();
   assert.equal(answerReceived, 'Repository maintainers.');
   assert.equal(permissions.at(-1).action, 'codex_security_answer');
+  assert.match(permissions.at(-1).metadata.recipient, /already-authorized/);
+  assert.ok(permissions.at(-1).resources.includes(permissions.at(-1).metadata.settings));
   assert.equal(
     (await call('security_operation_status', { operationId: state.operationId })).result.applied,
     false,

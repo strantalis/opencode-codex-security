@@ -19,11 +19,11 @@ Patch application and fix verification are not implemented. Findings arrive at s
 
 - Node.js 24.x or 26.x for installation. Node 22 does not satisfy the plugin's published `>=24` requirement. Repository development/TUI tests use Node 26.4+ (tested on 26.8.1).
 - For real SDK operations: Python 3.10+; Python 3.10 also needs `tomli`.
-- SDK mode is currently POSIX-only; the credential guard deliberately rejects Windows.
+- Default ChatGPT authentication is currently POSIX-only; its credential guard deliberately rejects Windows. Full Windows SDK operation is unverified.
 - OpenCode V2; 2.2.6 is the original test baseline, not an exact-patch requirement. Verify loading on the installed host. Desktop integration is experimental.
-- For real operations: supported Codex Security account/model access and an existing dedicated sign-in. The plugin checks that dedicated credentials exist privately before constructing the SDK client. It does not perform login or create/import credentials.
+- For real operations: supported account/model access and either an existing private dedicated ChatGPT sign-in or an explicitly configured custom Responses provider with an existing environment key. The plugin does not perform login or create/import credentials. See [no-sign-in provider setup](docs/GLOBAL-CONFIG.md#use-an-existing-codexlitellm-provider-without-sign-in). Custom-provider routing is an upcoming `0.1.2` change, not functionality in the published `0.1.0`/`0.1.1` packages.
 
-SDK mode uses `@openai/codex-security` 0.9.1. Repository source and selected context are sent to OpenAI for inference. SDK cost limits are estimates, **not guaranteed billing caps**. Account quota/availability can also limit scans.
+SDK mode uses `@openai/codex-security` 0.9.1. Repository source and selected context are sent to the provider shown in the approval preview, OpenAI by default or the explicitly selected gateway. Gateway upstream routing is not verified. SDK cost limits are estimates, **not guaranteed billing caps**. Account quota/availability can also limit scans.
 
 ## Install a released version
 
@@ -40,7 +40,7 @@ OpenCode V2 supports npm packages directly. Add this object to your existing `pl
 
 Check that no scans, approval dialogs or policy forms are active before editing watched settings or reloading. Open `/security` to verify loading. Fixture mode uses bundled examples, not your repository.
 
-Real mode currently supports [dedicated ChatGPT authentication](docs/SDK.md#dedicated-authentication), not LiteLLM or other proxy/provider configurations. It does not inherit OpenCode's provider settings. If that does not match your approved setup, keep fixture mode; a new sign-in is not a workaround for unsupported provider integration. For the supported setup, change `engine` to `codex` only when the host is idle. This starts no scan; real operations still need authorized scope and source-data transfer.
+Published `0.1.0`/`0.1.1` real mode supports [dedicated ChatGPT authentication](docs/SDK.md#default-dedicated-chatgpt-authentication). Upcoming `0.1.2` adds [opt-in Codex/LiteLLM provider configuration](docs/GLOBAL-CONFIG.md#use-an-existing-codexlitellm-provider-without-sign-in) without a sign-in flow. It does not automatically inherit OpenCode provider settings. Wait for a release or use an explicitly provided tested build containing this change; do not use an older version for gateway support. Change `engine` to `codex` only when the approved configuration is ready and the host is idle. This starts no scan; real operations still need authorized scope and source-data transfer.
 
 Verified November 10, 2026: `latest` points to `0.1.0`; `0.1.1` is also public under `next`. Pin the full version you want rather than a moving tag. A staged version or `0.0.0-stage` placeholder is not installable functionality.
 

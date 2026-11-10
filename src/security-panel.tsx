@@ -2,7 +2,7 @@ import { createMemo, createSignal, createEffect, on, For, Show, onCleanup } from
 import { createStore, reconcile } from 'solid-js/store';
 import { asState, type ScanState } from './types';
 import type { ScanInputs, ScanPlan } from './core/scan-plan';
-import { describePlan, latestAvailableDraft } from './plan-view';
+import { describeInferenceRoute, describePlan, latestAvailableDraft } from './plan-view';
 import {
   elapsedLabel,
   findingText,
@@ -507,7 +507,7 @@ export function SecurityPanel(props: {
                         >
                           {busy() === 'prepare' ? 'Preparing preview…' : 'Review scan'}
                         </button>
-                        <span class="gs-muted gs-small">Nothing is sent to OpenAI yet.</span>
+                        <span class="gs-muted gs-small">No source has been sent yet.</span>
                       </div>
                     </form>
                   }
@@ -564,8 +564,9 @@ export function SecurityPanel(props: {
                           fallback={
                             <>
                               <p>
-                                Repository source and listed context will be sent to OpenAI. Results
-                                are stored locally.
+                                Repository source and listed context will be sent to{}
+                                {describeInferenceRoute(plan().settings)}. Results are stored
+                                locally.
                               </p>
                               <p>
                                 Estimated cost stop:{' '}
@@ -991,7 +992,7 @@ export function SecurityPanel(props: {
         <footer class="gs-footer">
           {fixture()
             ? 'Fixture engine · not a security assessment'
-            : 'Codex Security · local results, OpenAI inference'}
+            : 'Codex Security · local results, configured inference'}
           <Show when={catalog().runs.length}>
             {' '}
             · Up to {catalog().maxConcurrent} concurrent scans per project

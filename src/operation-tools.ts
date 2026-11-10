@@ -1,3 +1,4 @@
+import { describeInferenceRoute } from './plan-view.ts';
 import { safeFinding } from './core/report-safety.ts';
 import type { Plugin } from '@opencode/plugin';
 import { createHash } from 'node:crypto';
@@ -34,6 +35,7 @@ const summary = (s: SecurityOperationState) => ({
   startedAt: s.startedAt,
   finishedAt: s.finishedAt,
   costNotice: s.plan.costNotice,
+  inferenceRoute: describeInferenceRoute(s.plan.settings),
 });
 export function registerOperationTools(
   editor: Editor,
@@ -90,7 +92,7 @@ export function registerOperationTools(
           model: state.plan.settings.codex.model,
           path: state.plan.path,
           contextFiles: state.plan.contextFiles.map((f) => f.path),
-          note: 'Prepared only. Show target and cost notice before starting. Policy will not be applied automatically.',
+          note: 'Prepared only. Show target, inference route and cost notice before starting. Policy will not be applied automatically.',
         }),
       };
     },
@@ -112,7 +114,7 @@ export function registerOperationTools(
           ...summary(state),
           finding: f.finding,
           model: state.plan.settings.codex.model,
-          note: 'Prepared only. Separate uncapped-validation authorization is required.',
+          note: 'Prepared only. Show inference route. Separate uncapped-validation authorization is required.',
         }),
       };
     },
@@ -146,6 +148,8 @@ export function registerOperationTools(
           path: state.plan.path ?? null,
           contextFiles: state.plan.contextFiles.map((f) => f.path),
           costNotice: state.plan.costNotice,
+          inferenceRoute: describeInferenceRoute(state.plan.settings),
+          settings: JSON.stringify(state.plan.settings),
         },
       });
       context.signal.throwIfAborted();
@@ -212,11 +216,13 @@ export function registerOperationTools(
           args.operationId,
           args.questionId,
           createHash('sha256').update(args.answer).digest('hex'),
+          JSON.stringify(state.plan.settings),
         ],
         metadata: {
           questions: state.question.questions,
           answer: args.answer,
-          recipient: 'OpenAI via the already-authorized Security policy operation',
+          recipient: `${describeInferenceRoute(state.plan.settings)} via the already-authorized Security policy operation`,
+          settings: JSON.stringify(state.plan.settings),
         },
       });
       context.signal.throwIfAborted();

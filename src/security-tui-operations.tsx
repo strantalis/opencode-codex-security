@@ -1,4 +1,5 @@
 /** @jsxImportSource @opentui/solid */
+import { describeInferenceRoute } from './plan-view';
 import type { Plugin } from '@opencode/plugin/tui';
 type Context = Plugin.Context;
 type Commands = NonNullable<ReturnType<Parameters<Context['keymap']['layer']>[0]>['commands']>;
@@ -66,7 +67,7 @@ export function createTuiOperations(
   const approve = async (op: SecurityOperationState) => {
     const confirmed = await ctx.ui.dialog.confirm({
       title: op.kind === 'policy' ? 'Review policy generation' : 'Review source validation',
-      message: `Repository: ${op.repository}\n${op.plan.path ? 'Component: ' + op.plan.path + '\n' : ''}Context: ${op.plan.contextFiles.map((file) => file.path).join(', ') || 'No additional documents'}\n\n${op.plan.mock ? 'Mock operation: no model calls or uploads.' : `Repository source, the selected finding if any, and listed context go to OpenAI.\n${op.plan.costNotice}`}\n\n${op.kind === 'policy' ? 'Returns a draft only. Existing files stay unchanged.' : 'Static source assessment only. No exploit execution or patch application.'}\n\nModel: ${op.plan.settings.codex.model} · ${op.plan.settings.codex.reasoningEffort} reasoning`,
+      message: `Repository: ${op.repository}\n${op.plan.path ? 'Component: ' + op.plan.path + '\n' : ''}Context: ${op.plan.contextFiles.map((file) => file.path).join(', ') || 'No additional documents'}\n\n${op.plan.mock ? 'Mock operation: no model calls or uploads.' : `Repository source, the selected finding if any, and listed context go to ${describeInferenceRoute(op.plan.settings)}.\n${op.plan.costNotice}`}\n\n${op.kind === 'policy' ? 'Returns a draft only. Existing files stay unchanged.' : 'Static source assessment only. No exploit execution or patch application.'}\n\nModel: ${op.plan.settings.codex.model} · ${op.plan.settings.codex.reasoningEffort} reasoning`,
       label: {
         confirm: op.plan.mock
           ? 'Start mock operation'
@@ -218,7 +219,7 @@ export function createTuiOperations(
             title: 'Answer security questions',
             description:
               question.questions.map((q, index) => `${index + 1}. ${q}`).join('\n') +
-              '\n\nAnswer each question or state what is unknown. Your answer will be sent to OpenAI for this operation; do not include secrets.',
+              `\n\nAnswer each question or state what is unknown. Your answer will be sent to the already-approved route: ${describeInferenceRoute(op.plan.settings)}. Do not include secrets.`,
           });
           if (!answer?.trim() || stopped) return;
           await client.operationAnswer(

@@ -11,8 +11,12 @@ import type {
 } from '@openai/codex-security';
 import { prepareScan, validatePlan, type ScanPlan } from './scan-plan.ts';
 import { safeReportText } from './report-safety.ts';
+import { sdkConfiguration } from './sdk-settings.ts';
+import { ProviderConfigurationError } from './provider-config.ts';
+import { unsupportedPricingMessage } from './codex-adapter.ts';
 import {
-  requireDedicatedSecurityCredentials,
+  requireSdkCredentials,
+  ProviderCredentialsRequiredError,
   DedicatedSecurityCredentialsRequiredError,
 } from './credential-guard.ts';
 
@@ -102,7 +106,7 @@ type Entry = {
   };
 };
 const realClient: SecurityOperationsFactory = async (config) => {
-  await requireDedicatedSecurityCredentials();
+  await requireSdkCredentials(config);
   const { CodexSecurity } = await import('@openai/codex-security');
   return new CodexSecurity(config);
 };
@@ -271,8 +275,8 @@ export class SecurityOperationsService {
       costLimitEnforced: input.kind === 'policy',
       costNotice:
         input.kind === 'policy'
-          ? `OpenAI model inference uses an estimated USD ${scan.settings.scan.maxCostUsd} SDK limit, not a guaranteed billing cap.`
-          : 'OpenAI model inference has no SDK cost limit for validation in version 0.9.1. The scan budget does not apply.',
+          ? `Model inference uses an estimated USD ${scan.settings.scan.maxCostUsd} SDK limit, not a guaranteed billing cap.`
+          : 'Model inference has no SDK cost limit for validation in version 0.9.1. The scan budget does not apply.',
     };
     const entry: Entry = {
       controller: new AbortController(),
@@ -358,19 +362,12 @@ export class SecurityOperationsService {
     const observing = () => !signal.aborted && active(entry.state);
     try {
       signal.throwIfAborted();
-      client = await this.#factory({
-        codexOverrides: {
-          model_provider: 'openai',
-          model: plan.settings.codex.model,
-          model_reasoning_effort: plan.settings.codex.reasoningEffort,
-          daybreak: plan.settings.codex.daybreak,
-        },
-      });
+      client = await this.#factory(sdkConfiguration(plan.settings));
       signal.throwIfAborted();
       const context = plan.contextFiles.map((file) => resolve(plan.repository, file.path));
       if (plan.kind === 'policy') {
         const options: SecurityPolicyOptions = {
-          auth: 'chatgpt',
+          auth: plan.settings.codex.auth,
           path: plan.path,
           knowledgeBasePaths: context,
           maxCostUsd: plan.settings.scan.maxCostUsd,
@@ -409,7 +406,7 @@ export class SecurityOperationsService {
         const options: ValidationOptions = {
           repositoryPath: plan.repository,
           finding: plan.finding!,
-          auth: 'chatgpt',
+          auth: plan.settings.codex.auth,
           knowledgeBasePaths: context,
           signal,
           ...(plan.settings.scan.cyberAccessProgram
@@ -438,9 +435,12 @@ export class SecurityOperationsService {
       entry.state.result = null;
       entry.state.error = signal.aborted
         ? null
-        : error instanceof DedicatedSecurityCredentialsRequiredError
+        : error instanceof DedicatedSecurityCredentialsRequiredError ||
+            error instanceof ProviderCredentialsRequiredError ||
+            error instanceof ProviderConfigurationError
           ? error.message
-          : 'SDK operation failed. Review local SDK diagnostics and runtime prerequisites. Raw output is not exposed.';
+          : (unsupportedPricingMessage(error) ??
+            'SDK operation failed. Review local SDK diagnostics and runtime prerequisites. Raw output is not exposed.');
     } finally {
       this.#rejectQuestion(entry, new Error('Operation ended before this question was answered.'));
       try {

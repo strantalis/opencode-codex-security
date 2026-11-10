@@ -6,6 +6,7 @@ import { asState, type ScanList } from './types';
 import type { ScanInputs, ScanPlan } from './core/scan-plan';
 import {
   describePlan,
+  describeInferenceRoute,
   isAbsoluteLocalDirectory,
   latestAvailableDraft,
   withScanMode,
@@ -137,8 +138,8 @@ export default Plugin.define({
                     }
                   >
                     <text>
-                      Repository source and listed context will be sent to OpenAI. Results stay
-                      local.
+                      Repository source and listed context will be sent to{}
+                      {describeInferenceRoute(plan.settings)}. Results stay local.
                     </text>
                     <text>
                       Estimated stop: USD {plan.settings.scan.maxCostUsd} for this scan. Not a hard

@@ -9,7 +9,8 @@ import {
 } from './run-telemetry.ts';
 import { summarizeScanResult } from './result-summary.ts';
 import {
-  requireDedicatedSecurityCredentials,
+  requireSdkCredentials,
+  ProviderCredentialsRequiredError,
   DedicatedSecurityCredentialsRequiredError,
 } from './credential-guard.ts';
 import { safeFinding } from './report-safety.ts';
@@ -22,7 +23,8 @@ import type {
   ScanResult,
   Finding as SdkFinding,
 } from '@openai/codex-security';
-import type { ResolvedSdkSettings } from './sdk-settings.ts';
+import { sdkConfiguration, type ResolvedSdkSettings } from './sdk-settings.ts';
+import { ProviderConfigurationError } from './provider-config.ts';
 import type { Finding, ScanState } from '../types.js';
 
 /** Per-run consent, never persisted. The caller must obtain this from the user. */
@@ -42,9 +44,9 @@ export type SecurityFactory = (
   config?: CodexSecurityConfig,
 ) => SecurityClient | Promise<SecurityClient>;
 const realClient: SecurityFactory = async (config) => {
-  await requireDedicatedSecurityCredentials();
+  await requireSdkCredentials(config);
   const { CodexSecurity } = await import('@openai/codex-security');
-  return new CodexSecurity(config ?? { codexOverrides: { model_provider: 'openai' } });
+  return new CodexSecurity(config ?? sdkConfiguration());
 };
 function initial(repository: string, revision = 0, instanceId = ''): ScanState {
   return {
@@ -119,6 +121,14 @@ export function scanBudgetFailure(
     estimatedCostUsd: estimate,
     message: `Stopped at the estimated cost guard: USD ${estimate.toFixed(2)} baseline exceeded the USD ${limit.toFixed(2)} limit.${detail} This is an estimate, not a billing total. No completed assessment; review the budget before choosing whether to retry.`,
   };
+}
+
+export function unsupportedPricingMessage(error: unknown): string | undefined {
+  if (
+    error instanceof Error &&
+    error.message.startsWith('A scan cost limit is not available for the configured model:')
+  )
+    return 'The SDK cannot estimate costs for this model or gateway alias, so the operation stopped without removing its cost limit. Use a gateway model with SDK-supported pricing, or ask the gateway administrator about a compatible route. Estimates are not gateway billing totals or hard caps.';
 }
 
 /** Local coordinator; SDK inference is network-backed, not an offline scanner. */
@@ -198,18 +208,15 @@ export class CodexScanService {
     let terminalPhase = 'Codex Security scan failed';
     try {
       signal.throwIfAborted();
-      client = await this.#factory({
-        codexOverrides: {
-          model_provider: 'openai',
-          ...(approval.settings
-            ? {
-                model: approval.settings.codex.model,
-                model_reasoning_effort: approval.settings.codex.reasoningEffort,
-                daybreak: approval.settings.codex.daybreak,
-              }
-            : {}),
-        },
-      });
+      if (
+        approval.settings?.codex.provider &&
+        approval.auth &&
+        approval.auth !== approval.settings.codex.auth
+      )
+        throw new ProviderConfigurationError(
+          'Approved authentication does not match the selected provider.',
+        );
+      client = await this.#factory(sdkConfiguration(approval.settings));
       signal.throwIfAborted();
       const telemetry = (this.#state.telemetry ??= emptyTelemetry());
       const options: ScanOptions = {
@@ -218,7 +225,7 @@ export class CodexScanService {
         knowledgeBasePaths: [...(approval.contextFiles ?? [])],
         ...approval.settings?.scan,
         mode: approval.settings?.scan.mode ?? 'standard',
-        auth: approval.auth ?? 'chatgpt',
+        auth: approval.settings?.codex.auth ?? approval.auth ?? 'chatgpt',
         maxCostUsd: approval.maxCostUsd,
         ownerSuggestions: false,
         signal,
@@ -380,9 +387,12 @@ export class CodexScanService {
       this.#state.error = signal.aborted
         ? null
         : (budget?.message ??
-          (error instanceof DedicatedSecurityCredentialsRequiredError
+          (error instanceof DedicatedSecurityCredentialsRequiredError ||
+          error instanceof ProviderCredentialsRequiredError ||
+          error instanceof ProviderConfigurationError
             ? error.message
-            : 'SDK scan failed. Check authentication, runtime prerequisites, and local SDK diagnostics.'));
+            : (unsupportedPricingMessage(error) ??
+              'SDK scan failed. Check authentication, runtime prerequisites, and local SDK diagnostics.')));
       terminalMessage = signal.aborted
         ? 'Cancellation requested; SDK run stopped. Partial results are not a completed scan.'
         : this.#state.error!;
