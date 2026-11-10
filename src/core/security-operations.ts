@@ -11,7 +11,7 @@ import type {
 } from '@openai/codex-security';
 import { prepareScan, validatePlan, type ScanPlan } from './scan-plan.ts';
 import { safeReportText } from './report-safety.ts';
-import { sdkConfiguration } from './sdk-settings.ts';
+import { sdkConfiguration, sdkAuthentication } from './sdk-settings.ts';
 import { ProviderConfigurationError } from './provider-config.ts';
 import { unsupportedPricingMessage } from './codex-adapter.ts';
 import {
@@ -80,7 +80,7 @@ export interface SecurityOperationState {
 export type SecurityOperationsClient = Pick<CodexSecurity, 'generatePolicy' | 'validate' | 'close'>;
 export type SecurityOperationsFactory = (
   config?: CodexSecurityConfig,
-  auth?: 'chatgpt' | 'api-key',
+  auth?: 'chatgpt' | 'api-key' | 'aws',
 ) => SecurityOperationsClient | Promise<SecurityOperationsClient>;
 export interface SecurityOperationsOptions {
   createClient?: SecurityOperationsFactory;
@@ -368,7 +368,7 @@ export class SecurityOperationsService {
       const context = plan.contextFiles.map((file) => resolve(plan.repository, file.path));
       if (plan.kind === 'policy') {
         const options: SecurityPolicyOptions = {
-          auth: plan.settings.codex.auth,
+          auth: sdkAuthentication(plan.settings.codex.auth),
           path: plan.path,
           knowledgeBasePaths: context,
           maxCostUsd: plan.settings.scan.maxCostUsd,
@@ -407,7 +407,7 @@ export class SecurityOperationsService {
         const options: ValidationOptions = {
           repositoryPath: plan.repository,
           finding: plan.finding!,
-          auth: plan.settings.codex.auth,
+          auth: sdkAuthentication(plan.settings.codex.auth),
           knowledgeBasePaths: context,
           signal,
           ...(plan.settings.scan.cyberAccessProgram

@@ -35,6 +35,7 @@ def main():
     parser.add_argument('--keyless-config', action='store_true', help='Verify unsupported keyless setup error without fallback')
     parser.add_argument('--openai-key', action='store_true', help='Verify explicit OpenAI API-key preview, without execution')
     parser.add_argument('--header-config', action='store_true', help='Verify supported gateway environment-header preview')
+    parser.add_argument('--bedrock-config', action='store_true', help='Verify native Bedrock AWS identity/model preview without execution')
     args = parser.parse_args()
     package = args.package.resolve(strict=True)
     binary = args.opencode.resolve(strict=True)
@@ -67,14 +68,14 @@ def main():
     }
     assert all(shutil.which(name, path=env['PATH']) is None for name in ['node', 'npm', 'bun'])
     Path(env['OPENCODE_CONFIG']).write_text(json.dumps({
-        'plugins': [{'package': str(package)} if args.real_default or args.keyless_config or args.openai_key or args.header_config
+        'plugins': [{'package': str(package)} if args.real_default or args.keyless_config or args.openai_key or args.header_config or args.bedrock_config
                     else {'package': str(package), 'options': {'engine': 'fixture'}}],
     }))
     if args.keyless_config:
         codex = Path(env['CODEX_HOME'])
         codex.mkdir()
         (codex / 'config.toml').write_text('model_provider = "network"\n[model_providers.network]\nbase_url = "https://gateway.example.test/v1"\nrequires_openai_auth = false\n')
-    if args.openai_key or args.header_config:
+    if args.openai_key or args.header_config or args.bedrock_config:
         settings = {'codex': {'auth': 'api-key'}}
         if args.header_config:
             settings = {'codex': {'provider': {
@@ -82,6 +83,9 @@ def main():
                 'envKey': 'SYNTHETIC_GATEWAY_KEY', 'wireApi': 'responses',
                 'envHttpHeaders': {'X-Workspace': 'SYNTHETIC_WORKSPACE'},
             }}}
+        if args.bedrock_config:
+            settings = {'codex': {'bedrock': {'region': 'us-east-2', 'profile': 'synthetic-security'},
+                                  'model': 'openai.gpt-daybreak-blue-5.6-sol', 'reasoningEffort': 'high'}}
         (isolated / 'config/opencode/codex-security.json').write_text(json.dumps(settings))
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 50, 180, 0, 0))
@@ -154,7 +158,7 @@ def main():
                      'explicit keyless SDK setup blocker')
             assert '4findingsshown' not in re.sub(r'\s+', '', plain()), 'Unexpected fixture fallback'
             assert not list((isolated / 'home').rglob('auth.json')), 'Unexpected credential file'
-        elif args.real_default or args.openai_key or args.header_config:
+        elif args.real_default or args.openai_key or args.header_config or args.bedrock_config:
             wait_for(lambda text: 'Reviewthisscan' in re.sub(r'\s+', '', text)
                      and 'Wholerepository' in re.sub(r'\s+', '', text),
                      'real SDK repository/scope review')
@@ -165,6 +169,9 @@ def main():
             if args.header_config:
                 wait_for(lambda text: 'SYNTHETIC_WORKSPACE' in text and 'x-workspace' in text,
                          'environment-header disclosure')
+            if args.bedrock_config:
+                wait_for(lambda text: 'synthetic-security' in text and 'bedrock-mantle.us-east-2.api.aws' in text
+                         and 'openai.gpt-daybreak-blue-5.6-sol' in text, 'Bedrock identity/endpoint/model disclosure')
             assert '4findingsshown' not in re.sub(r'\s+', '', plain()), 'Unexpected fixture fallback'
             send(b'\x1b')  # Cancel the preview. Never send Ctrl+Y.
             end = time.monotonic() + 1
@@ -190,6 +197,7 @@ def main():
         result = ('keyless setup error without fixture fallback' if args.keyless_config else
                   'explicit OpenAI API-key preview, cancelled without scan' if args.openai_key else
                   'gateway environment-header preview, cancelled without scan' if args.header_config else
+                  'native Bedrock identity/model preview, cancelled without scan' if args.bedrock_config else
                   'real default repository/scope preview, cancelled without scan' if args.real_default else
                   '4 explicit fixture findings')
         print(f'PACKED NATIVE TUI PASSED: /security rendered, {result}, clean exit; no Node/npm/Bun on PATH.')

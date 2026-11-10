@@ -2,6 +2,12 @@ import { readFile, lstat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import {
+  validateBedrock,
+  bedrockBaseUrl,
+  validateBedrockEnvironment,
+  type BedrockSettings,
+} from './bedrock-config.ts';
 import type { CodexSecurityConfig } from '@openai/codex-security';
 import {
   readProviderConfiguration,
@@ -16,11 +22,19 @@ import {
   type ProviderSettings,
   type ProviderSource,
 } from './provider-config.ts';
+export type CodexAuthentication = 'chatgpt' | 'api-key' | 'aws';
+
+/** The SDK selects the AWS credential chain by provider, not by an aws auth option. */
+export function sdkAuthentication(auth: CodexAuthentication): 'chatgpt' | 'api-key' | 'auto' {
+  return auth === 'aws' ? 'auto' : auth;
+}
+
 export interface CodexSettings {
   model?: string;
   reasoningEffort?: string;
   daybreak?: boolean;
-  auth?: 'chatgpt' | 'api-key';
+  auth?: CodexAuthentication;
+  bedrock?: BedrockSettings;
   provider?: ProviderSettings;
   configFile?: string;
   useCodexConfig?: boolean;
@@ -41,6 +55,7 @@ export interface SdkSettings {
 export interface ResolvedSdkSettings {
   codex: Required<Pick<CodexSettings, 'model' | 'reasoningEffort' | 'daybreak' | 'auth'>> & {
     provider?: ProviderSettings;
+    bedrock?: BedrockSettings;
     source?: ProviderSource;
   };
   scan: ScanSettings & { mode: 'standard' | 'deep'; maxCostUsd: number };
@@ -66,6 +81,7 @@ export function validateSettings(raw: unknown): SdkSettings {
             'daybreak',
             'auth',
             'provider',
+            'bedrock',
             'configFile',
             'useCodexConfig',
             'profile',
@@ -76,11 +92,12 @@ export function validateSettings(raw: unknown): SdkSettings {
         throw new Error(
           `Unsupported ${section} setting. Credentials and arbitrary runtime overrides are not accepted.`,
         );
-      if (key === 'auth' && val !== 'chatgpt' && val !== 'api-key')
-        throw new ProviderConfigurationError('codex.auth must be chatgpt or api-key.');
+      if (key === 'auth' && !['chatgpt', 'api-key', 'aws'].includes(val as string))
+        throw new ProviderConfigurationError('codex.auth must be chatgpt, api-key, or aws.');
       if (key === 'useCodexConfig' && typeof val !== 'boolean')
         throw new ProviderConfigurationError('codex.useCodexConfig must be true or false.');
       if (key === 'provider') validateProvider(val);
+      if (key === 'bedrock') validateBedrock(val);
       if (key === 'configFile') validateConfigFile(val);
       if (key === 'profile') validateProfile(val);
       if (
@@ -172,11 +189,12 @@ export async function resolveSettings(
     !requestedImport &&
     explicit.useCodexConfig !== false &&
     explicit.provider === undefined &&
+    explicit.bedrock === undefined &&
     explicit.auth === undefined;
   const importing = requestedImport || discovering;
-  if (importing && explicit.provider)
+  if (importing && (explicit.provider || explicit.bedrock))
     throw new ProviderConfigurationError(
-      'Choose existing Codex config import or codex.provider, not both.',
+      'Choose existing Codex config import or explicit provider/bedrock settings, not both.',
     );
   if (explicit.profile && !importing)
     throw new ProviderConfigurationError(
@@ -198,20 +216,39 @@ export async function resolveSettings(
     ...overrides
   } = explicit;
   const codex = { ...defaultSettings.codex, ...selected, ...overrides };
+  if (codex.bedrock) {
+    codex.bedrock = validateBedrock(codex.bedrock);
+    validateBedrockEnvironment();
+    if (codex.provider || (explicit.auth !== undefined && explicit.auth !== 'aws'))
+      throw new ProviderConfigurationError(
+        'Native Bedrock requires AWS authentication and cannot be combined with a custom provider or OpenAI authentication.',
+      );
+    if (!selected.model && !explicit.model)
+      throw new ProviderConfigurationError(
+        'Native Bedrock requires an explicit Bedrock model ID. No default model or provider was selected.',
+      );
+    codex.auth = 'aws';
+  } else if (codex.auth === 'aws') {
+    throw new ProviderConfigurationError(
+      'AWS authentication requires native codex.bedrock settings.',
+    );
+  }
   if (codex.provider) {
     codex.provider = validateProvider(codex.provider);
-    if (explicit.auth === 'chatgpt')
+    if (explicit.auth !== undefined && explicit.auth !== 'api-key')
       throw new ProviderConfigurationError(
         'Custom providers require api-key authentication; ChatGPT credentials will not be forwarded.',
       );
     codex.auth = 'api-key';
-    if (
-      codex.daybreak ||
-      (source.scan?.cyberAccessProgram && source.scan.cyberAccessProgram !== 'standard')
-    )
-      throw new ProviderConfigurationError(
-        'Custom-provider Daybreak is not supported by this plugin yet. Disable daybreak and use the standard access program.',
-      );
+  }
+  if (
+    (codex.provider || codex.bedrock) &&
+    (codex.daybreak ||
+      (source.scan?.cyberAccessProgram && source.scan.cyberAccessProgram !== 'standard'))
+  ) {
+    throw new ProviderConfigurationError(
+      'The OpenAI Daybreak access-program toggle is not supported for this route. Bedrock Daybreak is selected by its provisioned model ID, not this toggle. Use daybreak=false and omit cyberAccessProgram or use standard; this does not change the selected model.',
+    );
   }
   if (!codex.provider && codex.auth === 'api-key') validateOpenAiApiEndpointEnvironment();
   if (imported) codex.source = providerSource(imported.path, imported.profile, selected);
@@ -221,15 +258,31 @@ export async function resolveSettings(
 /** Build the entire routing override from validated, non-secret fields. Never pass a profile. */
 export function sdkConfiguration(
   settings?: ResolvedSdkSettings,
-  auth?: 'chatgpt' | 'api-key',
+  auth?: CodexAuthentication,
 ): CodexSecurityConfig {
   const codex = settings?.codex;
   const provider = codex?.provider ? validateProvider(codex.provider) : undefined;
+  const bedrock = codex?.bedrock ? validateBedrock(codex.bedrock) : undefined;
+  if (
+    (bedrock && (provider || codex?.auth !== 'aws')) ||
+    (!bedrock && (codex?.auth ?? auth) === 'aws')
+  )
+    throw new ProviderConfigurationError(
+      'AWS authentication must match the approved native Bedrock route.',
+    );
   if (provider && codex?.auth !== 'api-key')
     throw new ProviderConfigurationError('Custom providers require api-key authentication.');
   return {
     codexOverrides: {
-      model_provider: provider?.id ?? 'openai',
+      model_provider: bedrock ? 'amazon-bedrock' : (provider?.id ?? 'openai'),
+      ...(bedrock
+        ? {
+            analytics: { enabled: false },
+            model_providers: {
+              'amazon-bedrock': { base_url: bedrockBaseUrl(bedrock), aws: { ...bedrock } },
+            },
+          }
+        : {}),
       ...(!provider && (codex?.auth ?? auth) === 'api-key'
         ? { openai_base_url: OPENAI_API_BASE_URL }
         : {}),

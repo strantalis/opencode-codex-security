@@ -52,3 +52,9 @@ SDK 0.9.1 can import ambient credentials when its dedicated home is empty. The g
 ## Verified behavior
 
 The actual OpenCode host was tested with injected mocks for scans, concurrent runs, cancellation, policy questions and static validation. One authorized real synthetic-file scan authenticated and reached discovery, then exceeded its USD 1 estimated budget guard. No completed assessment was returned. Direct native Desktop verification and full real-scan quality remain separate work.
+
+## Native Bedrock routing
+
+The next source build supports the SDK's built-in `amazon-bedrock` provider with explicit region/model and optional AWS profile. Standard/Deep scans, policy and validation share that approved route. The plugin stores no AWS credential values and maps its `aws` auth label to the SDK's `auto` mode, whose Bedrock branch uses AWS authentication. Inference is pinned to the regional Mantle Responses endpoint. Existing AWS credential-chain resolution runs only with the approved SDK operation and may use profile helpers or identity services. See [global configuration](GLOBAL-CONFIG.md#amazon-bedrock-with-an-existing-aws-identity) for setup, Daybreak model selection, and limits.
+
+The public offline SDK contract test intentionally distinguishes keyless custom-provider _classification_ from a successful scan: `preflight` reports `stored_credentials` for that route, while native Bedrock reports `aws_credentials`. Neither result proves entitlement or inference success. Unknown gateway aliases do not acquire a price merely because their upstream model is known; cost limits are never removed as a workaround.

@@ -9,6 +9,8 @@ import { safeFinding, safeReportText } from '../src/core/report-safety.ts';
 
 async function fixture(t, settings = {}) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'security-operations-')));
+  // Isolate policy root discovery from any enclosing checkout or sandbox marker.
+  await mkdir(join(root, '.git'), { recursive: true });
   await mkdir(join(root, 'src'));
   await mkdir(join(root, 'config', 'opencode'), { recursive: true });
   await writeFile(join(root, 'src', 'app.js'), '// Synthetic fixture; no secrets.');
@@ -436,7 +438,7 @@ test('policy and validation inherit path guards and reject home/ancestor/credent
 
 test('policy preparation never permits silent expansion to enclosing or nested Git roots', async (t) => {
   const { root } = await fixture(t);
-  await mkdir(join(root, '.git'));
+  await mkdir(join(root, '.git'), { recursive: true });
   const operations = service(t, root, () => client());
   await assert.rejects(
     operations.prepare({ kind: 'policy', repository: join(root, 'src') }),

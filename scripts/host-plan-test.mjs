@@ -9,12 +9,14 @@ import { OpenCode } from '@opencode/client';
 import { Rpc } from '@opencode/plugin/rpc';
 import { Security, scanInputSchema } from '../src/rpc.ts';
 const root = fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/, '');
-// Keep policy fixtures outside this checkout's Git root. The real SDK may expand
-// nested policy paths to the Git root; production guards correctly reject that.
+// Keep policy fixtures outside this checkout with their own Git markers. The real
+// SDK can expand nested policy paths; production guards correctly reject that.
 const fixture = await realpath(await mkdtemp(join(tmpdir(), 'opencode-security-fixture-')));
 await cp(`${root}/fixtures/vulnerable`, fixture, { recursive: true });
+await mkdir(join(fixture, '.git'));
 const secondFixture = await realpath(await mkdtemp(join(tmpdir(), 'opencode-security-second-')));
 await cp(`${root}/fixtures/vulnerable`, secondFixture, { recursive: true });
+await mkdir(join(secondFixture, '.git'));
 const configPath = `${root}/.runtime/plan/config/opencode/opencode.json`;
 await mkdir(`${root}/.runtime/plan/config/opencode`, { recursive: true });
 await mkdir(`${root}/.runtime/plan/home`, { recursive: true });
