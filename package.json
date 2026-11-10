@@ -1,7 +1,7 @@
 {
   "name": "opencode-codex-security",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "exports": {
     ".": "./src/plugin.ts",
@@ -23,7 +23,6 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "pack:check": "npm run build && node scripts/check-package.mjs",
-    "prepack": "npm run build",
     "test:package": "npm run build && node scripts/packed-host-test.mjs",
     "test:tui": "bun --preload @opentui/solid/preload scripts/tui-preview-smoke.tsx",
     "audit:runtime": "npm audit --omit=dev --audit-level=high",
@@ -62,6 +61,7 @@
     "dist/gui-experimental.cjs",
     "fixtures/vulnerable/",
     "LICENSE",
+    "DISCLOSURE",
     "README.md",
     "CONTRIBUTING.md",
     "SECURITY.md",
@@ -70,5 +70,12 @@
     "docs/SDK.md",
     "docs/PUBLISHING.md",
     "docs/RELEASING.md"
-  ]
+  ],
+  "contentPolicy": {
+    "class": "dual-use"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

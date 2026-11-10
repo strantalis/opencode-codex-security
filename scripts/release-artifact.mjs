@@ -41,6 +41,7 @@ const artifact = {
   package: archive.name,
   version: archive.version,
   private: manifest.private,
+  contentPolicy: manifest.contentPolicy,
   sourceCommit,
   sourceRepository: manifest.repository.url,
   nodeVersion: process.version,

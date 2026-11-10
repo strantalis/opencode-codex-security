@@ -1,0 +1,19 @@
+Dual-use security research utility: opencode-codex-security
+
+This plugin connects OpenCode V2 to the OpenAI Codex Security SDK to scan source
+repositories for potential vulnerabilities, draft security policies and
+statically assess reported findings. It includes deliberately vulnerable local
+fixtures for offline demonstrations and automated tests. It does not implement
+exploit execution, runtime exploitation, patch application or fix verification.
+
+Intended legitimate use is defensive security review and authorized research on
+repositories that the operator owns or has permission to assess. SDK operations
+send selected repository source and context to OpenAI for inference; operators
+must have permission for that transfer and understand potential costs. Fixture
+mode is offline and is not a real assessment. Findings require human review.
+
+Do not use this package for unauthorized access, abuse or malicious activity.
+The contentPolicy dual-use declaration and this disclosure must persist across
+versions. Automated npm publication uses staging only; a maintainer must review
+and approve each staged version with npm two-factor authentication before it is
+publicly available. See SECURITY.md for vulnerability reporting.
