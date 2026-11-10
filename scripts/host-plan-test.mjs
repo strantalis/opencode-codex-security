@@ -164,6 +164,19 @@ try {
   );
   assert.equal(modelStatus.mode, 'deep');
   assert.equal(modelStatus.estimatedCostUsd, 0.12);
+  assert.equal(modelStatus.telemetry.measurement.coverage, 'partial');
+  assert.equal(modelStatus.telemetry.measurement.cost.range.max, null);
+  assert.deepEqual(modelStatus.telemetry.observedWorkers, [1]);
+  assert.equal(modelStatus.telemetry.lastReconnect.reason, 'network');
+  const activityRead = await test.toolCall(
+    { name: 'security_scan_activity', args: { runId: b.runId } },
+    { location },
+  );
+  const activity = JSON.parse(activityRead.result.content);
+  assert.equal(activity.activity.length, 1);
+  assert.equal(activity.activity[0].label, 'Reading source');
+  assert.deepEqual(activity.activity[0].paths, ['src/accounts.js']);
+  assert.doesNotMatch(activityRead.result.content, /SECRET|password/);
   await test.toolCall({ name: 'security_scan_activity', args: { runId: a.runId } }, { location });
   assert.equal(
     JSON.parse(
@@ -199,6 +212,18 @@ try {
     ).complete,
     true,
   );
+  const finalResults = JSON.parse(
+    (await test.toolCall({ name: 'security_scan_results', args: { runId: b.runId } }, { location }))
+      .result.content,
+  );
+  assert.equal(finalResults.assessment.returnedFindings.reportable, 1);
+  assert.equal(finalResults.assessment.coverage.surfaces.total, 1);
+  assert.equal(finalResults.assessment.repositoryFindings.withMatchedFindingIds, 1);
+  assert.equal(finalResults.sdkLifecycle.hasReportableFindings, true);
+  const finalStatus = await rpc.status({ runId: b.runId }, { location });
+  assert.equal(finalStatus.telemetry.measurement.coverage, 'complete');
+  assert.equal(finalStatus.telemetry.activity.length, 1);
+  assert.equal(finalStatus.telemetry.activity[0].status, 'completed');
   assert.ok((await test.inspect({}, { location })).toolNames.includes('security_cancel_scan'));
   const caps = await rpc.capabilities({}, { location });
   assert.equal(caps.policy, true);

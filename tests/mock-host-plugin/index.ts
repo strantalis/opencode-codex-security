@@ -58,14 +58,93 @@ const implementation = createSecurityPlugin({
           maxCostUsd: options?.maxCostUsd,
           cyberAccessProgram: options?.cyberAccessProgram,
         });
-        options?.onLifecycle?.({ scanId: 'mock-sdk-1' } as any);
+        options?.onLifecycle?.({
+          scanId: 'mock-sdk-1',
+          status: 'running',
+          hasReportableFindings: null,
+          finishedAt: null,
+        } as any);
         options?.onProgress?.({ phase: 'discovery', filesCompleted: 1, filesTotal: 4 } as any);
         options?.onCost?.({ estimatedUsd: 0.12 } as any);
+        options?.onMeasurement?.({
+          coverage: 'partial',
+          observedAt: new Date().toISOString(),
+          threadCount: 2,
+          missingThreadCount: 1,
+          usage: null,
+          cost: {
+            estimatedUsd: 0.12,
+            estimatedUsdRange: { min: 0.12, max: null, context: 'unknown' },
+            model: 'mock',
+          },
+        } as any);
+        options?.onWorkerEvent?.({ kind: 'observed', worker: 1 });
+        options?.onReconnect?.(1, 3, { reason: 'network', retryAfterSeconds: 1 });
+        const activity = {
+          id: `SECRET mock-item-${calls.length}`,
+          kind: 'command',
+          status: 'running',
+          description: 'cat src/accounts.js password=SECRET',
+          paths: ['src/accounts.js', '../../SECRET', 'auth.json'],
+          worker: 1,
+        } as any;
+        options?.onActivity?.(activity);
         options?.onWorkerStatus?.({ phase: 'file_review', planned: 2, started: 1 } as any);
         options?.onDeepProgress?.({ completed: 1, active: 1, maximum: 4 } as any);
         await new Promise((resolve) => setTimeout(resolve, 1000));
         options?.signal?.throwIfAborted();
+        options?.onActivity?.({ ...activity, status: 'completed' });
+        options?.onMeasurement?.({
+          coverage: 'complete',
+          observedAt: new Date().toISOString(),
+          threadCount: 2,
+          missingThreadCount: 0,
+          usage: {
+            input_tokens: 10,
+            cached_input_tokens: 5,
+            cache_write_input_tokens: 0,
+            output_tokens: 2,
+            reasoning_output_tokens: 1,
+            total_tokens: 12,
+          },
+          cost: {
+            estimatedUsd: 0.18,
+            estimatedUsdRange: { min: 0.18, max: 0.3, context: 'unknown' },
+            model: 'mock',
+          },
+        } as any);
+        options?.onDeepProgress?.({ completed: 2, active: 0, maximum: 4, consolidating: true });
+        options?.onLifecycle?.({
+          scanId: 'mock-sdk-1',
+          status: 'completed',
+          hasReportableFindings: true,
+          finishedAt: new Date().toISOString(),
+        } as any);
         return {
+          manifest: {
+            scan: {
+              scope: {
+                includePaths: ['src/accounts.js'],
+                excludePaths: [],
+                limitations: ['Mock coverage only.'],
+              },
+              reviewState: {
+                surfaces: [{ id: 'account', label: 'Account lookup', disposition: 'reported' }],
+                deferred: [],
+              },
+            },
+          },
+          review: { excludedPaths: [] },
+          repositoryFindings: [
+            {
+              findingId: 'mock1',
+              occurrenceId: 'mock1',
+              status: 'open',
+              confirmedInLatestScan: true,
+              knownSince: '2026-01-01T00:00:00Z',
+              matchedFindingIds: ['previous-mock'],
+            },
+          ],
           findings: {
             scanId: 'mock-sdk-1',
             findings: [

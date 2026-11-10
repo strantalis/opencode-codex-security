@@ -6,7 +6,8 @@ This is an early private project, not an official OpenCode or OpenAI product. It
 
 ## What works
 
-- Independent Standard or Deep scans, two concurrent runs per project, progress/activity, exact cancellation and private local history.
+- Independent Standard or Deep scans, two concurrent runs per project, phase-local progress, safe worker activity, exact cancellation and private local history.
+- Honest partial/complete cost measurements and final coverage/repository-matching details when the SDK returns them. Missing data is labeled unavailable.
 - Model tools to prepare/start scans, list runs, inspect status/activity/results and read individual findings.
 - Security-policy generation that pauses for your answers and returns an **unapplied draft**.
 - Finding validation against source. This is static assessment, not runtime reproduction, and the SDK currently has **no validation cost ceiling**. It requires separate approval.

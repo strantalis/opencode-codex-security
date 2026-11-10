@@ -1,4 +1,14 @@
 import {
+  costSummary,
+  count,
+  emptyTelemetry,
+  lifecycleSummary,
+  measurementSummary,
+  phaseSummary,
+  recordActivity,
+} from './run-telemetry.ts';
+import { summarizeScanResult } from './result-summary.ts';
+import {
   requireDedicatedSecurityCredentials,
   DedicatedSecurityCredentialsRequiredError,
 } from './credential-guard.ts';
@@ -38,6 +48,7 @@ const realClient: SecurityFactory = async (config) => {
 };
 function initial(repository: string, revision = 0, instanceId = ''): ScanState {
   return {
+    telemetry: emptyTelemetry(),
     instanceId,
     status: 'idle',
     scanId: null,
@@ -200,6 +211,7 @@ export class CodexScanService {
         },
       });
       signal.throwIfAborted();
+      const telemetry = (this.#state.telemetry ??= emptyTelemetry());
       const options: ScanOptions = {
         target: approval.scopePaths?.length ? [...approval.scopePaths] : 'repository',
         scanPrompt: approval.scanPrompt ?? '',
@@ -212,53 +224,114 @@ export class CodexScanService {
         signal,
         onProgress: (progress) => {
           if (!observing || signal.aborted) return;
-          const counts = progress.reviewItems;
-          this.#state.progress = {
-            done: counts?.completed ?? progress.filesCompleted,
-            total: counts?.total ?? progress.filesTotal,
-            unit: counts ? 'reviews' : 'files',
-          };
-          const phase = `${progress.phase.replaceAll('_', ' ')} (${counts ? 'reviews' : 'files'})`;
+          const detail = phaseSummary(progress);
+          telemetry.phaseProgress = detail;
+          const counts = detail.reviews && detail.reviews.total > 0 ? detail.reviews : detail.files;
+          const unit = detail.reviews && detail.reviews.total > 0 ? 'reviews' : 'files';
+          this.#state.progress = { ...counts, unit };
+          const phase =
+            telemetry.lifecycle?.status === 'completed'
+              ? 'Finishing SDK result'
+              : `${detail.phase.replaceAll('_', ' ')} (${unit})`;
           const changed = phase !== this.#state.phase;
           this.#state.phase = phase;
           this.#emit(changed ? `Phase: ${phase}` : undefined);
         },
+        onMeasurement: (measurement) => {
+          if (!observing || signal.aborted) return;
+          telemetry.measurement = measurementSummary(measurement);
+          if (telemetry.measurement.cost)
+            this.#state.estimatedCostUsd = telemetry.measurement.cost.baselineUsd;
+          else delete this.#state.estimatedCostUsd;
+          this.#emit();
+        },
         onCost: (cost) => {
-          if (
-            observing &&
-            !signal.aborted &&
-            Number.isFinite(cost.estimatedUsd) &&
-            cost.estimatedUsd >= 0
-          ) {
-            this.#state.estimatedCostUsd = cost.estimatedUsd;
-            this.#emit();
+          if (!observing || signal.aborted) return;
+          // onMeasurement carries coverage/timestamps. Never replace it with a thinner callback.
+          if (!telemetry.measurement) {
+            const summary = costSummary(cost);
+            if (summary) {
+              telemetry.measurement = {
+                coverage: 'complete',
+                observedAt: new Date().toISOString(),
+                cost: summary,
+              };
+              this.#state.estimatedCostUsd = summary.baselineUsd;
+              this.#emit();
+            }
           }
+        },
+        onWorkerEvent: (worker) => {
+          if (!observing || signal.aborted || !Number.isInteger(worker.worker) || worker.worker < 0)
+            return;
+          if (
+            !telemetry.observedWorkers.includes(worker.worker) &&
+            telemetry.observedWorkers.length < 128
+          ) {
+            telemetry.observedWorkers.push(worker.worker);
+            this.#emit(`Worker ${worker.worker} session observed`);
+          }
+        },
+        onReconnect: (attempt, maxAttempts, details) => {
+          if (!observing || signal.aborted) return;
+          telemetry.lastReconnect = {
+            attempt: count(attempt),
+            maxAttempts: count(maxAttempts),
+            at: new Date().toISOString(),
+            ...(details &&
+            ['rate_limit', 'network', 'authentication', 'authorization'].includes(details.reason)
+              ? { reason: details.reason }
+              : {}),
+            ...(details &&
+            Number.isFinite(details.retryAfterSeconds) &&
+            details.retryAfterSeconds! >= 0
+              ? { retryAfterSeconds: details.retryAfterSeconds }
+              : {}),
+          };
+          this.#emit(`SDK reconnect attempt ${count(attempt)} of ${count(maxAttempts)}`);
         },
         onWorkerStatus: (worker) => {
           if (observing && !signal.aborted) {
             this.#state.workers = {
-              phase: worker.phase,
-              planned: worker.planned,
-              started: worker.started,
+              phase: ['ranking', 'file_review', 'validation', 'attack_path'].includes(worker.phase)
+                ? worker.phase
+                : 'unknown',
+              planned: count(worker.planned),
+              started: count(worker.started),
             };
             this.#emit();
           }
         },
         onDeepProgress: (progress) => {
           if (observing && !signal.aborted) {
-            this.#state.deepProgress = { ...progress };
+            this.#state.deepProgress = {
+              completed: count(progress.completed),
+              active: count(progress.active),
+              maximum: count(progress.maximum),
+              consolidating: progress.consolidating === true,
+            };
             this.#emit();
           }
         },
         onLifecycle: (lifecycle) => {
           if (observing && !signal.aborted) {
             this.#state.scanId = lifecycle.scanId;
-            this.#emit();
+            telemetry.lifecycle = lifecycleSummary(lifecycle);
+            if (telemetry.lifecycle?.status === 'completed')
+              this.#state.phase = 'Finishing SDK result';
+            this.#emit(
+              telemetry.lifecycle?.status === 'completed'
+                ? 'SDK core scan completed; waiting for the final result. This is not a deduplication progress signal.'
+                : undefined,
+            );
           }
         },
         // Avoid exposing raw model messages, command arguments, auth details, or tool output in UI events.
         onActivity: (activity) => {
-          if (observing && !signal.aborted) this.#emit(`SDK ${activity.kind}: ${activity.status}`);
+          if (observing && !signal.aborted) {
+            recordActivity(telemetry, activity, this.root);
+            this.#emit();
+          }
         },
         onWarning: () => {
           if (observing && !signal.aborted)
@@ -275,6 +348,15 @@ export class CodexScanService {
         return mapped ? [mapped] : [];
       });
       this.#state.scanId = result.findings.scanId;
+      this.#state.assessment = summarizeScanResult(result, this.root);
+      if (!telemetry.measurement && result.cost) {
+        telemetry.measurement = {
+          coverage: 'unavailable',
+          observedAt: new Date().toISOString(),
+          cost: costSummary(result.cost),
+        };
+        this.#state.estimatedCostUsd = telemetry.measurement.cost?.baselineUsd;
+      }
       outcome = 'completed';
       terminalPhase = 'Codex Security scan complete';
       terminalMessage = `Completed with ${this.#state.findings.length} findings; ${this.#state.skipped} informational items omitted from this four-severity view. Review full local SDK artifacts. Findings are available at completion, not streamed.`;
@@ -287,6 +369,12 @@ export class CodexScanService {
       const budget = signal.aborted ? undefined : scanBudgetFailure(error);
       if (budget) {
         this.#state.estimatedCostUsd = budget.estimatedCostUsd;
+        const cost = costSummary((error as { cost: Parameters<typeof costSummary>[0] }).cost);
+        (this.#state.telemetry ??= emptyTelemetry()).measurement = {
+          coverage: 'partial',
+          observedAt: new Date().toISOString(),
+          cost,
+        };
         terminalPhase = 'Stopped at estimated cost guard';
       }
       this.#state.error = signal.aborted

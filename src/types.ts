@@ -1,3 +1,5 @@
+import type { ScanTelemetry } from './core/run-telemetry';
+import type { ScanOutcomeSummary } from './core/result-summary';
 import type { ScanPlan } from './core/scan-plan';
 export interface Finding {
   id: string;
@@ -12,6 +14,8 @@ export interface Finding {
   confidence: string;
 }
 export interface ScanState {
+  telemetry?: ScanTelemetry;
+  assessment?: ScanOutcomeSummary;
   runId?: string;
   mode?: 'standard' | 'deep';
   model?: string;

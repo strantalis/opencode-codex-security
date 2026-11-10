@@ -8,7 +8,22 @@ import { describePlan, withScanMode } from './plan-view';
 import { createTuiOperations } from './security-tui-operations';
 import {
   elapsedLabel,
-  phaseLabel,
+  runPhaseLabel,
+  hasPhaseProgress,
+  phaseContext,
+  deepProgressLabel,
+  findingsPendingLabel,
+  usageLabel,
+  usageContext,
+  activityRows,
+  workerActivityRows,
+  activityActor,
+  activityStatusLabel,
+  workerSummary,
+  dispatchLabel,
+  resultCountsLabel,
+  coverageLabel,
+  repositoryMatchingLabel,
   progressLabel,
   runTitle,
   scanScope,
@@ -261,28 +276,30 @@ export default Plugin.define({
                     {scanScope(run())} · {run().mode ?? 'Fixture pattern checks'}
                   </text>
                   <text>
-                    {phaseLabel(run().phase)} ·{' '}
+                    {runPhaseLabel(run())} ·{' '}
                     {elapsedLabel(run().startedAt, run().finishedAt, now())}
                   </text>
+                  <Show when={hasPhaseProgress(run())}>
+                    <text>
+                      {progressLabel(run())} · {phaseContext(run())}
+                    </text>
+                  </Show>
                   <Show when={run().status === 'running'}>
-                    <text>{progressLabel(run())}. Counts are for the current phase.</text>
-                    <text>
-                      Findings appear when the scan finishes. /security-cancel stops only this scan.
-                    </text>
+                    <text>{findingsPendingLabel(run())}</text>
+                    <text>/security-cancel stops only this scan.</text>
                   </Show>
-                  <Show when={run().estimatedCostUsd !== undefined}>
-                    <text>Estimated usage: USD {(run().estimatedCostUsd ?? 0).toFixed(2)}</text>
+                  <text>{usageLabel(run())}</text>
+                  <Show when={run().telemetry?.measurement?.coverage !== 'complete'}>
+                    <text>{usageContext(run())}</text>
                   </Show>
-                  <Show when={run().workers}>
-                    <text>
-                      Workers started: {run().workers?.started} of {run().workers?.planned} planned
-                    </text>
+                  <Show when={workerSummary(run())}>
+                    <text>{workerSummary(run())}</text>
+                  </Show>
+                  <Show when={dispatchLabel(run())}>
+                    <text>{dispatchLabel(run())}</text>
                   </Show>
                   <Show when={run().status === 'running' && run().deepProgress}>
-                    <text>
-                      Deep passes: {run().deepProgress?.completed} complete ·{' '}
-                      {run().deepProgress?.active} active
-                    </text>
+                    <text>{deepProgressLabel(run())}. The cap is not a completion target.</text>
                   </Show>
                   <Show when={run().error}>
                     <text fg="#ffb3b3">{run().error}</text>
@@ -292,8 +309,16 @@ export default Plugin.define({
                   </Show>
                   <Show when={run().status === 'completed'}>
                     <text>
-                      {run().findings.length} findings reported. /security-findings to inspect
-                      evidence. No findings does not guarantee the repository is secure.
+                      {resultCountsLabel(run())}. /security-findings to inspect evidence. No
+                      findings does not guarantee the repository is secure.
+                    </text>
+                  </Show>
+                  <Show when={run().status === 'completed'}>
+                    <text>{coverageLabel(run())}</text>
+                    <text>Repository matching: {repositoryMatchingLabel(run())}</text>
+                    <text>
+                      Coverage is reported metadata, not proof of exhaustive review. See local SDK
+                      artifacts for details.
                     </text>
                   </Show>
                   <For each={run().findings.slice(0, 5)}>
@@ -304,14 +329,30 @@ export default Plugin.define({
                       </text>
                     )}
                   </For>
-                  <text>ACTIVITY · latest first</text>
-                  <For each={[...run().events].reverse().slice(0, 8)}>
-                    {(event) => (
-                      <text>
-                        {new Date(event.time).toLocaleTimeString()} · {event.message}
-                      </text>
-                    )}
-                  </For>
+                  <text>ACTIVITY · latest reported</text>
+                  <Show
+                    when={activityRows(run()).length}
+                    fallback={<text>No detailed SDK activity recorded.</text>}
+                  >
+                    <For each={workerActivityRows(run()).slice(0, 5)}>
+                      {(activity) => (
+                        <text>
+                          {activityActor(activity.worker)} · {activity.label} ·{' '}
+                          {activityStatusLabel(activity.status, run())}
+                        </text>
+                      )}
+                    </For>
+                  </Show>
+                  <Show when={run().events.length}>
+                    <text>RECENT MILESTONES</text>
+                    <For each={[...run().events].reverse().slice(0, 3)}>
+                      {(event) => (
+                        <text>
+                          {new Date(event.time).toLocaleTimeString()} · {event.message}
+                        </text>
+                      )}
+                    </For>
+                  </Show>
                 </box>
               )}
             </Show>

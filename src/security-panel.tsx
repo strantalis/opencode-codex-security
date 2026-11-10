@@ -6,7 +6,27 @@ import { describePlan } from './plan-view';
 import {
   elapsedLabel,
   findingText,
-  phaseLabel,
+  runPhaseLabel,
+  phaseCounts,
+  phaseContext,
+  hasPhaseProgress,
+  hasDeterminateProgress,
+  deepProgressLabel,
+  findingsPendingLabel,
+  usageLabel,
+  usageContext,
+  usageRangeLabel,
+  activityRows,
+  workerActivityRows,
+  activityActor,
+  activityStatusLabel,
+  workerSummary,
+  dispatchLabel,
+  reconnectLabel,
+  resultCountsLabel,
+  coverageLabel,
+  coverageDetails,
+  repositoryMatchingLabel,
   progressLabel,
   projectName,
   runTitle,
@@ -612,7 +632,7 @@ export function SecurityPanel(props: {
                           {run.mode ?? run.plan?.settings.scan.mode ?? 'Fixture'} · {scanScope(run)}{' '}
                           · {startedTime(run.startedAt)}
                           {run.status === 'completed'
-                            ? ` · ${run.findings.length} ${run.findings.length === 1 ? 'finding' : 'findings'}`
+                            ? ` · ${run.findings.length} ${run.findings.length === 1 ? 'finding' : 'findings'} shown`
                             : ''}
                         </div>
                       </button>
@@ -629,45 +649,34 @@ export function SecurityPanel(props: {
                   <h3>{runTitle(run())}</h3>
                   <p>{run().repository}</p>
                 </div>
-                <div class="gs-progress-heading">
-                  <strong>{phaseLabel(run().phase)}</strong>
+                <div class="gs-progress-heading" role="status" aria-live="polite">
+                  <strong>{runPhaseLabel(run())}</strong>
                   <span>{elapsedLabel(run().startedAt, run().finishedAt, now())}</span>
                 </div>
-                <Show when={run().status === 'running' && run().progress.total > 0}>
+                <Show when={hasDeterminateProgress(run())}>
                   <progress
                     class="gs-progress"
-                    aria-label="Reported phase progress"
-                    value={run().progress.done}
-                    max={run().progress.total}
+                    aria-label={`${runPhaseLabel(run())}: reported phase progress`}
+                    value={phaseCounts(run()).done}
+                    max={phaseCounts(run()).total}
                   />
                 </Show>
-                <Show when={run().status === 'running'}>
+                <Show when={hasPhaseProgress(run())}>
                   <div class="gs-progress-meta">
                     <span>{progressLabel(run())}</span>
-                    <span>Counts are for the current phase</span>
+                    <span>{phaseContext(run())}</span>
                   </div>
-                  <p class="gs-live-note">
-                    Findings appear when the scan finishes. Activity below updates as the SDK
-                    reports it.
-                  </p>
+                </Show>
+                <Show when={run().status === 'running' && run().deepProgress}>
+                  <p class="gs-progress-meta">{deepProgressLabel(run())}</p>
+                </Show>
+                <Show when={run().status === 'running'}>
+                  <p class="gs-live-note">{findingsPendingLabel(run())}</p>
                 </Show>
                 <div class="gs-facts">
-                  <Show when={run().estimatedCostUsd !== undefined}>
-                    <span>Estimated usage USD {(run().estimatedCostUsd ?? 0).toFixed(2)}</span>
-                  </Show>
-                  <Show when={run().workers}>
-                    <span>
-                      Workers started: {run().workers?.started}
-                      {run().workers?.planned !== undefined
-                        ? ` of ${run().workers?.planned} planned`
-                        : ''}
-                    </span>
-                  </Show>
-                  <Show when={run().status === 'running' && run().deepProgress}>
-                    <span>
-                      {run().deepProgress?.completed} deep passes complete ·{' '}
-                      {run().deepProgress?.active} active
-                    </span>
+                  <span>{usageLabel(run())}</span>
+                  <Show when={workerSummary(run())}>
+                    <span>{workerSummary(run())}</span>
                   </Show>
                 </div>
                 <Show when={run().status === 'running'}>
@@ -687,12 +696,60 @@ export function SecurityPanel(props: {
                 </Show>
                 <Show when={run().status === 'completed' && run().findings.length === 0}>
                   <div class="gs-empty">
-                    <h3>No findings reported</h3>
+                    <h3>No reportable findings shown</h3>
                     <p>
-                      This scan completed without reported findings. That does not guarantee the
-                      repository is secure.
+                      This view contains no reportable findings. Review coverage and any omitted
+                      items before relying on the result. No findings does not guarantee security.
                     </p>
                   </div>
+                </Show>
+                <Show when={run().status === 'completed'}>
+                  <section class="gs-outcome" aria-label="Scan outcome">
+                    <p class="gs-outcome-summary">{resultCountsLabel(run())}</p>
+                    <p class="gs-muted gs-small">{coverageLabel(run())}</p>
+                    <details class="gs-coverage">
+                      <summary>Coverage and repository matching</summary>
+                      <p class="gs-muted">
+                        Reported review metadata, not proof that every path was assessed.
+                      </p>
+                      <dl class="gs-details-list">
+                        <For each={coverageDetails(run())}>
+                          {(row) => (
+                            <>
+                              <Show when={row.label}>
+                                <dt>{row.label}</dt>
+                              </Show>
+                              <dd>{row.value}</dd>
+                            </>
+                          )}
+                        </For>
+                        <dt>Repository matching</dt>
+                        <dd>{repositoryMatchingLabel(run())}</dd>
+                        <Show when={run().assessment?.repositoryFindings.available}>
+                          <dd class="gs-muted">
+                            {run().assessment?.repositoryFindings.withMatchedFindingIds ??
+                              'Unknown'}{' '}
+                            records have matching finding IDs.{' '}
+                            {run().assessment?.repositoryFindings.notConfirmedInLatestScan ??
+                              'Unknown'}{' '}
+                            were not confirmed in this scan. These are repository records, not
+                            additional findings or deduplication progress.
+                          </dd>
+                        </Show>
+                      </dl>
+                      <For each={run().assessment?.notes ?? []}>
+                        {(note) => <p class="gs-muted">{note}</p>}
+                      </For>
+                      <Show
+                        when={run().skipped || run().assessment?.returnedFindings.informational}
+                      >
+                        <p class="gs-muted">
+                          Informational and unclassified items are not shown in the four-severity
+                          findings list. Review the full local SDK result for those items.
+                        </p>
+                      </Show>
+                    </details>
+                  </section>
                 </Show>
                 <Show when={run().findings.length}>
                   <section class="gs-findings" aria-label="Scan findings">
@@ -745,40 +802,122 @@ export function SecurityPanel(props: {
                         </details>
                       )}
                     </For>
-                    <Show when={run().skipped}>
-                      <p class="gs-muted gs-small">
-                        {run().skipped} informational items are available in the full local SDK
-                        artifacts.
-                      </p>
-                    </Show>
                   </section>
                 </Show>
                 <section class="gs-activity" aria-label="Scan activity">
                   <div class="gs-section-heading">
                     <h3>Activity</h3>
-                    <span>Latest first</span>
+                    <span>Latest reported</span>
                   </div>
+                  <Show when={dispatchLabel(run())}>
+                    <p class="gs-muted gs-small">{dispatchLabel(run())}</p>
+                  </Show>
                   <Show
-                    when={run().events.length}
+                    when={activityRows(run()).length}
                     fallback={
-                      <p class="gs-muted gs-small">Waiting for the SDK to report activity.</p>
+                      <p class="gs-muted gs-small">
+                        {run().status === 'running'
+                          ? 'Waiting for detailed SDK activity.'
+                          : 'No detailed activity was recorded for this run.'}
+                      </p>
                     }
                   >
-                    <ol class="gs-activity-list">
-                      <For each={[...run().events].reverse().slice(0, 20)}>
-                        {(event) => (
-                          <li>
-                            <time dateTime={event.time}>{clockTime(event.time)}</time>
-                            <span>{event.message}</span>
+                    <ul class="gs-worker-activity">
+                      <For each={workerActivityRows(run()).slice(0, 4)}>
+                        {(activity) => (
+                          <li data-activity-id={activity.id}>
+                            <div class="gs-activity-copy">
+                              <span class="gs-activity-actor">
+                                {activityActor(activity.worker)}
+                              </span>
+                              <span>{activity.label}</span>
+                            </div>
+                            <span class="gs-activity-state" data-status={activity.status}>
+                              {activityStatusLabel(activity.status, run())}
+                            </span>
                           </li>
                         )}
                       </For>
-                    </ol>
+                    </ul>
+                  </Show>
+                  <Show when={activityRows(run()).length || run().events.length}>
+                    <details class="gs-activity-history">
+                      <summary>Activity history</summary>
+                      <ol class="gs-activity-list">
+                        <For each={activityRows(run())}>
+                          {(activity) => (
+                            <li>
+                              <time dateTime={activity.updatedAt}>
+                                {clockTime(activity.updatedAt)}
+                              </time>
+                              <span>
+                                {activityActor(activity.worker)} · {activity.label} ·{' '}
+                                {activityStatusLabel(activity.status, run())}
+                                <Show when={activity.paths.length}>
+                                  <span class="gs-activity-paths">{activity.paths.join(', ')}</span>
+                                </Show>
+                              </span>
+                            </li>
+                          )}
+                        </For>
+                      </ol>
+                      <Show when={run().events.length}>
+                        <p class="gs-muted gs-small">Scan milestones · latest first</p>
+                        <ol class="gs-activity-list">
+                          <For each={[...run().events].reverse().slice(0, 20)}>
+                            {(event) => (
+                              <li>
+                                <time dateTime={event.time}>{clockTime(event.time)}</time>
+                                <span>{event.message}</span>
+                              </li>
+                            )}
+                          </For>
+                        </ol>
+                      </Show>
+                    </details>
                   </Show>
                 </section>
                 <details class="gs-advanced">
-                  <summary>Scan details</summary>
+                  <summary>Usage and scan details</summary>
                   <dl class="gs-details-list">
+                    <dt>Usage estimate</dt>
+                    <dd>{usageLabel(run())}</dd>
+                    <dd class="gs-muted">{usageContext(run())}</dd>
+                    <Show when={usageRangeLabel(run())}>
+                      <dt>Estimated range</dt>
+                      <dd>{usageRangeLabel(run())}</dd>
+                    </Show>
+                    <Show when={run().telemetry?.measurement?.cost?.model}>
+                      <dt>Pricing model</dt>
+                      <dd>{run().telemetry?.measurement?.cost?.model}</dd>
+                    </Show>
+                    <Show when={run().telemetry?.measurement?.cost?.pricingAsOf}>
+                      <dt>Pricing as of</dt>
+                      <dd>{run().telemetry?.measurement?.cost?.pricingAsOf}</dd>
+                    </Show>
+                    <Show when={run().telemetry?.measurement?.usage}>
+                      {(usage) => (
+                        <>
+                          <dt>Reported tokens</dt>
+                          <dd>
+                            {usage().inputTokens.toLocaleString()} input ·{' '}
+                            {usage().cachedInputTokens.toLocaleString()} cached input ·{' '}
+                            {usage().outputTokens.toLocaleString()} output
+                          </dd>
+                        </>
+                      )}
+                    </Show>
+                    <Show when={run().deepProgress}>
+                      <dt>Deep review</dt>
+                      <dd>{deepProgressLabel(run())}</dd>
+                      <dd class="gs-muted">
+                        The cap is a maximum, not a target or completion percentage.
+                      </dd>
+                    </Show>
+                    <Show when={reconnectLabel(run())}>
+                      <dt>Connection</dt>
+                      <dd>{reconnectLabel(run())}</dd>
+                    </Show>
                     <dt>Run ID</dt>
                     <dd class="gs-id">{run().runId}</dd>
                     <Show when={run().scanId}>

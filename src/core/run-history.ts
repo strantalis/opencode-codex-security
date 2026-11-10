@@ -1,3 +1,5 @@
+import { sanitizeStoredTelemetry } from './run-telemetry.ts';
+import { sanitizeStoredOutcomeSummary } from './result-summary.ts';
 import { safeFinding } from './report-safety.ts';
 import { mkdir, readdir, lstat, readFile, writeFile, rename, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -69,6 +71,9 @@ export class RunHistory {
         )
           continue;
         s.findings = s.findings.map(safeFinding);
+        s.telemetry = sanitizeStoredTelemetry(s.telemetry, s.repository);
+        s.assessment =
+          s.status === 'completed' ? sanitizeStoredOutcomeSummary(s.assessment) : undefined;
         s.archived = true;
         if (s.status === 'running') {
           s.status = 'error';

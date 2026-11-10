@@ -30,3 +30,19 @@ Validation calls the installed SDK's `validate` against source and returns a dis
 Patch generation/application and fix verification are not exposed. They need a separate isolated-workspace design.
 
 No scan or operation silently signs in. Dedicated Codex Security authentication must already be established. Configuration, previews and status reads do not create SDK clients or perform inference.
+
+## Run detail and uncertainty
+
+Each run retains structured SDK lifecycle, phase-local file/review counts, keyed activity, observed worker-session numbers, reconnect metadata and usage measurements. A review count of zero falls back to available file counts. Dispatch markers are best-effort signals; Deep maximum is a cap, not a percentage denominator.
+
+SDK core completion can precede the final `run()` result. During that interval the app stays running and says it is finalizing. No deduplication progress is inferred. The SDK does not provide a typed live findings callback; findings remain final-only.
+
+Activity IDs are hashed because some SDK IDs contain prose. Raw reasoning, commands, arguments and descriptions are never retained. Fixed categories and bounded repository-relative path mentions provide context; credential/runtime/outside paths are excluded. Running/completed updates share one keyed row and late running updates cannot reverse a terminal row. At most 100 activity entries and 128 observed worker numbers are retained.
+
+Measurements distinguish complete, partial and unavailable usage coverage, include observation time/missing-session counts, and preserve known estimate bounds. Partial values are measured subtotals; no price is a bill or account allowance. A missing upper bound stays unknown. Legacy saved costs have unknown coverage.
+
+Final results distinguish reportable, informational and unclassified returned findings. Repository matching describes returned historical records, never a count of new unique vulnerabilities. Summary lists are bounded and show omissions. Manifest coverage is a guarded, version-sensitive projection: SDK 0.9.1 can remove detailed review state during finalization, so unavailable coverage remains unavailable. Typed scope/review exclusions can still be shown. No extra artifact files are opened by this projection.
+
+New metadata is revalidated and sanitized when private history is loaded. Invalid optional metadata is discarded without losing the whole run.
+
+Older saved runs cannot reconstruct activity or coverage that the previous plugin discarded; their missing details remain unavailable.
