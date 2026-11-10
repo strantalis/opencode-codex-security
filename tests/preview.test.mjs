@@ -50,3 +50,25 @@ test('loopback preview serves files, streams state, runs fixture, rejects cross-
     await app.close();
   }
 });
+
+test('preview failures return a generic response without internal error details', async () => {
+  const app = await startPreview({ port: 0, delayMs: 0 });
+  const getState = app.service.getState;
+  try {
+    for (const failure of [
+      new Error('Cannot read /private/synthetic/credentials.json: synthetic-private-detail'),
+      'synthetic-private-string-failure',
+    ]) {
+      app.service.getState = () => {
+        throw failure;
+      };
+      const response = await fetch(app.url + '/api/state');
+      assert.equal(response.status, 500);
+      assert.match(response.headers.get('content-type'), /application\/json/);
+      assert.deepEqual(await response.json(), { error: 'Preview request failed' });
+    }
+  } finally {
+    app.service.getState = getState;
+    await app.close();
+  }
+});

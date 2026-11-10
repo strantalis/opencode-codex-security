@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join, resolve } from 'node:path';
 
@@ -13,35 +13,40 @@ function run(command, args) {
   assert.equal(result.status, 0, result.stderr || result.stdout);
   return result.stdout;
 }
-const archiveArgument = process.argv.indexOf('--archive');
-let archivePath;
-if (archiveArgument >= 0) {
-  assert.ok(process.argv[archiveArgument + 1], 'Provide the tarball path after --archive.');
-  archivePath = resolve(process.argv[archiveArgument + 1]);
-} else {
-  const [archive] = JSON.parse(
-    run('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', temporary]),
+try {
+  const archiveArgument = process.argv.indexOf('--archive');
+  let archivePath;
+  if (archiveArgument >= 0) {
+    assert.ok(process.argv[archiveArgument + 1], 'Provide the tarball path after --archive.');
+    archivePath = resolve(process.argv[archiveArgument + 1]);
+  } else {
+    const [archive] = JSON.parse(
+      run('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', temporary]),
+    );
+    archivePath = join(temporary, archive.filename);
+  }
+  const consumer = join(temporary, 'consumer');
+  run('npm', [
+    'install',
+    '--ignore-scripts',
+    '--no-audit',
+    '--no-fund',
+    '--prefix',
+    consumer,
+    archivePath,
+  ]);
+  // The consumer resolves transitive dependencies afresh; audit that tree too.
+  run('npm', ['audit', '--prefix', consumer, '--omit=dev', '--audit-level=high']);
+  const packageRoot = join(consumer, 'node_modules', 'opencode-codex-security');
+  for (const extra of [[], ['--codex-gate']]) {
+    process.stdout.write(
+      run(process.execPath, ['scripts/host-test.mjs', '--package', packageRoot, ...extra]),
+    );
+  }
+  console.log(
+    'Exact packed artifact passed fixture and unapproved-SDK tests in the real OpenCode host. Nothing published.',
   );
-  archivePath = join(temporary, archive.filename);
+} finally {
+  // These tarball/consumer files are disposable; never remove the supplied archive.
+  await rm(temporary, { recursive: true, force: true });
 }
-const consumer = join(temporary, 'consumer');
-run('npm', [
-  'install',
-  '--ignore-scripts',
-  '--no-audit',
-  '--no-fund',
-  '--prefix',
-  consumer,
-  archivePath,
-]);
-// The consumer resolves transitive dependencies afresh; audit that tree too.
-run('npm', ['audit', '--prefix', consumer, '--omit=dev', '--audit-level=high']);
-const packageRoot = join(consumer, 'node_modules', 'opencode-codex-security');
-for (const extra of [[], ['--codex-gate']]) {
-  process.stdout.write(
-    run(process.execPath, ['scripts/host-test.mjs', '--package', packageRoot, ...extra]),
-  );
-}
-console.log(
-  'Exact packed artifact passed fixture and unapproved-SDK tests in the real OpenCode host. Nothing published.',
-);

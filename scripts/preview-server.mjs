@@ -74,8 +74,9 @@ export async function startPreview({ port = 4173, delayMs = 350 } = {}) {
         return;
       }
       json(404, { error: 'Not found' });
-    } catch (error) {
-      json(500, { error: String(error.message ?? error) });
+    } catch {
+      // Internal filesystem/service errors must not become client-visible diagnostics.
+      json(500, { error: 'Preview request failed' });
     }
   });
   await new Promise((resolve, reject) => {
