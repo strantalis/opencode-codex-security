@@ -23,6 +23,10 @@ Current global configuration is documented in [GLOBAL-CONFIG.md](GLOBAL-CONFIG.m
 - Models and account entitlement are not checked while loading settings. Daybreak is a separate toggle, not a model; the toggle does not grant access.
 - Cost limits use estimates, not a hard billing cap. In-flight work can exceed the threshold.
 
+## Provider compatibility
+
+Published real mode fixes the provider to OpenAI and authentication to ChatGPT. It does not inherit OpenCode provider settings or expose the SDK's broader provider/base-URL/API-key configuration. LiteLLM and other proxy setups are therefore not supported by this plugin yet. If a user needs that setup, report the integration gap rather than requesting a different sign-in, copying credentials or bypassing workplace policy.
+
 ## Dedicated authentication
 
 Real operations require an existing private, owned, nonsymlink dedicated auth file and directory. A metadata-only guard runs before constructing the real SDK client. It does not read tokens, perform login or import credentials. The injected mock clients bypass this real-auth precondition.

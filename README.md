@@ -17,10 +17,10 @@ Patch application and fix verification are not implemented. Findings arrive at s
 
 ## Requirements
 
-- For the tested consumer/development path: Node.js 26.4 or newer in the 26.x line (tested on 26.8.1). The plugin declares `>=24`, SDK 0.9.1 supports Node 24.x/26.x within that range, and the tested development/TUI dependency tree requires 26.4+. Other combinations are not established by these checks.
+- Node.js 24.x or 26.x for installation. Node 22 does not satisfy the plugin's published `>=24` requirement. Repository development/TUI tests use Node 26.4+ (tested on 26.8.1).
 - For real SDK operations: Python 3.10+; Python 3.10 also needs `tomli`.
 - SDK mode is currently POSIX-only; the credential guard deliberately rejects Windows.
-- OpenCode V2 2.2.6; Desktop integration is experimental.
+- OpenCode V2; 2.2.6 is the original test baseline, not an exact-patch requirement. Verify loading on the installed host. Desktop integration is experimental.
 - For real operations: supported Codex Security account/model access and an existing dedicated sign-in. The plugin checks that dedicated credentials exist privately before constructing the SDK client. It does not perform login or create/import credentials.
 
 SDK mode uses `@openai/codex-security` 0.9.1. Repository source and selected context are sent to OpenAI for inference. SDK cost limits are estimates, **not guaranteed billing caps**. Account quota/availability can also limit scans.
@@ -29,7 +29,24 @@ SDK mode uses `@openai/codex-security` 0.9.1. Repository source and selected con
 
 For a self-contained prompt to hand to another coding agent, see [install with an agent](https://github.com/strantalis/opencode-codex-security/blob/main/docs/AGENT-SETUP.md).
 
-Install an exact live npm version into a new dedicated local consumer outside your source repositories, or use [tested GitHub tarballs](docs/RELEASING.md):
+OpenCode V2 supports npm packages directly. Add this object to your existing `plugins` array, preserving other settings:
+
+```json
+{
+  "package": "opencode-codex-security@0.1.0",
+  "options": { "engine": "fixture" }
+}
+```
+
+Check that no scans, approval dialogs or policy forms are active before editing watched settings or reloading. Open `/security` to verify loading. Fixture mode uses bundled examples, not your repository.
+
+Real mode currently supports [dedicated ChatGPT authentication](docs/SDK.md#dedicated-authentication), not LiteLLM or other proxy/provider configurations. It does not inherit OpenCode's provider settings. If that does not match your approved setup, keep fixture mode; a new sign-in is not a workaround for unsupported provider integration. For the supported setup, change `engine` to `codex` only when the host is idle. This starts no scan; real operations still need authorized scope and source-data transfer.
+
+Verified November 10, 2026: `latest` points to `0.1.0`; `0.1.1` is also public under `next`. Pin the full version you want rather than a moving tag. A staged version or `0.0.0-stage` placeholder is not installable functionality.
+
+### Optional: manage the installation yourself
+
+For explicit npm installation/audit control, use a new dedicated consumer outside source repositories:
 
 ```sh
 mkdir security-plugin && cd security-plugin
@@ -38,30 +55,7 @@ npm install --save-exact --ignore-scripts opencode-codex-security@0.1.0
 npm audit --omit=dev --audit-level=high
 ```
 
-Verified November 10, 2026: `latest` points to `0.1.0`; `0.1.1` is also public under `next`. The example deliberately pins `0.1.0`. Check `npm view opencode-codex-security dist-tags versions --json` before selecting another exact version. A staged version or `0.0.0-stage` placeholder is not installable functionality. Point the plugin configuration below at the absolute path of `security-plugin/node_modules/opencode-codex-security`. This uses the tested local-path plugin route; no special OpenCode install command is required. Keep the lockfile and use `npm ci --ignore-scripts` for repeat installs. Use only a workplace/device authorized for the plugin and its source-data transfers.
-
-For updates, select an exact approved version, install into a new directory, audit, and switch the configured path only when scans, approval dialogs and policy forms have finished. Keep the previous directory for rollback. Nothing updates automatically. Test prereleases explicitly by their full version rather than following a moving tag.
-
-## Register the installed plugin
-
-Before editing the live configuration, confirm that no scans, approval dialogs or policy forms are active: the host may watch changes and reload automatically. Then add the installed package directory to the `plugins` array in your effective OpenCode V2 configuration without replacing unrelated settings or duplicating this plugin:
-
-```json
-{
-  "plugins": [
-    {
-      "package": "/absolute/path/to/security-plugin/node_modules/opencode-codex-security",
-      "options": { "engine": "fixture" }
-    }
-  ]
-}
-```
-
-Restart/reload OpenCode only when no scans, pending approvals or forms are active. Open the Security panel or use `/security` in the terminal. Other useful commands include `/security-scan`, `/security-scans`, `/security-policy`, `/security-validate`, `/security-operations` and `/security-answer`.
-
-The example starts in the explicitly labeled, offline fixture engine, also the default when `engine: codex` is absent. It scans bundled examples, not your repository, and is not a real security assessment.
-
-For real mode, satisfy [dedicated authentication](docs/SDK.md#dedicated-authentication), then change only the engine to `codex` after the same idle-state check. The installed SDK provides its own official interactive login; never copy ambient credentials or paste secrets into chat. Enabling real mode starts no scan. Each real operation still needs authorized scope and source-data transfer to OpenAI. The [agent setup guide](https://github.com/strantalis/opencode-codex-security/blob/main/docs/AGENT-SETUP.md) separates runtime prerequisites, secure sign-in and verification.
+Then set the plugin entry's `package` to the absolute path of `security-plugin/node_modules/opencode-codex-security`. Keep the lockfile; use `npm ci --ignore-scripts` for repeat installs into a separate directory. Keep the previous consumer for rollback and switch paths only when the host is idle. [Tested GitHub tarballs](docs/RELEASING.md) use the same local-path route.
 
 ## Configuration and model tools
 
