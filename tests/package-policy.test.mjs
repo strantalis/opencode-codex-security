@@ -25,10 +25,22 @@ test('package policy accepts only intended package content', () => {
       'src/plugin.ts',
       'src/core/scanner.ts',
       'dist/gui-experimental.cjs',
+      'dist/tui.js',
       'SECURITY.md',
       'fixtures/vulnerable/src/accounts.js',
     ]),
     manifest,
+  );
+});
+test('package policy requires the compiled TUI artifact when it is exported', () => {
+  const compiledManifest = {
+    ...manifest,
+    exports: { ...manifest.exports, './tui': './dist/tui.js' },
+  };
+  assert.throws(() => assertPackagePolicy(archive(), compiledManifest), /Missing export/);
+  assertPackagePolicy(
+    archive(['package.json', 'LICENSE', 'DISCLOSURE', 'src/plugin.ts', 'dist/tui.js']),
+    compiledManifest,
   );
 });
 test('package policy rejects hidden files, credentials, dev output and path traversal', () => {
