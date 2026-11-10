@@ -203,7 +203,7 @@ export class SecurityOperationsService {
   #entries = new Map<string, Entry>();
   #listeners = new Set<(state: SecurityOperationState) => void>();
   constructor(project: string, options: SecurityOperationsOptions = {}) {
-    this.#project = resolve(project);
+    this.#project = project; // prepareScan validates the anchor; never guess process.cwd().
     this.#factory = options.createClient ?? realClient;
     this.#mock = options.mock ?? false;
     if (this.#mock && !options.createClient)

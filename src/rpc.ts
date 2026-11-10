@@ -11,7 +11,8 @@ export const scanInputSchema = {
     },
     repository: {
       type: 'string',
-      description: 'Optional local repository path. Defaults to current OpenCode project.',
+      description:
+        'Optional local repository path. Defaults to the known current OpenCode workspace; use an absolute path when session context is unknown. This request only, never a global target.',
     },
     scopePaths: {
       type: 'array',

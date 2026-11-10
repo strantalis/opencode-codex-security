@@ -6,13 +6,14 @@ import { createSignal, For, Show } from 'solid-js';
 import { Security } from './rpc';
 import type { SecurityOperationState } from './core/security-operations';
 import type { ScanState } from './types';
-import { findingText, phaseLabel, projectName, userError } from './scan-display';
+import { findingText, phaseLabel, userError } from './scan-display';
 
 export function createTuiOperations(
   ctx: Context,
   location: { directory: string },
   scan: () => ScanState | undefined,
   open: () => void,
+  chooseTarget: () => Promise<string | undefined>,
 ) {
   const client = ctx.client.rpc(Security);
   const [operations, setOperations] = createSignal<SecurityOperationState[]>([]);
@@ -96,15 +97,16 @@ export function createTuiOperations(
       run: async () => {
         show();
         await perform(async () => {
+          const repository = await chooseTarget();
+          if (!repository || stopped) return;
           const path = await ctx.ui.dialog.prompt({
             title: 'Policy component',
-            description:
-              'Repository-relative directory, or leave blank for the whole project. Preparation makes no model calls.',
+            description: `Target: ${repository}. Repository-relative directory, or leave blank for the whole project. Preparation makes no model calls.`,
             placeholder: 'src/api',
           });
           if (path === undefined || stopped) return;
           const op = (await client.operationPrepare(
-            { kind: 'policy', ...(path.trim() ? { path: path.trim() } : {}) },
+            { kind: 'policy', repository, ...(path.trim() ? { path: path.trim() } : {}) },
             { location },
           )) as unknown as SecurityOperationState;
           select(op.operationId);
@@ -125,10 +127,10 @@ export function createTuiOperations(
         await perform(async () => {
           const source = scan();
           let finding: string | undefined;
-          let repository = location.directory;
+          let repository: string | undefined;
           if (source?.findings.length) {
             const id = await ctx.ui.dialog.select({
-              title: 'Finding to validate',
+              title: `Finding to validate · ${source.repository}`,
               options: source.findings.map((f) => ({
                 title: `${f.severity.toUpperCase()} ${f.title}`,
                 description: `${f.path}:${f.line}`,
@@ -138,12 +140,14 @@ export function createTuiOperations(
             if (!id) return;
             finding = findingText(source.findings.find((f) => f.id === id)!);
             repository = source.repository;
-          } else
+          } else {
+            repository = await chooseTarget();
+            if (!repository || stopped) return;
             finding = await ctx.ui.dialog.prompt({
               title: 'Finding to validate',
-              description:
-                'Describe the suspected issue, source location and evidence. Do not include secrets. Validation has no SDK cost ceiling.',
+              description: `Target: ${repository}. Describe the suspected issue, source location and evidence. Do not include secrets. Validation has no SDK cost ceiling.`,
             });
+          }
           if (!finding?.trim() || stopped) return;
           const op = (await client.operationPrepare(
             { kind: 'validation', repository, finding },
@@ -178,7 +182,7 @@ export function createTuiOperations(
           current: current()?.operationId,
           options: operations().map((op) => ({
             title: `${op.kind === 'policy' ? 'Policy' : 'Validation'} · ${phaseLabel(op.status)}`,
-            description: `${projectName(op.repository)} · ${op.operationId.slice(0, 8)}`,
+            description: `${op.repository} · ${op.operationId.slice(0, 8)}`,
             value: op.operationId,
           })),
         });
@@ -290,7 +294,7 @@ export function createTuiOperations(
               {op().kind === 'policy' ? 'Policy draft' : 'Finding validation'} ·{' '}
               {phaseLabel(op().status)}
             </text>
-            <text>{op().repository}</text>
+            <text>Target: {op().repository}</text>
             <text>{op().phase}</text>
             <Show when={op().status === 'prepared'}>
               <text>/security-operation-start to review this operation before starting.</text>

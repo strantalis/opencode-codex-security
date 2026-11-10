@@ -1,14 +1,34 @@
 /** @jsxImportSource @opentui/solid */
 import { Plugin } from '@opencode/plugin/tui';
-import { createSignal, For, Show } from 'solid-js';
+import { createSignal, createEffect, on, For, Show } from 'solid-js';
 import { Security } from './rpc';
 import { asState, type ScanList } from './types';
 import type { ScanInputs, ScanPlan } from './core/scan-plan';
-import { describePlan, withScanMode } from './plan-view';
+import {
+  describePlan,
+  isAbsoluteLocalDirectory,
+  latestAvailableDraft,
+  withScanMode,
+} from './plan-view';
 import { createTuiOperations } from './security-tui-operations';
 import {
   elapsedLabel,
-  phaseLabel,
+  runPhaseLabel,
+  hasPhaseProgress,
+  phaseContext,
+  deepProgressLabel,
+  findingsPendingLabel,
+  usageLabel,
+  usageContext,
+  activityRows,
+  workerActivityRows,
+  activityActor,
+  activityStatusLabel,
+  workerSummary,
+  dispatchLabel,
+  resultCountsLabel,
+  coverageLabel,
+  repositoryMatchingLabel,
   progressLabel,
   runTitle,
   scanScope,
@@ -20,18 +40,43 @@ export default Plugin.define({
   setup(ctx) {
     const [catalog, setCatalog] = createSignal<ScanList>();
     const [selected, select] = createSignal<string>();
+    const [details, setDetails] = createSignal(false);
     const [error, setError] = createSignal('');
     const [busy, setBusy] = createSignal(false);
     const [now, setNow] = createSignal(Date.now());
     const [nextInputs, setNextInputs] = createSignal<ScanInputs>({});
+    const [nextPlanId, setNextPlanId] = createSignal<string>();
     let stopped = false,
       polling = false;
     const location = ctx.location ?? ctx.data.location.default();
     const client = ctx.client.rpc(Security);
     const runs = () => catalog()?.runs ?? [];
     const current = () => runs().find((run) => run.runId === selected()) ?? runs()[0];
+    createEffect(
+      on(
+        () => current()?.runId,
+        () => setDetails(false),
+      ),
+    );
     const open = () => ctx.ui.router.navigate({ type: 'plugin', name: 'security' });
-    const operations = createTuiOperations(ctx, location, current, open);
+    const workspace = isAbsoluteLocalDirectory(ctx.location?.directory)
+      ? ctx.location!.directory
+      : undefined;
+    const chooseTarget = async (currentTarget = workspace): Promise<string | undefined> => {
+      const value = await ctx.ui.dialog.prompt({
+        title: 'Target repository',
+        description:
+          'Choose an absolute local path. This changes only the next task, not the history workspace or global settings.',
+        value: currentTarget,
+        placeholder: '/path/to/project',
+      });
+      if (value === undefined || stopped) return;
+      if (!isAbsoluteLocalDirectory(value.trim()))
+        throw new Error('Choose an absolute local repository path before preparing a task.');
+      return value.trim();
+    };
+    const operationTarget = async () => workspace ?? chooseTarget();
+    const operations = createTuiOperations(ctx, location, current, open, operationTarget);
     const active = () => runs().filter((run) => run.status === 'running').length;
     const refresh = async () => {
       if (stopped || polling) return;
@@ -137,10 +182,13 @@ export default Plugin.define({
           throw new Error('All scan slots are in use. Start another scan after one finishes.');
         let input = {};
         if (!catalog()?.engine?.startsWith('local-patterns')) {
-          const draft = catalog()?.drafts.find(
-            (d) => d.plan && !d.planConsumed && Date.parse(d.plan.expiresAt) > Date.now(),
-          );
-          const prepared = draft ?? asState(await client.prepare(nextInputs(), { location }));
+          const draft = latestAvailableDraft(catalog(), Date.now(), nextPlanId());
+          let prepared = draft;
+          if (!prepared) {
+            const repository = nextInputs().repository || workspace || (await chooseTarget());
+            if (!repository || stopped) return;
+            prepared = asState(await client.prepare({ ...nextInputs(), repository }, { location }));
+          }
           const plan = prepared.plan!;
           if (!plan) throw new Error('No scan preview returned. Nothing was started.');
           if (!(await review(plan)) || stopped) return;
@@ -149,6 +197,8 @@ export default Plugin.define({
         const result = asState(await client.start(input, { location }));
         if (!stopped) {
           select(result.runId);
+          setNextInputs({});
+          setNextPlanId(undefined);
           await refresh();
         }
       } catch (e) {
@@ -167,11 +217,11 @@ export default Plugin.define({
         return;
       }
       const id = await ctx.ui.dialog.select({
-        title: 'Choose a scan',
+        title: 'Scans recorded in this workspace',
         current: current()?.runId,
         options: runs().map((run) => ({
           title: `${run.status.toUpperCase()} · ${runTitle(run)}`,
-          description: `${scanScope(run)} · ${run.mode ?? 'fixture'} · ${run.runId?.slice(0, 8)}`,
+          description: `${run.repository} · ${scanScope(run)} · ${run.mode ?? 'fixture'} · ${run.runId?.slice(0, 8)}`,
           value: run.runId!,
         })),
       });
@@ -208,12 +258,18 @@ export default Plugin.define({
       <scrollbox height="100%" focused>
         <box flexDirection="column" padding={1} gap={1}>
           <text fg="#9be4c6">Security</text>
+          <text fg="#b5b5b5">History workspace: {location.directory}</text>
+          <Show when={!workspace}>
+            <text>No active local workspace verified. Choose a target before preparing work.</text>
+          </Show>
           <text>
             {active()
               ? `${active()} of ${catalog()?.maxConcurrent ?? 2} scans running`
               : 'Review code, then follow each scan here.'}
           </text>
-          <text>/security-scan: new scan · /security-scans: switch scan · Esc: back</text>
+          <text fg="#b5b5b5">
+            /security-scan: new · /security-scans: switch · Ctrl+D: details · Esc: back
+          </text>
           <Show when={operations.questionCount()}>
             <text fg="#9be4c6">
               {operations.questionCount()} operation(s) need your answer. /security-operations to
@@ -230,15 +286,16 @@ export default Plugin.define({
             <Show when={catalog()?.historyError}>
               <text fg="#ffb3b3">{catalog()?.historyError}</text>
             </Show>
-            <Show when={runs().length}>
+            <Show when={details() && runs().length}>
               <box flexDirection="column" gap={0}>
-                <text>RECENT SCANS</text>
+                <text>Global settings share defaults, not a target or combined history.</text>
+                <text>RECENT SCANS IN THIS WORKSPACE</text>
                 <For each={runs().slice(0, 6)}>
                   {(run) => (
                     <text fg={run.runId === current()?.runId ? '#9be4c6' : undefined}>
                       {run.runId === current()?.runId ? '> ' : '  '}
                       {run.status.toUpperCase()} · {runTitle(run)} · {run.mode ?? 'fixture'} ·{' '}
-                      {run.runId?.slice(0, 8)}
+                      {run.runId?.slice(0, 8)} · {run.repository}
                     </text>
                   )}
                 </For>
@@ -256,34 +313,26 @@ export default Plugin.define({
               {(run) => (
                 <box flexDirection="column" gap={1}>
                   <text fg="#9be4c6">{runTitle(run())}</text>
-                  <text>{run().repository}</text>
-                  <text>
+                  <text fg="#b5b5b5">Target: {run().repository}</text>
+                  <text fg="#b5b5b5">
                     {scanScope(run())} · {run().mode ?? 'Fixture pattern checks'}
                   </text>
                   <text>
-                    {phaseLabel(run().phase)} ·{' '}
-                    {elapsedLabel(run().startedAt, run().finishedAt, now())}
+                    <b>{runPhaseLabel(run())}</b>
+                    <Show when={elapsedLabel(run().startedAt, run().finishedAt, now())}>
+                      {(elapsed) => <> · {elapsed()}</>}
+                    </Show>
                   </text>
+                  <Show when={hasPhaseProgress(run())}>
+                    <text>
+                      {progressLabel(run())} · {phaseContext(run())}
+                    </text>
+                  </Show>
                   <Show when={run().status === 'running'}>
-                    <text>{progressLabel(run())}. Counts are for the current phase.</text>
-                    <text>
-                      Findings appear when the scan finishes. /security-cancel stops only this scan.
-                    </text>
+                    <text>{findingsPendingLabel(run())}</text>
+                    <text fg="#b5b5b5">/security-cancel: stop this scan</text>
                   </Show>
-                  <Show when={run().estimatedCostUsd !== undefined}>
-                    <text>Estimated usage: USD {(run().estimatedCostUsd ?? 0).toFixed(2)}</text>
-                  </Show>
-                  <Show when={run().workers}>
-                    <text>
-                      Workers started: {run().workers?.started} of {run().workers?.planned} planned
-                    </text>
-                  </Show>
-                  <Show when={run().status === 'running' && run().deepProgress}>
-                    <text>
-                      Deep passes: {run().deepProgress?.completed} complete ·{' '}
-                      {run().deepProgress?.active} active
-                    </text>
-                  </Show>
+                  <text>{usageLabel(run())}</text>
                   <Show when={run().error}>
                     <text fg="#ffb3b3">{run().error}</text>
                   </Show>
@@ -292,26 +341,83 @@ export default Plugin.define({
                   </Show>
                   <Show when={run().status === 'completed'}>
                     <text>
-                      {run().findings.length} findings reported. /security-findings to inspect
-                      evidence. No findings does not guarantee the repository is secure.
+                      <b>{resultCountsLabel(run())}</b> · /security-findings: evidence
                     </text>
                   </Show>
                   <For each={run().findings.slice(0, 5)}>
                     {(finding) => (
                       <text>
-                        {finding.severity.toUpperCase()} · {finding.title} · {finding.path}:
-                        {finding.line}
+                        <span
+                          style={{
+                            fg:
+                              finding.severity === 'high' || finding.severity === 'critical'
+                                ? '#ffb3b3'
+                                : '#ebc28c',
+                          }}
+                        >
+                          {finding.severity.toUpperCase()}
+                        </span>{' '}
+                        · {finding.title}
                       </text>
                     )}
                   </For>
-                  <text>ACTIVITY · latest first</text>
-                  <For each={[...run().events].reverse().slice(0, 8)}>
-                    {(event) => (
+                  <Show when={run().status === 'completed' && !run().findings.length}>
+                    <text fg="#b5b5b5">
+                      No findings does not guarantee security. Check coverage in details.
+                    </text>
+                  </Show>
+                  <text fg="#b5b5b5">
+                    Ctrl+D: {details() ? 'hide' : 'show'} activity, coverage and scan details
+                  </text>
+                  <Show when={details()}>
+                    <text>SCAN DETAILS</text>
+                    <text>{run().repository}</text>
+                    <text>Run: {run().runId}</text>
+                    <Show when={run().telemetry?.measurement?.coverage !== 'complete'}>
+                      <text>{usageContext(run())}</text>
+                    </Show>
+                    <Show when={workerSummary(run())}>
+                      <text>{workerSummary(run())}</text>
+                    </Show>
+                    <Show when={dispatchLabel(run())}>
+                      <text>{dispatchLabel(run())}</text>
+                    </Show>
+                    <Show when={run().status === 'running' && run().deepProgress}>
+                      <text>{deepProgressLabel(run())}. The cap is not a completion target.</text>
+                    </Show>
+                    <Show when={run().status === 'completed'}>
+                      <text>{coverageLabel(run())}</text>
+                      <text>Repository matching: {repositoryMatchingLabel(run())}</text>
                       <text>
-                        {new Date(event.time).toLocaleTimeString()} · {event.message}
+                        Coverage is reported metadata, not proof of exhaustive review. See local SDK
+                        artifacts for details.
                       </text>
-                    )}
-                  </For>
+                    </Show>
+                    <text>ACTIVITY · latest reported</text>
+                    <Show
+                      when={activityRows(run()).length}
+                      fallback={<text>No detailed SDK activity recorded.</text>}
+                    >
+                      <For each={workerActivityRows(run()).slice(0, 5)}>
+                        {(activity) => (
+                          <text>
+                            {activityActor(activity.worker)} · {activity.label} ·{' '}
+                            {activityStatusLabel(activity.status, run())}
+                          </text>
+                        )}
+                      </For>
+                    </Show>
+                    <Show when={run().events.length}>
+                      <text>RECENT MILESTONES</text>
+                      <For each={[...run().events].reverse().slice(0, 3)}>
+                        {(event) => (
+                          <text>
+                            {new Date(event.time).toLocaleTimeString()} · {event.message}
+                          </text>
+                        )}
+                      </For>
+                    </Show>
+                  </Show>
                 </box>
               )}
             </Show>
@@ -324,6 +430,27 @@ export default Plugin.define({
       mode: 'global',
       commands: [
         ...operations.commands,
+        {
+          id: 'security.details',
+          title: 'Security: toggle scan details',
+          bind: 'ctrl+d',
+          group: 'Security',
+          palette: true,
+          slash: { name: 'security-details' },
+          enabled: () => {
+            const route = ctx.ui.router.current();
+            return (
+              !busy() &&
+              !operations.visible() &&
+              !!current() &&
+              route.type === 'plugin' &&
+              route.name === 'security'
+            );
+          },
+          run: () => {
+            setDetails((value) => !value);
+          },
+        },
         {
           id: 'security.back',
           title: 'Security: return home',
@@ -378,6 +505,36 @@ export default Plugin.define({
           run: cancel,
         },
         {
+          id: 'security.target',
+          title: 'Security: choose next scan target',
+          group: 'Security',
+          palette: true,
+          slash: { name: 'security-target' },
+          run: async () => {
+            if (busy()) return;
+            setBusy(true);
+            setError('');
+            try {
+              const repository = await chooseTarget(workspace);
+              if (!repository || stopped) return;
+              // A different target must never inherit another repository's scope or context files.
+              const input: ScanInputs = { repository };
+              setNextInputs(input);
+              setNextPlanId('pending');
+              const prepared = asState(await client.prepare(input, { location }));
+              if (!prepared.plan) throw new Error('No scan preview returned. Nothing was started.');
+              setNextPlanId(prepared.plan.id);
+              await refresh();
+              operations.close();
+              open();
+            } catch (e) {
+              if (!stopped) setError(userError(e));
+            } finally {
+              if (!stopped) setBusy(false);
+            }
+          },
+        },
+        {
           id: 'security.mode',
           title: 'Security: choose next scan depth',
           group: 'Security',
@@ -406,10 +563,15 @@ export default Plugin.define({
                 ],
               });
               if (!mode || stopped) return;
-              const draft = catalog()?.drafts[0]?.plan;
+              const draft = latestAvailableDraft(catalog(), Date.now(), nextPlanId())?.plan;
               const input = withScanMode(draft?.inputs ?? nextInputs(), mode);
+              input.repository ||= draft?.repository || workspace || (await chooseTarget());
+              if (!input.repository || stopped) return;
               setNextInputs(input);
-              await client.prepare(input, { location });
+              setNextPlanId('pending');
+              const prepared = asState(await client.prepare(input, { location }));
+              if (!prepared.plan) throw new Error('No scan preview returned. Nothing was started.');
+              setNextPlanId(prepared.plan.id);
               await refresh();
               open();
             } catch (e) {

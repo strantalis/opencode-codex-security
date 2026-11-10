@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, Show, onCleanup } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, Show, on, onCleanup } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 import type {
   SecurityOperationInputs,
@@ -32,6 +32,7 @@ export function SecurityOperationsPanel(props: {
   const [path, setPath] = createSignal('');
   const [documents, setDocuments] = createSignal('');
   const [finding, setFinding] = createSignal(props.seed?.finding ?? '');
+  const [seeded, setSeeded] = createSignal(!!props.seed);
   const [answer, setAnswer] = createSignal('');
   const [uncapped, setUncapped] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
@@ -39,7 +40,28 @@ export function SecurityOperationsPanel(props: {
   const [now, setNow] = createSignal(Date.now());
   const [loaded, setLoaded] = createSignal(false);
   let stopped = false,
-    polling = false;
+    polling = false,
+    contextRevision = 0;
+  const resetForm = (seed?: ValidationSeed) => {
+    contextRevision++;
+    setRepository(seed?.repository ?? props.directory);
+    setSeeded(!!seed);
+    setFinding(seed?.finding ?? '');
+    setPath('');
+    setDocuments('');
+    setAnswer('');
+    setUncapped(false);
+    setError('');
+    select(undefined);
+    setForm(true);
+  };
+  createEffect(
+    on(
+      () => [props.kind, props.directory, props.seed] as const,
+      () => resetForm(props.seed),
+      { defer: true },
+    ),
+  );
   const operations = createMemo(() => data.operations.filter((op) => op.kind === props.kind));
   const current = createMemo(
     () =>
@@ -93,6 +115,7 @@ export function SecurityOperationsPanel(props: {
   };
   const prepare = (event: SubmitEvent) => {
     event.preventDefault();
+    const preparingRevision = contextRevision;
     void perform(async () => {
       const op = (await props.port.prepare({
         kind: props.kind,
@@ -104,7 +127,7 @@ export function SecurityOperationsPanel(props: {
             : {}
           : { finding: finding() }),
       })) as SecurityOperationState;
-      if (!stopped) {
+      if (!stopped && preparingRevision === contextRevision) {
         select(op.operationId);
         setData(
           'operations',
@@ -139,14 +162,7 @@ export function SecurityOperationsPanel(props: {
       <div class="gs-section-heading">
         <h3>{label()}</h3>
         <Show when={!form()}>
-          <button
-            class="gs-button"
-            disabled={busy()}
-            onClick={() => {
-              setForm(true);
-              setError('');
-            }}
-          >
+          <button class="gs-button" disabled={busy()} onClick={() => resetForm()}>
             New {props.kind === 'policy' ? 'draft' : 'validation'}
           </button>
         </Show>
@@ -164,14 +180,25 @@ export function SecurityOperationsPanel(props: {
       <Show when={form()}>
         <form class="gs-form" onSubmit={prepare}>
           <label>
-            Repository
+            Target repository
             <input
               aria-label="Operation repository"
               value={repository()}
               required
               disabled={busy()}
-              onInput={(event) => setRepository(event.currentTarget.value)}
+              onInput={(event) => {
+                setRepository(event.currentTarget.value);
+                setPath('');
+                setDocuments('');
+                setFinding('');
+                setSeeded(false);
+              }}
             />
+            <span class="gs-help">
+              {seeded()
+                ? 'Starts from the selected finding’s repository. Check the target before review.'
+                : 'Defaults to this workspace. Changing it affects only this operation.'}
+            </span>
           </label>
           <Show
             when={props.kind === 'policy'}
@@ -265,6 +292,7 @@ export function SecurityOperationsPanel(props: {
                         : phaseLabel(op.status)}
                     </span>
                   </div>
+                  <div class="gs-run-target">Target: {op.repository}</div>
                   <div class="gs-run-meta">
                     {new Date(op.createdAt).toLocaleTimeString([], {
                       hour: '2-digit',
@@ -284,7 +312,7 @@ export function SecurityOperationsPanel(props: {
             <div class="gs-detail-title">
               <h3>{phaseLabel(op().phase)}</h3>
               <p>
-                {op().repository}
+                Target: {op().repository}
                 {op().plan.path ? ' / ' + op().plan.path : ''}
               </p>
             </div>

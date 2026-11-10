@@ -404,3 +404,45 @@ test('Desktop targets the local mounted session, never remote or missing locatio
     undefined,
   );
 });
+
+test('unknown or relative session locations cannot silently use process cwd', async (t) => {
+  const root = await project(t);
+  await globalConfig(t);
+  for (const current of ['', 'relative-session']) {
+    for (const input of [{}, { repository: 'src' }])
+      await assert.rejects(prepareScan(current, input), /No local project/);
+    assert.equal((await prepareScan(current, { repository: root })).repository, root);
+    const service = new PlannedScanService(current, { mock: true });
+    t.after(() => service.dispose());
+    await assert.rejects(service.prepare({}), /No local project/);
+    assert.equal((await service.prepare({ repository: root })).repository, root);
+  }
+});
+
+test('automatic preview selection never revives an older repository draft', async () => {
+  const { latestAvailableDraft, localProjectDirectory } = await import('../src/plan-view.ts');
+  const older = {
+    plan: { id: 'old', repository: '/projects/old', expiresAt: new Date(2000).toISOString() },
+  };
+  const latest = {
+    plan: { id: 'latest', repository: '/projects/new', expiresAt: new Date(2000).toISOString() },
+  };
+  const drafts = [older, latest];
+  assert.equal(latestAvailableDraft({ drafts, preview: latest }, 1000), latest);
+  assert.equal(latestAvailableDraft({ drafts }, 1000), undefined);
+  assert.equal(
+    latestAvailableDraft({ drafts, preview: { ...latest, planConsumed: true } }, 1000),
+    undefined,
+  );
+  assert.equal(latestAvailableDraft({ drafts, preview: latest }, 3000), undefined);
+  assert.equal(latestAvailableDraft({ drafts, preview: latest }, 1000, 'old'), older);
+  assert.equal(latestAvailableDraft({ drafts, preview: latest }, 1000, 'missing'), undefined);
+  assert.equal(
+    localProjectDirectory({
+      server: { id: 'sidecar' },
+      directory: 'relative',
+      location: { directory: 'relative' },
+    }),
+    undefined,
+  );
+});
