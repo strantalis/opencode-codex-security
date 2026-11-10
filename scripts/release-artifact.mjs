@@ -49,7 +49,7 @@ const artifact = {
   archive: archive.filename,
   archiveSha256: sha256(await readFile(archivePath)),
   verification:
-    'Exact tarball installed in isolated OpenCode; fixture scan, GUI endpoint, unapproved-SDK gate and native TUI passed. TUI test has no Node/npm/Bun on PATH. No real model calls.',
+    'Exact tarball installed in isolated OpenCode; explicit fixture scan, GUI endpoint, real-default preview/scope, unapproved-SDK gate and native TUI setup-error/cancel checks passed. TUI test has no Node/npm/Bun on PATH. No real model calls.',
 };
 const artifactBytes = JSON.stringify(artifact, null, 2) + '\n';
 await writeFile(join(output, 'build-manifest.json'), artifactBytes);

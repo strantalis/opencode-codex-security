@@ -1,5 +1,6 @@
 import { Rpc } from '@opencode/plugin/rpc';
 const empty = { type: 'object', additionalProperties: false } as const;
+const setupErrors = { 'security.setup': empty } as const;
 export const scanInputSchema = {
   type: 'object',
   properties: {
@@ -59,8 +60,13 @@ export const Security = Rpc.define({
   id: 'gill.security',
   methods: {
     capabilities: { input: empty, output: { type: 'object' } },
-    operationPrepare: { input: operationInputSchema, output: { type: 'object' } },
+    operationPrepare: {
+      input: operationInputSchema,
+      output: { type: 'object' },
+      errors: setupErrors,
+    },
     operationStart: {
+      errors: setupErrors,
       input: {
         type: 'object',
         properties: {
@@ -89,8 +95,9 @@ export const Security = Rpc.define({
       output: { type: 'object' },
     },
     operationCancel: { input: operationID, output: { type: 'object' } },
-    prepare: { input: scanInputSchema, output: { type: 'object' } },
+    prepare: { input: scanInputSchema, output: { type: 'object' }, errors: setupErrors },
     start: {
+      errors: setupErrors,
       input: {
         type: 'object',
         properties: { planId: { type: 'string' }, approveOpenAIInference: { type: 'boolean' } },

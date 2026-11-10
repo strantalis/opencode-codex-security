@@ -165,20 +165,27 @@ export async function resolveSettings(
     throw new ProviderConfigurationError(
       'codex.configFile cannot be combined with useCodexConfig=false.',
     );
-  const importing = explicit.useCodexConfig === true || explicit.configFile !== undefined;
+  const requestedImport = explicit.useCodexConfig === true || explicit.configFile !== undefined;
+  const discovering =
+    !requestedImport &&
+    explicit.useCodexConfig !== false &&
+    explicit.provider === undefined &&
+    explicit.auth === undefined;
+  const importing = requestedImport || discovering;
   if (importing && explicit.provider)
     throw new ProviderConfigurationError(
       'Choose existing Codex config import or codex.provider, not both.',
     );
   if (explicit.profile && !importing)
     throw new ProviderConfigurationError(
-      'codex.profile requires useCodexConfig=true or codex.configFile.',
+      'codex.profile requires Codex config discovery, useCodexConfig=true, or codex.configFile.',
     );
   // Explicit paths take precedence without even consulting ignored CODEX_HOME.
   const imported = importing
     ? await readProviderConfiguration(
         explicit.configFile ?? defaultCodexConfigFile(),
         explicit.profile,
+        discovering && explicit.profile === undefined,
       )
     : undefined;
   const selected = imported ? validateSettings({ codex: imported.settings }).codex! : {};

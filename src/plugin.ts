@@ -18,6 +18,32 @@ import {
 } from './core/security-operations.ts';
 import { registerOperationTools } from './operation-tools.ts';
 import type { SecurityFactory } from './core/codex-adapter.ts';
+import { ProviderConfigurationError } from './core/provider-config.ts';
+import {
+  DedicatedSecurityCredentialsRequiredError,
+  ProviderCredentialsRequiredError,
+} from './core/credential-guard.ts';
+
+// Native RPC deliberately redacts thrown errors. Only our fixed, safe setup
+// errors may be sent as declared errors; never forward arbitrary SDK/OS text.
+async function setupResult<T, E>(
+  action: () => Promise<T>,
+  context: { error: (type: 'security.setup', message: string, data: Record<string, never>) => E },
+): Promise<T | E> {
+  try {
+    return await action();
+  } catch (error) {
+    if (
+      error instanceof ProviderConfigurationError ||
+      error instanceof DedicatedSecurityCredentialsRequiredError ||
+      error instanceof ProviderCredentialsRequiredError
+    )
+      return context.error('security.setup', error.message, {});
+    // Do not attach a cause: SDK/filesystem diagnostics can contain secrets.
+    // eslint-disable-next-line preserve-caught-error
+    throw new Error('Security request failed. Review the exact request and prepare again.');
+  }
+}
 
 // Injection is only for the offline test harness; normal exports never supply a fake client.
 export function createSecurityPlugin(
@@ -29,9 +55,16 @@ export function createSecurityPlugin(
   return Plugin.define({
     id: 'gill.security',
     async setup(ctx) {
+      if (
+        ctx.options.engine !== undefined &&
+        !['codex', 'fixture'].includes(ctx.options.engine as string)
+      )
+        throw new Error(
+          'Unknown Security engine. Use codex for real scans or fixture for explicit offline testing.',
+        );
       const root = fileURLToPath(new URL('../fixtures/vulnerable', import.meta.url));
       const service =
-        ctx.options.engine === 'codex'
+        ctx.options.engine !== 'fixture'
           ? new PlannedScanService(ctx.location.directory, {
               ...testOptions,
               mock: !!testOptions.createClient,
@@ -71,10 +104,10 @@ export function createSecurityPlugin(
           patch: false,
           verifyFix: false,
         }),
-        operationPrepare: async (input) =>
-          requireOperations().prepare(input as SecurityOperationInputs),
-        operationStart: async (input) =>
-          requireOperations().start(input as SecurityOperationApproval),
+        operationPrepare: async (input, context) =>
+          setupResult(() => requireOperations().prepare(input as SecurityOperationInputs), context),
+        operationStart: async (input, context) =>
+          setupResult(() => requireOperations().start(input as SecurityOperationApproval), context),
         operationStatus: async (input) =>
           requireOperations().getState((input as { operationId: string }).operationId),
         operationList: async () => ({
@@ -87,17 +120,22 @@ export function createSecurityPlugin(
           ),
         operationCancel: async (input) =>
           requireOperations().cancel((input as { operationId: string }).operationId),
-        prepare: async (input) => {
-          if (!(service instanceof PlannedScanService))
-            throw new Error(
-              'Preparation is available in SDK mode; fixture mode always scans bundled fixtures.',
-            );
-          return service.prepare(input as ScanInputs);
-        },
-        start: async (input) =>
-          service instanceof PlannedScanService
-            ? service.start(input as { planId?: string; approveOpenAIInference?: boolean })
-            : service.start(),
+        prepare: async (input, context) =>
+          setupResult(async () => {
+            if (!(service instanceof PlannedScanService))
+              throw new Error(
+                'Preparation is available in SDK mode; fixture mode always scans bundled fixtures.',
+              );
+            return service.prepare(input as ScanInputs);
+          }, context),
+        start: async (input, context) =>
+          setupResult(
+            async () =>
+              service instanceof PlannedScanService
+                ? service.start(input as { planId?: string; approveOpenAIInference?: boolean })
+                : service.start(),
+            context,
+          ),
         list: async () => {
           if (service instanceof PlannedScanService) return service.list();
           const state = service.getState();

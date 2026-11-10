@@ -1,3 +1,4 @@
+import './helpers/isolated-codex.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, realpath, rm, readFile, readdir, stat, writeFile } from 'node:fs/promises';

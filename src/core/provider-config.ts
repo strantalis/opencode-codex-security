@@ -96,7 +96,7 @@ export function validateConfigFile(value: unknown): asserts value is string {
   )
     fail('codex.configFile must be an absolute or ~/ path to a TOML file.');
 }
-/** Standard Codex location; call only after explicit import opt-in. No file or credential reads. */
+/** Standard Codex location for prepare-time discovery. No file or credential reads. */
 export function defaultCodexConfigFile(
   environment: { CODEX_HOME?: string } = process.env,
   home = homedir(),
@@ -124,18 +124,29 @@ export function validateProfile(value: unknown): asserts value is string {
   if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(value))
     fail('codex.profile must be a simple named profile in the selected TOML file.');
 }
-/** Explicit opt-in only. Nothing here resolves ambient config, authentication, or SDK profiles. */
-export async function readProviderConfiguration(configFile: string, profile?: string) {
+/** Read only allowlisted routing settings. Never import authentication or SDK runtime profiles. */
+export async function readProviderConfiguration(
+  configFile: string,
+  profile?: string,
+  allowMissing = false,
+) {
   validateConfigFile(configFile);
   if (profile !== undefined) validateProfile(profile);
   const requested = configFile.startsWith('~/') ? join(homedir(), configFile.slice(2)) : configFile;
   let content: string;
   let path: string;
+  let file;
   try {
-    const file = await open(
-      requested,
-      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    file = await open(requested, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  } catch (error) {
+    if (allowMissing && (error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    return fail(
+      'Cannot read the selected Codex config. Use a regular, nonsymlink TOML file of at most 256 KiB.',
     );
+  }
+  // Only an initially absent file permits default routing. Once opened, errors
+  // (including removal before realpath) must never silently change the provider.
+  try {
     try {
       const info = await file.stat();
       if (!info.isFile() || info.size > 256 * 1024) throw new Error();
@@ -174,7 +185,7 @@ export async function readProviderConfiguration(configFile: string, profile?: st
     profileFields = root.profiles[selectedName];
     selected = { ...root, ...profileFields };
   }
-  const id = selected.model_provider;
+  const id = selected.model_provider ?? 'openai';
   if (typeof id !== 'string')
     return fail(
       'The selected Codex config must define its custom model_provider and model_providers entry.',
@@ -188,6 +199,20 @@ export async function readProviderConfiguration(configFile: string, profile?: st
   const profileProviders = record(profileFields.model_providers)
     ? profileFields.model_providers
     : {};
+  const modelSettings = {
+    ...(selected.model === undefined ? {} : { model: selected.model }),
+    ...(selected.model_reasoning_effort === undefined
+      ? {}
+      : { reasoningEffort: selected.model_reasoning_effort }),
+    ...(selected.daybreak === undefined ? {} : { daybreak: selected.daybreak }),
+  };
+  if (id === 'openai') {
+    if (Object.hasOwn(rootProviders, id) || Object.hasOwn(profileProviders, id))
+      return fail(
+        'Overriding the built-in OpenAI provider is unsupported. Configure a custom Responses provider with env_key, or remove the override to use dedicated Codex Security ChatGPT authentication.',
+      );
+    return { settings: modelSettings, path, profile: selectedName };
+  }
   // Inherit only the selected provider's fields, never whole profile/runtime configuration.
   const inherited = Object.hasOwn(rootProviders, id) ? rootProviders[id] : undefined;
   const override = Object.hasOwn(profileProviders, id) ? profileProviders[id] : undefined;
@@ -200,6 +225,10 @@ export async function readProviderConfiguration(configFile: string, profile?: st
       'The selected Codex config must define its custom model_provider and model_providers entry.',
     );
   const native = { ...(record(inherited) ? inherited : {}), ...(record(override) ? override : {}) };
+  if (native.env_key === undefined)
+    return fail(
+      'The selected custom Codex provider has no env_key. Keyless network identity is not supported by the current SDK 0.9.1 authentication flow. This plugin currently supports custom providers through an existing environment-variable API key; other authentication methods are not imported. Do not create a dummy or second key to work around this. No credentials were imported, no scan started, and no fallback provider was selected.',
+    );
   const ignoredHints = [
     'env_key_instructions',
     'request_max_retries',
@@ -229,14 +258,7 @@ export async function readProviderConfiguration(configFile: string, profile?: st
     envKey: native.env_key,
     wireApi: native.wire_api === undefined ? 'responses' : native.wire_api,
   });
-  const settings = {
-    provider,
-    ...(selected.model === undefined ? {} : { model: selected.model }),
-    ...(selected.model_reasoning_effort === undefined
-      ? {}
-      : { reasoningEffort: selected.model_reasoning_effort }),
-    ...(selected.daybreak === undefined ? {} : { daybreak: selected.daybreak }),
-  };
+  const settings = { provider, ...modelSettings };
   // Only known non-secret configuration reaches the digest or callers. Validate
   // model/reasoning/daybreak in sdk-settings before exposing this selection.
   return { settings, path, profile: selectedName };
