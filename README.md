@@ -79,6 +79,10 @@ npm run test:package  # installs the exact tarball into a separate consumer
 
 These launchers isolate configuration under `.runtime/`. The plan-host tests inject a mock SDK: no real inference or login. `npm run preview` is a standalone fixture design harness, not native Desktop verification.
 
+## Private builds and releases
+
+CI produces an exact tested tarball with its source commit and SHA-256 checksums. A manual workflow can promote a successful main build to a private GitHub prerelease without npm tokens. See [private testing and release readiness](docs/RELEASING.md) and [security reporting](SECURITY.md). Public visibility, an open-source license and npm publication remain explicit decisions.
+
 ## Verification limits
 
 The real SDK smoke test authenticated successfully and reached discovery, then stopped at a USD 1 estimated guard. It returned no completed assessment. Mocked integration covers concurrent scans, cancellation, model tools, policy questions and static validation. Direct native Desktop inspection remains a separate verification step.

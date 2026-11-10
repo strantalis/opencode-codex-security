@@ -11,3 +11,5 @@ Use the isolated fixture and injected-mock host tests for development. Do not st
 The normal installed plugin may be watched by OpenCode. Develop in a separate checkout and do not edit/reload an installation while scans or policy questions are active. Local history does not automatically resume an interrupted scan.
 
 Never commit `.runtime/`, dependency folders, credentials, raw scan output or screenshots containing private data. Keep synthetic examples clearly labeled and never deploy them. Do not publish a package or broaden repository visibility without approval.
+
+For private CI artifacts, workplace installation, release promotion and the remaining open-source decisions, see [the release guide](docs/RELEASING.md). Run `npm run audit:runtime` as well as the normal checks. Never use `npm audit fix --force` without inspecting the compatibility and security consequences. Dependency PRs are not automatically merged.
