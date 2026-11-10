@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import type { CodexSecurityConfig } from '@openai/codex-security';
 import {
   readProviderConfiguration,
+  defaultCodexConfigFile,
   providerSource,
   validateProvider,
   validateConfigFile,
@@ -20,6 +21,7 @@ export interface CodexSettings {
   auth?: 'chatgpt' | 'api-key';
   provider?: ProviderSettings;
   configFile?: string;
+  useCodexConfig?: boolean;
   profile?: string;
 }
 export interface ScanSettings {
@@ -56,7 +58,16 @@ export function validateSettings(raw: unknown): SdkSettings {
       throw new Error(`${section} settings must be an object.`);
     const allowed =
       section === 'codex'
-        ? ['model', 'reasoningEffort', 'daybreak', 'auth', 'provider', 'configFile', 'profile']
+        ? [
+            'model',
+            'reasoningEffort',
+            'daybreak',
+            'auth',
+            'provider',
+            'configFile',
+            'useCodexConfig',
+            'profile',
+          ]
         : ['mode', 'maxCostUsd', 'maxTimeMinutes', 'cyberAccessProgram', 'workers', 'subagents'];
     for (const [key, val] of Object.entries(group)) {
       if (!allowed.includes(key))
@@ -65,6 +76,8 @@ export function validateSettings(raw: unknown): SdkSettings {
         );
       if (key === 'auth' && val !== 'chatgpt' && val !== 'api-key')
         throw new ProviderConfigurationError('codex.auth must be chatgpt or api-key.');
+      if (key === 'useCodexConfig' && typeof val !== 'boolean')
+        throw new ProviderConfigurationError('codex.useCodexConfig must be true or false.');
       if (key === 'provider') validateProvider(val);
       if (key === 'configFile') validateConfigFile(val);
       if (key === 'profile') validateProfile(val);
@@ -148,15 +161,33 @@ export async function resolveSettings(
 ): Promise<ResolvedSdkSettings> {
   validateSettings(source);
   const explicit = source.codex ?? {};
-  if (explicit.configFile && explicit.provider)
-    throw new ProviderConfigurationError('Choose codex.configFile or codex.provider, not both.');
-  if (explicit.profile && !explicit.configFile)
-    throw new ProviderConfigurationError('codex.profile requires codex.configFile.');
-  const imported = explicit.configFile
-    ? await readProviderConfiguration(explicit.configFile, explicit.profile)
+  if (explicit.useCodexConfig === false && explicit.configFile)
+    throw new ProviderConfigurationError(
+      'codex.configFile cannot be combined with useCodexConfig=false.',
+    );
+  const importing = explicit.useCodexConfig === true || explicit.configFile !== undefined;
+  if (importing && explicit.provider)
+    throw new ProviderConfigurationError(
+      'Choose existing Codex config import or codex.provider, not both.',
+    );
+  if (explicit.profile && !importing)
+    throw new ProviderConfigurationError(
+      'codex.profile requires useCodexConfig=true or codex.configFile.',
+    );
+  // Explicit paths take precedence without even consulting ignored CODEX_HOME.
+  const imported = importing
+    ? await readProviderConfiguration(
+        explicit.configFile ?? defaultCodexConfigFile(),
+        explicit.profile,
+      )
     : undefined;
   const selected = imported ? validateSettings({ codex: imported.settings }).codex! : {};
-  const { configFile: _configFile, profile: _profile, ...overrides } = explicit;
+  const {
+    configFile: _configFile,
+    useCodexConfig: _useCodexConfig,
+    profile: _profile,
+    ...overrides
+  } = explicit;
   const codex = { ...defaultSettings.codex, ...selected, ...overrides };
   if (codex.provider) {
     codex.provider = validateProvider(codex.provider);

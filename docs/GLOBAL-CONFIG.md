@@ -30,8 +30,9 @@ Without provider opt-in, the defaults preserve dedicated ChatGPT authentication,
 - `codex.model`: model ID, forwarded to SDK constructor `codexOverrides.model`.
 - `codex.reasoningEffort`: none, minimal, low, medium, high or xhigh; forwarded as `model_reasoning_effort`. Actual support depends on the selected model.
 - `codex.daybreak`: boolean, forwarded as `codexOverrides.daybreak`. Custom-provider Daybreak is currently unsupported by this plugin.
-- `codex.configFile`: explicit absolute or `~/` path to an existing native Codex TOML file. Imports only the selected custom provider and model settings, as described below.
-- `codex.profile`: optional native `[profiles.name]` selection inside `configFile`. Without it, the file's top-level `profile` is used if present.
+- `codex.useCodexConfig`: set `true` to import the existing Codex provider from the standard config location without specifying a path. Omitted or `false` alone leaves import off. An explicit `configFile` independently opts in when the flag is omitted.
+- `codex.configFile`: explicit absolute or `~/` TOML path that overrides the standard location. Existing configurations using this field alone remain supported.
+- `codex.profile`: optional native `[profiles.name]` selection inside the imported file. Without it, the file's top-level `profile` is used if present.
 - `codex.provider`: explicit custom-provider object as an alternative to `configFile`.
 - `codex.auth`: optional `chatgpt` or `api-key`. Defaults to `chatgpt` without a custom provider and `api-key` with one. Contradictory choices fail closed.
 - `scan.mode`: standard or deep, used only when no per-scan mode is supplied. The built-in fallback is standard.
@@ -52,12 +53,24 @@ If your existing Codex configuration already defines a custom provider with `bas
 ```json
 {
   "codex": {
-    "configFile": "~/.codex/config.toml"
+    "useCodexConfig": true
   }
 }
 ```
 
-Use the real approved config path if your organization uses another location. Add `"profile": "work"` to select `[profiles.work]` inside that file. To read a standalone `work.config.toml`, point `configFile` at that file instead. These are plugin import options, **not** SDK `profile` overrides. The plugin does not read ambient Codex configuration or OpenCode provider settings unless you opt in.
+The default path is `$CODEX_HOME/config.toml` when `CODEX_HOME` is set and nonempty, otherwise `~/.codex/config.toml`. Exactly empty `CODEX_HOME` behaves as unset; whitespace-only, relative (including literal `~/...`) or control-character values fail clearly. `CODEX_HOME` must be an absolute directory; explicit `configFile` still supports `~/` expansion. Spaces in valid absolute directory names are preserved. A missing or invalid selected file fails without switching providers or falling back to ChatGPT.
+
+For another location, add `"configFile": "/approved/path/config.toml"`; this takes precedence without inspecting `CODEX_HOME`. The existing `configFile`-only syntax also works. Add `"profile": "work"` to select `[profiles.work]` inside the imported file. To read a standalone `work.config.toml`, point `configFile` at that file instead. These are plugin import options, **not** SDK `profile` overrides. The plugin reads no Codex configuration without import opt-in, and does not import OpenCode provider settings. This feature is provider-agnostic for the supported custom HTTPS Responses + environment-key route; it is not support for every Codex transport, authentication method or feature.
+
+Option combinations are explicit:
+
+- `useCodexConfig: true` selects the standard location; an explicit `configFile` overrides it.
+- `configFile` without `useCodexConfig` remains an import opt-in.
+- Neither option, or `useCodexConfig: false` alone, preserves the default ChatGPT route.
+- `useCodexConfig: false` with `configFile` is contradictory and rejected.
+- Explicit `provider` settings work with import omitted/false, but cannot be combined with import enabled.
+
+The resolved source path appears in the approval preview. Changing `CODEX_HOME` to select another file invalidates existing scan, policy and validation previews, even when the selected model/provider fields match.
 
 The named environment key must already be available to the OpenCode service process. GUI launches and restarted services may not inherit terminal exports; a missing variable is a local setup blocker, not a request to display or copy its value. Never paste its value into chat, JSON, TOML, logs or screenshots. No sign-in is needed for this route. The plugin checks only the selected variable's presence after operation approval; the SDK consumes the value during the authorized operation. A missing key fails without falling back to ChatGPT or another key.
 

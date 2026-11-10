@@ -5,7 +5,11 @@ import { mkdtemp, mkdir, writeFile, realpath, rm, symlink, readdir } from 'node:
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { resolveSettings, sdkConfiguration, loadGlobalSettings } from '../src/core/sdk-settings.ts';
-import { validateProvider, readProviderConfiguration } from '../src/core/provider-config.ts';
+import {
+  validateProvider,
+  readProviderConfiguration,
+  defaultCodexConfigFile,
+} from '../src/core/provider-config.ts';
 import {
   requireSdkCredentials,
   ProviderCredentialsRequiredError,
@@ -646,4 +650,179 @@ test('profile inheritance rejects unsafe inherited fields and malformed provider
     resolveSettings({ codex: { configFile: codexFile, profile: 'work' } }),
     /table must be an object/,
   );
+});
+
+function setEnvironmentPath(t, name, value) {
+  const previous = process.env[name];
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+  t.after(() => {
+    if (previous === undefined) delete process.env[name];
+    else process.env[name] = previous;
+  });
+}
+
+test('standard Codex config path uses CODEX_HOME then home without reading files or credentials', () => {
+  const home = '/synthetic/home';
+  assert.equal(defaultCodexConfigFile({}, home), '/synthetic/home/.codex/config.toml');
+  assert.equal(
+    defaultCodexConfigFile({ CODEX_HOME: '' }, home),
+    '/synthetic/home/.codex/config.toml',
+  );
+  assert.equal(
+    defaultCodexConfigFile({ CODEX_HOME: '/synthetic/work codex' }, home),
+    '/synthetic/work codex/config.toml',
+  );
+  assert.equal(
+    defaultCodexConfigFile({ CODEX_HOME: '/synthetic/work codex ' }, home),
+    '/synthetic/work codex /config.toml',
+  );
+  for (const value of [
+    ' ',
+    '  \t ',
+    '.',
+    'relative/path',
+    '~/work',
+    '~',
+    '/synthetic/\npath',
+    '/synthetic/\0path',
+    '/synthetic/\n/../selected',
+    '/synthetic/\0/../selected',
+    'relative/../~/work',
+  ])
+    assert.throws(() => defaultCodexConfigFile({ CODEX_HOME: value }, home), /CODEX_HOME must be/);
+});
+
+test('useCodexConfig opts into the standard file; profile/model selection stays independent of path choice', async (t) => {
+  const { root, codexFile } = await fixture(t);
+  const directory = join(root, 'custom home');
+  await mkdir(directory);
+  await writeFile(
+    join(directory, 'config.toml'),
+    nativeConfig + '\n[profiles.work]\nmodel = "gpt-6.1-sol"\n',
+  );
+  setEnvironmentPath(t, 'CODEX_HOME', directory);
+  const settings = await resolveSettings({ codex: { useCodexConfig: true, profile: 'work' } });
+  assert.equal(settings.codex.source.path, join(directory, 'config.toml'));
+  assert.equal(settings.codex.source.profile, 'work');
+  assert.equal(settings.codex.model, 'gpt-6.1-sol');
+  assert.equal(settings.codex.auth, 'api-key');
+  assert.deepEqual(settings.codex.provider, provider);
+  assert.equal(settings.codex.useCodexConfig, undefined);
+  const overridden = await resolveSettings({
+    codex: { useCodexConfig: true, configFile: codexFile },
+  });
+  assert.equal(overridden.codex.source.path, codexFile);
+  assert.equal(overridden.codex.model, 'gpt-5.6-sol');
+});
+
+test('unset and empty CODEX_HOME opt-in resolves the synthetic home config', async (t) => {
+  const { root } = await fixture(t);
+  const home = join(root, 'isolated home');
+  await mkdir(join(home, '.codex'), { recursive: true });
+  await writeFile(join(home, '.codex', 'config.toml'), nativeConfig);
+  setEnvironmentPath(t, 'HOME', home);
+  setEnvironmentPath(t, 'CODEX_HOME', undefined);
+  assert.equal(
+    (await resolveSettings({ codex: { useCodexConfig: true } })).codex.source.path,
+    join(home, '.codex', 'config.toml'),
+  );
+  process.env.CODEX_HOME = '';
+  assert.equal(
+    (await resolveSettings({ codex: { useCodexConfig: true } })).codex.source.path,
+    join(home, '.codex', 'config.toml'),
+  );
+});
+
+test('without import opt-in, malformed ambient location is ignored and ChatGPT defaults remain; explicit path also wins', async (t) => {
+  const { codexFile } = await fixture(t);
+  setEnvironmentPath(t, 'CODEX_HOME', 'SYNTHETIC_INVALID_RELATIVE_HOME');
+  for (const source of [{}, { codex: { useCodexConfig: false } }]) {
+    const settings = await resolveSettings(source);
+    assert.equal(settings.codex.auth, 'chatgpt');
+    assert.equal(settings.codex.provider, undefined);
+    assert.equal(settings.codex.source, undefined);
+  }
+  for (const codex of [{ configFile: codexFile }, { useCodexConfig: true, configFile: codexFile }])
+    assert.equal((await resolveSettings({ codex })).codex.source.path, codexFile);
+  await assert.rejects(
+    resolveSettings({ codex: { useCodexConfig: true } }),
+    (error) =>
+      /CODEX_HOME must be/.test(error.message) && !error.message.includes('SYNTHETIC_INVALID'),
+  );
+});
+
+test('import option combinations are explicit and missing default config never falls back to ChatGPT', async (t) => {
+  const { root, codexFile } = await fixture(t);
+  setEnvironmentPath(t, 'CODEX_HOME', join(root, 'missing'));
+  await assert.rejects(resolveSettings({ codex: { useCodexConfig: true } }), /Cannot read/);
+  await assert.rejects(
+    resolveSettings({ codex: { useCodexConfig: false, configFile: codexFile } }),
+    /cannot be combined/,
+  );
+  await assert.rejects(resolveSettings({ codex: { useCodexConfig: true, provider } }), /not both/);
+  await assert.rejects(
+    resolveSettings({ codex: { useCodexConfig: false, profile: 'work' } }),
+    /requires/,
+  );
+  await assert.rejects(
+    resolveSettings({ codex: { useCodexConfig: 'true' } }),
+    /must be true or false/,
+  );
+  assert.equal(
+    (await resolveSettings({ codex: { useCodexConfig: false, provider } })).codex.auth,
+    'api-key',
+  );
+});
+
+test('changed CODEX_HOME invalidates scan, policy, and validation even with identical selected config', async (t) => {
+  const { root, globalFile } = await fixture(t, { codex: { useCodexConfig: true } });
+  const first = join(root, 'first'),
+    second = join(root, 'second');
+  for (const directory of [first, second]) {
+    await mkdir(directory);
+    await writeFile(join(directory, 'config.toml'), nativeConfig);
+  }
+  setEnvironmentPath(t, 'CODEX_HOME', first);
+  let created = 0;
+  const scans = new PlannedScanService(root, {
+    createClient() {
+      created++;
+      throw new Error('Must not create.');
+    },
+  });
+  const operations = new SecurityOperationsService(root, {
+    createClient() {
+      created++;
+      throw new Error('Must not create.');
+    },
+  });
+  t.after(() => Promise.all([scans.dispose(), operations.dispose()]));
+  const scan = await scans.prepare();
+  const policy = await operations.prepare({ kind: 'policy' });
+  const validation = await operations.prepare({
+    kind: 'validation',
+    finding: 'Synthetic finding.',
+  });
+  assert.equal(scan.plan.settings.codex.source.path, join(first, 'config.toml'));
+  process.env.CODEX_HOME = second;
+  const current = await prepareScan(root);
+  assert.equal(current.globalConfigFile, globalFile);
+  assert.equal(current.globalConfigDigest, scan.plan.globalConfigDigest);
+  assert.equal(current.settings.codex.source.digest, scan.plan.settings.codex.source.digest);
+  assert.notEqual(current.settings.codex.source.path, scan.plan.settings.codex.source.path);
+  await assert.rejects(
+    scans.start({ planId: scan.plan.id, approveOpenAIInference: true }),
+    /changed after preview/,
+  );
+  for (const op of [policy, validation])
+    await assert.rejects(
+      operations.start({
+        operationId: op.operationId,
+        approveOpenAIInference: true,
+        approveUncappedValidation: true,
+      }),
+      /changed after preview/,
+    );
+  assert.equal(created, 0);
 });

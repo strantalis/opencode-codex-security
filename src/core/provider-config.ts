@@ -96,6 +96,30 @@ export function validateConfigFile(value: unknown): asserts value is string {
   )
     fail('codex.configFile must be an absolute or ~/ path to a TOML file.');
 }
+/** Standard Codex location; call only after explicit import opt-in. No file or credential reads. */
+export function defaultCodexConfigFile(
+  environment: { CODEX_HOME?: string } = process.env,
+  home = homedir(),
+): string {
+  const configured = environment.CODEX_HOME;
+  let path: string;
+  try {
+    if (configured !== undefined && configured !== '' && !isAbsolute(configured)) throw new Error();
+    const directory =
+      configured === undefined || configured === '' ? join(home, '.codex') : configured;
+    // Check the raw directory before path normalization can erase a control
+    // character segment or turn a relative value into an accepted ~/ path.
+    validateConfigFile(`${directory}/config.toml`);
+    path = join(directory, 'config.toml');
+    validateConfigFile(path);
+  } catch {
+    return fail(
+      'CODEX_HOME must be an absolute directory path without control characters. Leave it unset or empty to use ~/.codex/config.toml.',
+    );
+  }
+
+  return path;
+}
 export function validateProfile(value: unknown): asserts value is string {
   if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(value))
     fail('codex.profile must be a simple named profile in the selected TOML file.');
