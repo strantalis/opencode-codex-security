@@ -1,0 +1,15 @@
+node_modules/
+.runtime/
+dist/*
+!dist/gui-experimental.cjs
+evidence/
+coverage/
+*.log
+*.tgz
+__pycache__/
+.DS_Store
+.env
+.env.*
+!.env.example
+auth.json
+credentials.json

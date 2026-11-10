@@ -1,0 +1,27 @@
+name: Checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+      - run: git diff --exit-code -- dist/gui-experimental.cjs
+      - run: npm run pack:check
+      - run: npm run setup:local
+      - run: npm run test:host
+      - run: npm run test:plan-host
+      - run: npm run test:package

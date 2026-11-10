@@ -1,0 +1,68 @@
+{
+  "name": "opencode-codex-security",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/plugin.ts",
+    "./tui": "./src/tui.tsx",
+    "./gui-experimental": "./dist/gui-experimental.cjs",
+    "./rpc": "./src/rpc.ts"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "build": "vite build",
+    "demo": "node scripts/demo.mjs",
+    "preview": "node scripts/preview-server.mjs",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run build",
+    "setup:local": "node scripts/setup-local.mjs",
+    "test:host": "node scripts/host-test.mjs && node scripts/host-test.mjs --codex-gate",
+    "test:plan-host": "node scripts/host-plan-test.mjs",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "pack:check": "npm run build && node scripts/check-package.mjs",
+    "prepack": "npm run build",
+    "test:package": "npm run build && node scripts/packed-host-test.mjs"
+  },
+  "dependencies": {
+    "@openai/codex-security": "0.9.1",
+    "@opencode/plugin": "2.2.6",
+    "solid-js": "^1.9.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@opencode/cli": "2.2.6",
+    "@opentui/core": "0.8.1",
+    "@opentui/solid": "0.8.1",
+    "@types/node": "^24.0.0",
+    "eslint": "^9.39.5",
+    "globals": "^16.5.0",
+    "prettier": "^3.9.10",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.72.2",
+    "vite": "^7.0.0",
+    "vite-plugin-solid": "^2.11.15"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "description": "Codex Security scans, policy drafts and finding validation inside OpenCode V2.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/strantalis/opencode-codex-security.git"
+  },
+  "files": [
+    "src/",
+    "dist/gui-experimental.cjs",
+    "fixtures/vulnerable/",
+    "README.md",
+    "CONTRIBUTING.md",
+    "docs/GLOBAL-CONFIG.md",
+    "docs/MULTI-SCAN.md",
+    "docs/SDK.md",
+    "docs/PUBLISHING.md"
+  ]
+}

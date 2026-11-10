@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>OpenCode · Local security preview</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script defer src="/app.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="rail" aria-label="Workspace">
+        <div class="brand" aria-label="OpenCode">oc<span>_</span></div>
+        <div class="rail-item active" aria-label="Security panel" title="Security panel">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z" />
+            <path d="m8.5 12 2.5 2.5 4.5-5" />
+          </svg>
+        </div>
+        <div class="rail-bottom"><span class="local-dot"></span><span>LOCAL</span></div>
+      </aside>
+      <div class="workspace">
+        <header class="workspace-bar">
+          <div class="breadcrumb">
+            <span>Workspace</span><span class="slash">/</span
+            ><strong id="repository-name">Synthetic repository</strong>
+          </div>
+          <div class="connection">
+            <span id="connection-dot" class="connection-dot"></span
+            ><span id="connection-label">Connecting</span>
+          </div>
+        </header>
+        <main>
+          <div class="page-heading">
+            <div>
+              <div class="eyebrow">OPENCODE V2 · PLUGIN PREVIEW</div>
+              <h1>Security<span class="preview-tag">Prototype</span></h1>
+              <p class="subtitle">Inspect your code. Keep it on your machine.</p>
+            </div>
+            <button id="scan-button" class="button primary" type="button">
+              <span aria-hidden="true">↗</span><span id="scan-button-label">Run local scan</span>
+            </button>
+          </div>
+          <div class="prototype-notice">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="5" y="10" width="14" height="11" rx="2" />
+              <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+            </svg>
+            <p>
+              <strong>Local-only sandbox.</strong> A pattern-matching engine scanning a synthetic
+              repository. Not the real Codex Security service; results need human review.
+            </p>
+          </div>
+          <section class="scan-card" aria-labelledby="scan-heading">
+            <div class="scan-top">
+              <div class="scan-title">
+                <span id="scan-indicator" class="scan-indicator"></span>
+                <div>
+                  <h2 id="scan-heading">Ready when you are</h2>
+                  <p id="scan-description">Start a scan to inspect the sample repository.</p>
+                </div>
+              </div>
+              <div class="scan-meta">
+                <span id="elapsed-time">—</span
+                ><span id="scan-status" class="status-chip">Idle</span>
+              </div>
+            </div>
+            <div
+              id="progress-track"
+              class="progress-track"
+              role="progressbar"
+              aria-label="Scan progress"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+            >
+              <div id="progress-fill"></div>
+            </div>
+            <div class="scan-bottom">
+              <span id="engine-label">ENGINE <strong>Local patterns</strong></span
+              ><span id="progress-text">No files scanned yet</span>
+            </div>
+            <div id="scan-error" class="error-message" role="alert" hidden></div>
+          </section>
+          <section class="summary-grid" aria-label="Filter findings by severity">
+            <button
+              class="severity-card"
+              data-severity="critical"
+              type="button"
+              aria-pressed="false"
+            >
+              <span class="severity-name"><i class="severity-dot critical"></i>Critical</span
+              ><span id="count-critical" class="severity-count">0</span
+              ><span class="severity-note">Immediate attention</span>
+            </button>
+            <button class="severity-card" data-severity="high" type="button" aria-pressed="false">
+              <span class="severity-name"><i class="severity-dot high"></i>High</span
+              ><span id="count-high" class="severity-count">0</span
+              ><span class="severity-note">Prioritize for review</span>
+            </button>
+            <button class="severity-card" data-severity="medium" type="button" aria-pressed="false">
+              <span class="severity-name"><i class="severity-dot medium"></i>Medium</span
+              ><span id="count-medium" class="severity-count">0</span
+              ><span class="severity-note">Worth a closer look</span>
+            </button>
+            <button class="severity-card" data-severity="low" type="button" aria-pressed="false">
+              <span class="severity-name"><i class="severity-dot low"></i>Low</span
+              ><span id="count-low" class="severity-count">0</span
+              ><span class="severity-note">Improve resilience</span>
+            </button>
+          </section>
+          <div class="results-grid">
+            <section class="findings-panel" aria-labelledby="findings-heading">
+              <div class="panel-heading">
+                <h2 id="findings-heading">
+                  Findings <span id="finding-count" class="count-tag">0</span>
+                </h2>
+                <button id="clear-filter" class="text-button" type="button" hidden>
+                  Clear filters
+                </button>
+              </div>
+              <div class="filter-bar">
+                <label class="search"
+                  ><svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="10" cy="10" r="6" />
+                    <path d="m15 15 5 5" /></svg
+                  ><input
+                    id="finding-search"
+                    type="search"
+                    aria-label="Search findings"
+                    placeholder="Search findings or files…"
+                    autocomplete="off" /></label
+                ><label class="sr-only" for="severity-filter">Severity</label
+                ><select id="severity-filter">
+                  <option value="all">All severities</option>
+                  <option value="critical">Critical</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+              <div id="findings-list" class="findings-list"></div>
+              <div id="findings-empty" class="empty-state">
+                <div class="empty-icon">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z" />
+                    <path d="M12 8v5m0 3v.1" />
+                  </svg>
+                </div>
+                <h3 id="empty-heading">A clearer picture starts here</h3>
+                <p id="empty-description">
+                  Run a local scan to see potential issues, the code behind them, and suggested
+                  fixes.
+                </p>
+                <span class="empty-hint">Your code stays local</span>
+              </div>
+              <div class="panel-footer">
+                <span id="visible-count">0 findings</span
+                ><span>Pattern matches · verify before fixing</span>
+              </div>
+            </section>
+            <section id="detail-panel" class="detail-panel" aria-labelledby="detail-heading">
+              <div class="panel-heading">
+                <h2 id="detail-heading">Finding details</h2>
+                <span class="inspector-label">INSPECTOR</span>
+              </div>
+              <div id="detail-content" class="detail-content">
+                <div class="detail-empty">
+                  <span aria-hidden="true">↖</span>
+                  <h3>Follow the evidence</h3>
+                  <p>
+                    Select a finding to inspect its location, evidence, and recommended next step.
+                  </p>
+                </div>
+              </div>
+            </section>
+          </div>
+          <section class="activity-panel" aria-labelledby="activity-heading">
+            <div class="panel-heading">
+              <h2 id="activity-heading">Scan activity</h2>
+              <span id="activity-count" class="inspector-label">0 EVENTS</span>
+            </div>
+            <ol id="activity-list">
+              <li class="activity-placeholder">Scan events will appear here as they happen.</li>
+            </ol>
+          </section>
+          <footer class="workspace-footer">
+            <span><i class="local-dot"></i> Runs on localhost · No cloud analysis</span
+            ><span>OpenCode desktop concept / v0.1</span>
+          </footer>
+        </main>
+      </div>
+    </div>
+    <div id="live-announcement" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+  </body>
+</html>

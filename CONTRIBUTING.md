@@ -1,0 +1,11 @@
+# Contributing
+
+Use Node 26.4+ in the 26.x line (`nvm use`). Install with `npm ci --ignore-scripts`, then run `npm run check` and `npm run pack:check` before committing. After `npm run setup:local`, also run `npm run test:host`, `npm run test:plan-host` and `npm run test:package` for host/package changes. `npm run format` formats maintained files; intentionally vulnerable fixtures are excluded so their source locations stay stable.
+
+ESLint checks JavaScript and TypeScript correctness, including unused variables. Explicit `any` remains permitted at existing host/RPC integration boundaries; this does not replace the separate TypeScript check. Prefer typed boundaries for new code.
+
+Use the isolated fixture and injected-mock host tests for development. Do not start paid SDK operations, copy sign-ins, or send repository data merely to test the plugin. Real runs require explicit authorization for the target and expected usage.
+
+The normal installed plugin may be watched by OpenCode. Develop in a separate checkout and do not edit/reload an installation while scans or policy questions are active. Local history does not automatically resume an interrupted scan.
+
+Never commit `.runtime/`, dependency folders, credentials, raw scan output or screenshots containing private data. Keep synthetic examples clearly labeled and never deploy them. Do not publish a package or broaden repository visibility without approval.

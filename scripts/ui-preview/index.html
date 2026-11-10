@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Security panel component test</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #151515;
+        color: #eee;
+        font:
+          13px/1.5 -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+      }
+      #label {
+        padding: 10px 18px;
+        font-size: 11px;
+        color: #b5b5b5;
+        border-bottom: 1px solid #454545;
+      }
+      #root {
+        width: min(100%, 580px);
+        height: calc(100vh - 40px);
+        margin: auto;
+        border-inline: 1px solid #454545;
+      }
+      body.narrow #root {
+        width: min(100%, 360px);
+      }
+      #journal {
+        position: fixed;
+        bottom: 0;
+        right: 0;
+        max-width: 240px;
+        background: #222;
+        font-size: 10px;
+        padding: 4px;
+        z-index: 10;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="label">Isolated component test · synthetic scan data · no model calls</div>
+    <div id="root"></div>
+    <output id="journal" aria-label="Test requests"></output>
+    <script type="module" src="/main.tsx"></script>
+  </body>
+</html>
