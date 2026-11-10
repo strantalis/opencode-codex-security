@@ -1,4 +1,4 @@
-import { loadGlobalSettings, mergeSettings, type ResolvedSdkSettings } from './sdk-settings.ts';
+import { loadGlobalSettings, resolveSettings, type ResolvedSdkSettings } from './sdk-settings.ts';
 import { realpath, stat, open } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { homedir } from 'node:os';
@@ -133,7 +133,7 @@ export async function prepareScan(
       'Choose a specific project repository explicitly. Your home folder and its parent directories cannot be scan targets.',
     );
   const global = await loadGlobalSettings();
-  const settings = mergeSettings(global.settings, input.mode ? { scan: { mode: input.mode } } : {});
+  const settings = await resolveSettings(global.settings, input.mode);
   const merged = input;
   const scopePaths: string[] = [];
   for (const path of merged.scopePaths ?? [])
@@ -173,6 +173,7 @@ export async function validatePlan(plan: ScanPlan) {
   const current = await prepareScan(plan.repository, plan.inputs, plan.mock);
   if (
     current.repository !== plan.repository ||
+    current.globalConfigFile !== plan.globalConfigFile ||
     current.globalConfigDigest !== plan.globalConfigDigest ||
     JSON.stringify(current.settings) !== JSON.stringify(plan.settings) ||
     JSON.stringify(current.contextFiles) !== JSON.stringify(plan.contextFiles) ||

@@ -81,3 +81,50 @@ export async function requireDedicatedSecurityCredentials(
     throw new DedicatedSecurityCredentialsRequiredError();
   }
 }
+
+/** A fixed message, safe to expose without leaking credential values or SDK diagnostics. */
+export class ProviderCredentialsRequiredError extends Error {
+  constructor() {
+    super(
+      'The selected provider environment key is missing or blank. Make the configured envKey available to the OpenCode process before retrying. No sign-in or credential import was attempted.',
+    );
+    this.name = 'ProviderCredentialsRequiredError';
+  }
+}
+
+/** The only API-key readiness check: validate routing, then check the named key's presence. */
+export async function requireSdkCredentials(
+  config: import('@openai/codex-security').CodexSecurityConfig | undefined,
+  environment: Environment = process.env,
+): Promise<void> {
+  const routing = config?.codexOverrides;
+  const id = routing?.model_provider;
+  if (id === undefined || id === 'openai') return requireDedicatedSecurityCredentials(environment);
+  const { validateProvider, record, ProviderConfigurationError } =
+    await import('./provider-config.ts');
+  const providers = routing?.model_providers;
+  const native = typeof id === 'string' && record(providers) ? providers[id] : undefined;
+  if (
+    !record(native) ||
+    native.requires_openai_auth !== false ||
+    Object.keys(native).some(
+      (key) => !['name', 'base_url', 'env_key', 'wire_api', 'requires_openai_auth'].includes(key),
+    )
+  )
+    throw new ProviderConfigurationError(
+      'Invalid API-key provider routing. No authentication was initialized.',
+    );
+  const provider = validateProvider({
+    id,
+    baseUrl: native.base_url,
+    envKey: native.env_key,
+    wireApi: native.wire_api,
+  });
+  // Exact environment-variable selection on POSIX, case-insensitive on Windows.
+  // Never enumerate or copy environment values, return a key, or inspect auth.json.
+  const name =
+    process.platform === 'win32'
+      ? Object.keys(environment).find((key) => key.toUpperCase() === provider.envKey.toUpperCase())
+      : provider.envKey;
+  if (!name || !environment[name]?.trim()) throw new ProviderCredentialsRequiredError();
+}

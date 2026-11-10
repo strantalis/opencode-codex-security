@@ -24,7 +24,12 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/core/report-safety.ts', 'src/core/scan-plan.ts', 'src/core/sdk-settings.ts'],
+    files: [
+      'src/core/report-safety.ts',
+      'src/core/scan-plan.ts',
+      'src/core/sdk-settings.ts',
+      'src/core/provider-config.ts',
+    ],
     rules: { 'no-control-regex': 'off' },
   },
   { files: ['**/*.cjs'], rules: { '@typescript-eslint/no-require-imports': 'off' } },

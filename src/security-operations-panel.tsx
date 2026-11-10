@@ -1,3 +1,4 @@
+import { describeInferenceRoute } from './plan-view';
 import { createEffect, createMemo, createSignal, For, Show, on, onCleanup } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 import type {
@@ -350,7 +351,8 @@ export function SecurityOperationsPanel(props: {
                       <>
                         <p>
                           Repository source{op().kind === 'validation' ? ', the finding,' : ''} and
-                          selected context will be sent to OpenAI.
+                          selected context will be sent to{' '}
+                          {describeInferenceRoute(op().plan.settings)}.
                         </p>
                         <p>
                           <strong>{op().plan.costNotice}</strong>
@@ -464,8 +466,9 @@ export function SecurityOperationsPanel(props: {
                       onInput={(e) => setAnswer(e.currentTarget.value)}
                     />
                     <span class="gs-help">
-                      Answer each question, or say what is unknown. Your answer goes to OpenAI for
-                      this operation; do not include secrets.
+                      Answer each question, or say what is unknown. Your answer goes to the
+                      already-approved route: {describeInferenceRoute(op().plan.settings)}. Do not
+                      include secrets.
                     </span>
                   </label>
                   <button

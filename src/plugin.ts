@@ -165,7 +165,11 @@ export function createSecurityPlugin(
               source: { type: 'tool', messageID: context.messageID, id: context.id },
               action: 'codex_security_scan',
               resources: [plan.repository, JSON.stringify(plan.settings)],
-              metadata: { preview: describePlan(plan), planId },
+              metadata: {
+                preview: describePlan(plan),
+                planId,
+                settings: JSON.stringify(plan.settings),
+              },
             });
             context.signal.throwIfAborted();
             const state = await service.start({ planId, approveOpenAIInference: true });

@@ -271,12 +271,43 @@ export class PlannedScanService {
         void this.#save(entry.state).catch(() => {});
       }
     });
+    try {
+      await validatePlan(plan);
+    } catch {
+      entry.state = {
+        ...entry.state,
+        status: this.#disposed || entry.cancelledBeforeStart ? 'cancelled' : 'error',
+        phase:
+          this.#disposed || entry.cancelledBeforeStart
+            ? 'Cancelled before execution'
+            : 'Preview invalid; prepare again',
+        error:
+          this.#disposed || entry.cancelledBeforeStart
+            ? null
+            : 'Target, context, or provider settings changed after approval. Prepare and review a new scan.',
+        finishedAt: new Date().toISOString(),
+      };
+      await this.#save(entry.state).catch(() => {});
+      this.#emit(entry.state);
+      return structuredClone(entry.state);
+    }
+    if (this.#disposed || entry.cancelledBeforeStart) {
+      entry.state = {
+        ...entry.state,
+        status: 'cancelled',
+        phase: 'Cancelled before execution',
+        finishedAt: new Date().toISOString(),
+      };
+      await this.#save(entry.state).catch(() => {});
+      this.#emit(entry.state);
+      return structuredClone(entry.state);
+    }
     service.start({
       approved: true,
       repository: plan.repository,
       allowNetworkModelInference: true,
       maxCostUsd: plan.settings.scan.maxCostUsd,
-      auth: 'chatgpt',
+      auth: plan.settings.codex.auth,
       settings: plan.settings,
       scopePaths: [...plan.scopePaths],
       scanPrompt: plan.scanPrompt,
