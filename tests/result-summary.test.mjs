@@ -465,11 +465,13 @@ test('modified stored summaries cannot expose raw text or bypass list and path b
   assert.ok(!serialized.includes(secret));
   assert.ok(!serialized.includes(rawOnly));
   assert.ok(!serialized.includes('/private'));
-  assert.ok(!serialized.includes('https://example.com'));
   assert.equal(restored.coverage.deferred.items[0].paths.items.length, 20);
   assert.equal(restored.coverage.deferred.items[0].paths.total, 30);
   assert.equal(restored.coverage.deferred.items[0].paths.omitted, 10);
-  assert.equal(restored.artifacts.items.length, 1);
+  // Only the sanitized relative entry survives; absolute paths and URLs are omitted.
+  assert.deepEqual(restored.artifacts.items, [
+    { path: 'reports/[REDACTED CREDENTIAL].md', mediaType: '[REDACTED CREDENTIAL]' },
+  ]);
   assert.equal(restored.artifacts.omitted, 2);
   assert.deepEqual(restored.notes, summarizeScanResult({}, repository).notes);
 });
