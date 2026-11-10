@@ -44,7 +44,7 @@ For updates, select an exact approved version, install into a new directory, aud
 
 ## Register the installed plugin
 
-Add the installed package directory to the `plugins` array in your effective OpenCode V2 configuration without replacing unrelated settings or duplicating this plugin:
+Before editing the live configuration, confirm that no scans, approval dialogs or policy forms are active: the host may watch changes and reload automatically. Then add the installed package directory to the `plugins` array in your effective OpenCode V2 configuration without replacing unrelated settings or duplicating this plugin:
 
 ```json
 {
@@ -61,7 +61,7 @@ Restart/reload OpenCode only when no scans, pending approvals or forms are activ
 
 The example starts in the explicitly labeled, offline fixture engine, also the default when `engine: codex` is absent. It scans bundled examples, not your repository, and is not a real security assessment.
 
-For real mode, satisfy [dedicated authentication](docs/SDK.md#dedicated-authentication), then change only the engine to `codex`. The installed SDK provides its own official interactive login; never copy ambient credentials or paste secrets into chat. Enabling real mode starts no scan. Each real operation still needs authorized scope and source-data transfer to OpenAI. The [agent setup guide](https://github.com/strantalis/opencode-codex-security/blob/main/docs/AGENT-SETUP.md) separates runtime prerequisites, secure sign-in and verification.
+For real mode, satisfy [dedicated authentication](docs/SDK.md#dedicated-authentication), then change only the engine to `codex` after the same idle-state check. The installed SDK provides its own official interactive login; never copy ambient credentials or paste secrets into chat. Enabling real mode starts no scan. Each real operation still needs authorized scope and source-data transfer to OpenAI. The [agent setup guide](https://github.com/strantalis/opencode-codex-security/blob/main/docs/AGENT-SETUP.md) separates runtime prerequisites, secure sign-in and verification.
 
 ## Configuration and model tools
 

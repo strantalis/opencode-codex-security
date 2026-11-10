@@ -37,7 +37,11 @@ rules. Stop and explain any incompatible prerequisite or permission restriction.
    Codex runtime are npm dependencies; do not install another global Codex CLI
    or SDK just for this plugin. An existing OpenCode host is still required.
 
-3. Back up my effective OpenCode configuration locally outside Git/source
+3. Before editing live configuration, verify no scans, approval dialogs or
+   policy forms are active. If their status is unknown, ask whether it is safe
+   to make the edit. Hosts may watch configuration and reload automatically.
+   Installation in the separate consumer can finish while waiting.
+   Back up my effective OpenCode configuration locally outside Git/source
    repositories, preserving restrictive permissions and keeping its contents
    private. Never print the whole config; show only redacted plugin-specific
    changes. Preserve JSONC comments, unrelated settings and other plugins.
@@ -67,8 +71,8 @@ rules. Stop and explain any incompatible prerequisite or permission restriction.
    supported login does not produce the required private dedicated auth file,
    report the blocker rather than copying credentials or disabling safeguards.
 
-5. Once I choose real mode and its prerequisites are satisfied, change only
-   this plugin's engine to "codex". Do not add model or credential overrides
+5. Once I choose real mode and its prerequisites are satisfied, repeat the
+   idle-state check before changing only this plugin's engine to "codex". Do not add model or credential overrides
    to the plugin entry. Preserve existing global codex-security.json settings;
    use the project's GLOBAL-CONFIG guide if I request changes. Never assume
    model access or Daybreak entitlement. Activating codex mode starts no scan.
