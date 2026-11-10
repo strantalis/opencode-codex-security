@@ -1,0 +1,113 @@
+name: Stage npm release
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful Checks push run on current main (Actions run ID)
+        type: string
+        required: true
+      tag:
+        description: Tag applied only after human npm 2FA approval (next for prereleases)
+        type: choice
+        options:
+          - next
+          - latest
+        default: next
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: npm-stage
+  cancel-in-progress: false
+jobs:
+  stage:
+    if: github.ref == 'refs/heads/main' && github.repository == 'strantalis/opencode-codex-security'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+      RUN_ID: ${{ inputs.run_id }}
+      NPM_TAG: ${{ inputs.tag }}
+      NPM_CONFIG_IGNORE_SCRIPTS: 'true'
+      NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+    steps:
+      # Pinned trusted tooling only. No checkout, project scripts or dependency install.
+      # Node 26.13.0 bundles npm 11.20.0, supporting staging and OIDC.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26.13.0'
+      - name: Verify source and download exact tested artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$REPOSITORY" == "strantalis/opencode-codex-security" ]]
+          gh api "repos/$REPOSITORY" > repository.json
+          jq -e --arg visibility public '.visibility == $visibility' repository.json >/dev/null
+          repo_id=$(jq -r '.id' repository.json)
+          workflow_id=$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml" --jq '.id')
+          gh api "repos/$REPOSITORY/actions/runs/$RUN_ID" > run.json
+          jq -e --argjson repo_id "$repo_id" --argjson workflow_id "$workflow_id" '
+            .repository.id == $repo_id and .head_repository.id == $repo_id and
+            .workflow_id == $workflow_id and .event == "push" and
+            .head_branch == "main" and .status == "completed" and .conclusion == "success"
+          ' run.json >/dev/null
+          sha=$(jq -r '.head_sha' run.json)
+          [[ "$sha" =~ ^[a-f0-9]{40}$ ]]
+          # Refuse an older run if main moved after testing; rerun on the new main instead.
+          current=$(gh api "repos/$REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          [[ "$sha" == "$current" ]]
+          gh run download "$RUN_ID" --repo "$REPOSITORY" --name "package-$sha" --dir assets
+          cd assets
+          [[ $(find . -type f | wc -l) -eq 3 ]]
+          [[ $(find . -type l | wc -l) -eq 0 ]]
+          jq -e --arg sha "$sha" '
+            .schemaVersion == 1 and .private == false and .contentPolicy.class == "dual-use" and
+            .package == "opencode-codex-security" and .sourceCommit == $sha and
+            .sourceRepository == "git+https://github.com/strantalis/opencode-codex-security.git" and
+            (.archive | test("^opencode-codex-security-[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9.-]+)?\\.tgz$")) and
+            (.archiveSha256 | test("^[a-f0-9]{64}$"))
+          ' build-manifest.json >/dev/null
+          version=$(jq -r '.version' build-manifest.json)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]
+          [[ "$NPM_TAG" == latest || "$NPM_TAG" == next ]]
+          # Prereleases must never become the default install.
+          if [[ "$version" == *-* ]]; then [[ "$NPM_TAG" == next ]]; fi
+          archive=$(jq -r '.archive' build-manifest.json)
+          [[ "$archive" == "opencode-codex-security-$version.tgz" ]]
+          [[ -f "$archive" && -f SHA256SUMS ]]
+          # Only fixed filenames reach checksum verification, never arbitrary manifest paths.
+          expected=$(jq -r '.archiveSha256' build-manifest.json)
+          [[ "$(sha256sum "$archive" | cut -d ' ' -f 1)" == "$expected" ]]
+          printf '%s  %s\n%s  build-manifest.json\n' "$expected" "$archive" "$(sha256sum build-manifest.json | cut -d ' ' -f 1)" > expected-checksums
+          cmp SHA256SUMS expected-checksums
+          rm expected-checksums
+          printf 'SOURCE_SHA=%s\nARCHIVE=%s\n' "$sha" "$archive" >> "$GITHUB_ENV"
+      - name: Stage exact tested tarball with OIDC
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Provenance records this workflow commit; it must identify the tested bytes.
+          [[ "$SOURCE_SHA" == "$GITHUB_SHA" ]] || {
+            echo "Tested source differs from this workflow commit; refusing mismatched provenance." >&2
+            exit 1
+          }
+          [[ "$(npm --version)" == "11.20.0" ]]
+          # Refuse credentials/token fallback. Trust must permit staging only.
+          [[ -z "${NODE_AUTH_TOKEN:-}" && -z "${NPM_TOKEN:-}" ]]
+          [[ "$(gh api "repos/$REPOSITORY/git/ref/heads/main" --jq '.object.sha')" == "$SOURCE_SHA" ]]
+          [[ "$(gh api "repos/$REPOSITORY" --jq '.visibility')" == public ]]
+          cd assets
+          # No repo .npmrc is present; ignore user/global configuration and lifecycle hooks.
+          config_dir=$(mktemp -d)
+          : > "$config_dir/user.npmrc"
+          : > "$config_dir/global.npmrc"
+          export NPM_CONFIG_USERCONFIG="$config_dir/user.npmrc"
+          export NPM_CONFIG_GLOBALCONFIG="$config_dir/global.npmrc"
+          npm stage publish "./$ARCHIVE" --access public --tag "$NPM_TAG" --provenance --ignore-scripts
+          printf '### Staged, not published\n\nArchive: `%s`\nSource: `%s`\nRequested tag: `%s`\n\nReview the returned stage ID with npm stage view/download. A maintainer must approve with 2FA. No approval runs in CI.\n' "$ARCHIVE" "$SOURCE_SHA" "$NPM_TAG" >> "$GITHUB_STEP_SUMMARY"

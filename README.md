@@ -2,7 +2,7 @@
 
 Security scans, policy drafts and finding validation inside **OpenCode V2**, with a native terminal view, an experimental Desktop panel and tools for your session's model.
 
-This is an early project, not an official OpenCode or OpenAI product. It is **not published to npm**. The code is licensed under [Apache 2.0](LICENSE). npm publication remains disabled; GitHub release tarballs provide the installation path. Repository visibility and npm publication are separate decisions.
+This is an early project, not an official OpenCode or OpenAI product. It is **not published to npm**. The code is licensed under [Apache 2.0](LICENSE). The package is prepared for stage-only npm releases, with human 2FA approval required before each version goes live. Until then, use tested GitHub release tarballs. See [npm staging](docs/PUBLISHING.md).
 
 ## What works
 
@@ -24,6 +24,20 @@ Patch application and fix verification are not implemented. Findings arrive at s
 - For real operations: supported Codex Security account/model access and an existing dedicated sign-in. The plugin checks that dedicated credentials exist privately before constructing the SDK client. It does not perform login or create/import credentials.
 
 SDK mode uses `@openai/codex-security` 0.9.1. Repository source and selected context are sent to OpenAI for inference. SDK cost limits are estimates, **not guaranteed billing caps**. Account quota/availability can also limit scans.
+
+## Install a released version
+
+Until the first npm version is actually approved, use [tested GitHub tarballs](docs/RELEASING.md). After a live version exists, install its exact version into a dedicated local consumer:
+
+```sh
+mkdir security-plugin && cd security-plugin
+npm install --save-exact --ignore-scripts opencode-codex-security@0.1.0
+npm audit --omit=dev --audit-level=high
+```
+
+`0.1.0` is the planned first version, not a claim that it is available. A staged version or `0.0.0-stage` placeholder is not installable functionality. Point the plugin configuration below at the absolute path of `security-plugin/node_modules/opencode-codex-security`. This uses the tested local-path plugin route; no special OpenCode install command is required. Keep the lockfile and use `npm ci --ignore-scripts` for repeat installs. Use only a workplace/device authorized for the plugin and its source-data transfers.
+
+For updates, select an exact approved version, install into a new directory, audit, and switch the configured path only when scans, approval dialogs and policy forms have finished. Keep the previous directory for rollback. Nothing updates automatically. Test prereleases explicitly by their full version rather than following a moving tag.
 
 ## Local installation
 

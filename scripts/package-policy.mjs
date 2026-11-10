@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 const allowedDocs = new Set([
   'LICENSE',
+  'DISCLOSURE',
   'README.md',
   'CONTRIBUTING.md',
   'SECURITY.md',
@@ -13,7 +14,26 @@ const allowedDocs = new Set([
 ]);
 
 export function assertPackagePolicy(archive, manifest) {
-  assert.equal(manifest.private, true, 'Publishing stays disabled until explicitly approved.');
+  assert.equal(manifest.private, false, 'Public package readiness must be explicit.');
+  assert.deepEqual(manifest.contentPolicy, { class: 'dual-use' });
+  assert.deepEqual(manifest.publishConfig, {
+    access: 'public',
+    registry: 'https://registry.npmjs.org/',
+  });
+  for (const hook of [
+    'preinstall',
+    'install',
+    'postinstall',
+    'prepare',
+    'prepublish',
+    'prepublishOnly',
+    'publish',
+    'postpublish',
+    'prepack',
+    'postpack',
+  ]) {
+    assert.ok(!Object.hasOwn(manifest.scripts ?? {}, hook), `Forbidden lifecycle hook: ${hook}`);
+  }
   assert.equal(
     manifest.license,
     'Apache-2.0',
@@ -28,6 +48,7 @@ export function assertPackagePolicy(archive, manifest) {
   );
   const paths = archive.files.map((file) => file.path);
   assert.ok(paths.includes('LICENSE'), 'Apache 2.0 license must accompany the package.');
+  assert.ok(paths.includes('DISCLOSURE'), 'Dual-use disclosure must accompany every version.');
   for (const entry of Object.values(manifest.exports)) {
     assert.ok(paths.includes(entry.replace(/^\.\//, '')), `Missing export: ${entry}`);
   }
