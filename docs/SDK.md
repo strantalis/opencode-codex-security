@@ -27,7 +27,11 @@ Current global configuration is documented in [GLOBAL-CONFIG.md](GLOBAL-CONFIG.m
 
 Real operations require an existing private, owned, nonsymlink dedicated auth file and directory. A metadata-only guard runs before constructing the real SDK client. It does not read tokens, perform login or import credentials. The injected mock clients bypass this real-auth precondition.
 
-The SDK uses `$CODEX_SECURITY_STATE_DIR/codex-home`, otherwise `$CODEX_HOME/state/plugins/codex-security/codex-home`, with `~/.codex` as the default Codex home. Keep this outside the target repository.
+The SDK uses `$CODEX_SECURITY_STATE_DIR/codex-home`, otherwise `$CODEX_HOME/state/plugins/codex-security/codex-home`, with `~/.codex` as the default Codex home. Keep this outside the target and enclosing repositories. The login command and OpenCode process must use the same environment.
+
+If dedicated sign-in is absent, the user can choose to complete the installed official CLI flow from the consumer directory: `./node_modules/.bin/codex-security login`. This creates a separate session through interactive sign-in, not a plugin startup action. Never ask for secrets in chat, read/copy private token files or import an ambient Codex sign-in to satisfy this guard. Do not run SDK `login status` or account helpers before dedicated credentials exist: they can import ambient credentials. This plugin fixes authentication to ChatGPT and provider to OpenAI; upstream SDK API-key/provider examples are not supported plugin settings.
+
+The guard requires a private dedicated `auth.json`; keyring-only authentication is insufficient. Do not automatically change credential storage, managed-device policy or permissions to make it pass. Report the incompatibility and use the official supported account setup. See [agent setup](https://github.com/strantalis/opencode-codex-security/blob/main/docs/AGENT-SETUP.md) for the complete installation prompt.
 
 SDK 0.9.1 can import ambient credentials when its dedicated home is empty. The guard prevents ordinary missing-auth startup, but is not an atomic no-import policy: external deletion after the check can still race. Windows is deliberately rejected until a safe ACL verification path exists.
 

@@ -1,44 +1,58 @@
 # npm staging and human approval
 
-The source is public under Apache 2.0. Version `0.1.0` is live on npm under `latest`, verified November 10, 2026. The manifest retains `private: false`, public registry/access settings, a conservative `contentPolicy.class: dual-use` declaration and a root `DISCLOSURE`. Version `0.1.1` is prepared for staging; a version bump alone does not stage or publish it. GitHub previews remain available independently.
+`opencode-codex-security` is public on npm under Apache 2.0. Bootstrap is complete, and the GitHub OIDC staging workflow has been exercised successfully. Every release still needs a maintainer's separate review and npm 2FA approval before it is installable. Workflow success means **staged**, not approved or published.
 
-## Security boundaries
-
-This utility uses Codex Security for source scans, policy drafting and static finding validation, not exploit execution or patch application. Its dual-use metadata and disclosure must persist across versions. npm forbids direct OIDC publication for dual-use packages. This repository automates **staging only**; each live version requires a maintainer's review and npm 2FA approval. Never add a direct publish command or a token fallback.
-
-`Checks` builds and tests without publishing permissions. It installs locked dependencies with lifecycle scripts disabled, audits runtime dependencies, checks source/build freshness and package allowlists, and tests the exact tarball in an isolated OpenCode host. Consumer dependencies are resolved afresh and audited too. The package has no install, prepare, pack or publish lifecycle hooks. Build explicitly before packing. These checks are not a comprehensive secret scan or a guarantee that transitive dependencies are safe.
-
-`npm-stage.yml` is manual, main-only and bound in code to `strantalis/opencode-codex-security`. It requires a successful current-main push run from `ci.yml` in the same repository. It requires the tested source commit to match both current main and the staging workflow commit (`GITHUB_SHA`, recorded by npm provenance). It checks public visibility, fixed filenames, dual-use manifest, SHA-256 checksums and artifact count. It promotes those exact bytes without rebuilding. The GitHub-hosted staging job has only read access and `id-token: write`, runs pinned Node/npm tooling, and never checks out or executes project code or installs project dependencies. The action is pinned to a commit. There are no npm secrets. The workflow verifies bundled npm 11.20.0 in Node 26.13.0 and fails if tooling differs.
-
-## One-time bootstrap: separate maintainer action
-
-Bootstrap is already complete for `opencode-codex-security`; use the later-version flow below for updates. The following steps document first-time setup only. Do not run them for another package until the maintainer approves the exact npm destination, public contents and account. Confirm name availability/ownership again. Review current npm policy, archive contents, license/dependency obligations and account eligibility. npm trust requires an **existing package**; do not try to grant trust to a nonexistent package.
-
-Use a workstation with Node 26.13.0/npm 11.20.0 (staging needs npm 11.15.0+). Enable npm 2FA. Download all three assets from a successful current-main CI run or matching GitHub preview, inspect `build-manifest.json` and verify `SHA256SUMS` before continuing. Use the actual archive filename:
+Verified November 10, 2026: `latest` points to `0.1.0`; `0.1.1` is also public under `next`, with npm provenance. Check the registry again before choosing an installation or release version:
 
 ```sh
-# macOS; Linux: sha256sum -c SHA256SUMS
-shasum -a 256 -c SHA256SUMS
-npm login
-npm whoami
-npm stage publish ./opencode-codex-security-0.1.0.tgz --access public --tag latest --ignore-scripts
-npm stage list opencode-codex-security
-npm stage view STAGE_ID
+npm view opencode-codex-security dist-tags versions --json
 ```
 
-Login and bootstrap staging are separate maintainer actions, not effects of changing repository files. A 401 from `npm whoami` means the CLI is not authenticated, not that no account exists. Do not share or commit passwords, tokens or OTPs. **Staging a new name creates a public `0.0.0-stage` placeholder**, even before the first real version is approved. The staged payload itself is not a live published version. Review the stage, download and compare its tarball with the tested SHA-256, and approve only the intended version/tag. Human approval is a separate action:
+For installation, use [the README](../README.md#install-a-released-version) or [agent setup](https://github.com/strantalis/opencode-codex-security/blob/main/docs/AGENT-SETUP.md). Consumers do not need npm login, trusted-publisher settings or these release tools. GitHub previews remain available independently through [the preview release guide](RELEASING.md).
+
+## Stage the next release
+
+1. Choose a version not already live or awaiting approval. Bump `version` in both package and lockfile in a reviewed PR. Use a new patch for fixes or a full prerelease such as `0.1.2-rc.1` for testing. Preserve `contentPolicy.class: dual-use`, the license and `DISCLOSURE`.
+2. Merge only after required checks and review pass. Wait for **Checks on the new main push** to succeed. Its tested artifact is retained for 14 days. A PR run is not a substitute.
+3. Run **Actions → Stage npm release** (`npm-stage.yml`) on main with that push run's numeric ID. Choose `next` for testing/prereleases or deliberately choose `latest` for a stable release. The default is `next`; prereleases with `latest` fail closed. Both tags refer to public packages once approved.
+4. Save the returned stage ID and review it as described below. **Do not approve in CI.** The workflow has no approval job and cannot complete human 2FA.
+
+The workflow requires the tested commit to be both current main and the workflow commit. If main moves before staging, use the successful Checks push run for the new main. If a version is already live, choose a new version instead of rerunning it. No version can be overwritten after publication.
+
+## Review and approve a staged version
+
+This is a separate maintainer action using an authorized npm account with 2FA. Use tooling supporting staged publishing (npm 11.15.0+); the workflow pins Node 26.13.0 and its bundled npm 11.20.0. Use the official interactive `npm login` only if sign-in is needed. Never paste or commit passwords, tokens or OTPs.
+
+Inspect the specific stage, then download its payload into a fresh review directory:
 
 ```sh
+npm stage list opencode-codex-security
+npm stage view STAGE_ID
 npm stage download STAGE_ID
-# Compare the downloaded tarball's SHA-256 with build-manifest.json.
+```
+
+Check the package name, version, intended public tag, repository, source commit and provenance. Obtain the corresponding tested CI artifact's `build-manifest.json` and `SHA256SUMS` from the run used for staging. Verify its assets (`shasum -a 256 -c SHA256SUMS` on macOS, `sha256sum -c SHA256SUMS` on Linux), then compare the **downloaded stage tarball's** SHA-256 against `archiveSha256` in that manifest. Checksums alone do not establish trust in an untrusted manifest. Review the actual archive contents and release changes before approval.
+
+When the intended version, tag and bytes are confirmed, the maintainer performs the 2FA approval:
+
+```sh
 npm stage approve STAGE_ID
 ```
 
-Approval requires 2FA and publishes that staged version. `npm stage reject STAGE_ID` also requires 2FA and discards it. Inspect any interrupted/uncertain operation with list/view before retrying; never blindly create another stage. Tags are immutable within a stage. Reject and restage if the tag was wrong. Check `npm view opencode-codex-security@0.1.0 version dist.integrity` and the intended dist-tag after approval. Do not treat a workflow success, stage ID or placeholder as a live release.
+Approval publishes that exact version and applies its selected tag. To discard a stage, use `npm stage reject STAGE_ID`, also requiring 2FA. Tags are immutable within a stage: reject and restage if the selected tag was wrong. Do not try to change trust or use a token to avoid approval.
 
-## Configure stage-only trusted publishing: separate approval
+After approval, verify the specific version and intended tag in the public registry, replacing `VERSION` with the approved full version:
 
-After the package exists, the maintainer must explicitly authorize and configure persistent npm trust for exactly:
+```sh
+npm view opencode-codex-security@VERSION version dist.integrity dist.attestations --json
+npm view opencode-codex-security dist-tags --json
+```
+
+Check provenance as well as the source/bytes in the build manifest. A stage ID, successful workflow or `0.0.0-stage` placeholder is not a release. An interrupted submission or approval can have an uncertain outcome: inspect stage list/view **and public registry state** before retrying. Do not blindly create another stage or assume a failed client response means nothing happened.
+
+## Existing trust and security boundaries
+
+The workflow uses the following publisher identity. The npm trust grant should permit staging only:
 
 - Provider: GitHub Actions.
 - Owner: `strantalis`.
@@ -47,25 +61,22 @@ After the package exists, the maintainer must explicitly authorize and configure
 - Permission: **stage only**, never direct publishing.
 - Environment: none (this workflow does not claim an environment).
 
-Use npm package settings or the current `npm trust` documentation, not invented CLI flags. Do not configure a broader repository/workflow or create a long-lived token as a workaround. Newly configured trust must be used within two days or it expires. Once the staged flow is verified, select npm package protection **Require two-factor authentication and disallow tokens**. These settings require separate approval and are not made by this repository change.
+The successful OIDC staging run confirms staging access for this workflow; it does not prove the full trust grant or account-wide token/2FA protection settings. Routine releases reuse the existing binding; do not repeat package bootstrap or recreate trust. If npm rejects the workflow because trust is absent, expired or mismatched, stop and have the maintainer review the exact settings using [npm's trusted-publisher documentation](https://docs.npmjs.com/trusted-publishers/). Persistent trust, package protection or account changes require separate authorization. Do not broaden the binding, disable 2FA or create a long-lived token as a workaround.
 
-## Stage a later version
+This utility uses Codex Security for source scans, policy drafting and static finding validation, not exploit execution or patch application. Its dual-use metadata and disclosure must persist. npm forbids direct OIDC publication for dual-use packages. This workflow uses OIDC for **staging only**; OIDC authentication does not grant human approval. Never add a direct publish command or a token fallback.
 
-1. Bump `version` in both package and lockfile in a reviewed PR. Use a patch bump for fixes (`0.1.1`); use a prerelease such as `0.1.1-rc.1` with `next` for testing. Never reuse a live version. Keep the dual-use metadata and disclosure.
-2. Merge only after checks pass. Wait for **Checks on the new main push** to finish successfully. Its verified artifact is retained for 14 days.
-3. Run **Actions → Stage npm release** on main with that run's numeric ID. Choose `next` for prereleases/testing or deliberately choose `latest` for a stable release. The default is `next`; prereleases with `latest` fail closed.
-4. Review the returned stage ID, version, tag, source and tarball hash using the human steps above. Approve with 2FA only when ready for public installation. There is no automated approval job.
+`Checks` builds and tests without publishing permissions. It installs locked dependencies with lifecycle scripts disabled, audits runtime dependencies, checks source/build freshness and package allowlists, and tests the exact tarball in an isolated OpenCode host. Consumer dependencies are resolved afresh and audited too. The package has no install, prepare, pack or publish lifecycle hooks. Build explicitly before packing. These checks are not a comprehensive secret scan or a guarantee that transitive dependencies are safe.
 
-If main moves, the artifact expires, trust is absent/expired, or registry permissions fail, fix the specific prerequisite and use a fresh current-main successful run. Do not weaken checks or fall back to tokens. A failure after submitting to npm can have an uncertain outcome: inspect stage list/view before retrying. A version cannot be overwritten after publication; use a new version for corrections.
+`npm-stage.yml` is manual, main-only and bound in code to this repository. It verifies a successful current-main push run from `ci.yml`, public visibility, fixed filenames, dual-use manifest, SHA-256 checksums and artifact count. It promotes those exact bytes without rebuilding. The tested source commit must match `GITHUB_SHA`, recorded by npm provenance. The GitHub-hosted staging job has read permissions plus `id-token: write`, uses a commit-pinned setup action and verifies its pinned Node/npm tooling. It never checks out or executes project code or installs project dependencies. There are no npm secrets.
 
 ## Limits and references
 
-Provenance is requested for public source/package with matching repository metadata. Review provenance after promotion: it identifies the staging workflow, while `build-manifest.json` links the bytes to the independently verified build commit/run. Native Desktop/platform testing and a complete real SDK assessment remain separate from mocked CI. Use only repositories and workplace devices authorized for scanning and data transfer.
+Provenance identifies the staging workflow; `build-manifest.json` links the bytes to the independently tested build commit/run. Native Desktop/platform testing and a complete real SDK assessment remain separate from mocked CI. Use only repositories and workplace devices authorized for scanning and data transfer.
 
 - [npm stage CLI](https://docs.npmjs.com/cli/v11/commands/npm-stage/)
-- [npm staged publishing and bootstrap](https://docs.npmjs.com/staged-publishing/)
+- [npm staged publishing](https://docs.npmjs.com/staged-publishing/)
 - [npm trusted publishers](https://docs.npmjs.com/trusted-publishers/)
 - [npm trust prerequisites](https://docs.npmjs.com/cli/v11/commands/npm-trust/)
 - [npm dual-use policy](https://docs.npmjs.com/policies/dual-use/)
 
-Verified November 10, 2026; recheck before setup. Installed metadata identifies Codex Security 0.9.1 as Apache-2.0, OpenCode plugin/Solid as MIT, and OpenTUI native binaries as MIT AND LGPL-2.1-or-later. Dependencies stay external; this is not comprehensive legal clearance.
+Verified November 10, 2026; recheck before release. Installed metadata identifies Codex Security 0.9.1 as Apache-2.0, OpenCode plugin/Solid as MIT, and OpenTUI native binaries as MIT AND LGPL-2.1-or-later. Dependencies stay external; this is not comprehensive legal clearance.
