@@ -64,7 +64,7 @@ jobs:
           cmp SHA256SUMS expected-checksums
           rm expected-checksums
           printf 'SOURCE_SHA=%s\nARCHIVE=%s\n' "$sha" "$archive" >> "$GITHUB_ENV"
-      - name: Create private immutable preview
+      - name: Create private preview
         shell: bash
         run: |
           set -euo pipefail
