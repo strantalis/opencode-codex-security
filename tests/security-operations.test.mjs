@@ -641,3 +641,17 @@ test('shared finding redaction covers report prose and evidence, bounds strings,
   assert.equal(safeReportText('a\u0000b\u001bc'), 'abc');
   assert.equal(safeReportText(undefined), '');
 });
+
+test('policy and validation require a known session or explicit absolute target', async (t) => {
+  const { root } = await fixture(t);
+  let created = 0;
+  const operations = service(t, '', () => {
+    created++;
+    return client();
+  });
+  for (const input of [{ kind: 'policy' }, { kind: 'validation', finding: 'Synthetic issue' }]) {
+    await assert.rejects(operations.prepare(input), /No local project/);
+    assert.equal((await operations.prepare({ ...input, repository: root })).repository, root);
+  }
+  assert.equal(created, 0);
+});

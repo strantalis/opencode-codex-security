@@ -6,6 +6,20 @@ The panel and tools report only observed feedback: phase, file/review counts, bo
 
 Private per-run JSON records under the user's XDG state directory retain scan previews and terminal findings. The list shows the latest 50; files are not silently deleted. Start/terminal receipts, real SDK run IDs and phase changes persist; other live progress is checkpointed at most every 10 seconds. An unfinished record after another plugin instance ends is marked untracked, not completed or automatically resumed. Policy/validation operations currently remain memory-only. Reloading the plugin can cancel active work: finish or explicitly cancel runs before updating it.
 
+## Workspace versus target
+
+The plugin installation and SDK defaults are global. They do not select a repository, combine histories or start work across projects.
+
+- **Workspace** is the local OpenCode session location. RPC calls and scan/operation lists belong to this location. Two sessions in the same location share that workspace history; a different location has its own history.
+- **Target** is the exact repository saved in an immutable scan or operation preview. It defaults to the known current workspace, or can be explicitly set elsewhere. An override does not change global settings or the default for a later request. Same-named directories remain distinct by full path.
+- Scan scope and supporting files are relative to that target. Policy's optional component is also relative to its target. Validation launched from a finding keeps the finding's original repository, rather than silently switching to the current workspace.
+- If no valid local session anchor is known, use an explicit absolute repository path. The backend never substitutes the plugin process's working directory; home folders and parent directories remain prohibited targets. No Git-root guess expands the target.
+- Switching the displayed workspace remounts the view and its polling; it does not move, cancel or restart existing scans. Return to the launching workspace to see them. A workspace history can include explicitly chosen targets elsewhere; this is not a global all-repositories dashboard.
+
+In the TUI, `/security-target` selects an absolute target for the next scan and clears the previous target’s scope/context. `/security-mode` uses that exact prepared target. The TUI history workspace is pinned to its setup location; it does not claim to follow other session tabs automatically. Unknown setup context requires an explicit target. Desktop follows its mounted local session and remounts when that location changes.
+
+Policy and validation operations remain server-session-only. Scan receipts persist under their launching workspace's local history. Model configuration is global; per-scan targets and scope are not configuration overrides.
+
 ## Model tools
 
 - `security_prepare_scan`: independent target/context preview; no inference.

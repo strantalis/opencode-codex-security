@@ -217,7 +217,7 @@ export function createSecurityPlugin(
         editor.add({
           name: 'security_list_scans',
           description:
-            'List recent Security scan runs in the current project with stable run IDs, progress and terminal states. Read-only; never starts inference.',
+            'List runs launched from the current OpenCode workspace, each with its exact repository target, stable run ID, progress and terminal state. Not a global cross-workspace list. Read-only; never starts inference.',
           input: { type: 'object', additionalProperties: false },
           async execute() {
             const list = await requireService().list();

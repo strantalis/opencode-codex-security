@@ -2,7 +2,7 @@ import { createMemo, createSignal, createEffect, on, For, Show, onCleanup } from
 import { createStore, reconcile } from 'solid-js/store';
 import { asState, type ScanState } from './types';
 import type { ScanInputs, ScanPlan } from './core/scan-plan';
-import { describePlan } from './plan-view';
+import { describePlan, latestAvailableDraft } from './plan-view';
 import {
   elapsedLabel,
   findingText,
@@ -53,6 +53,7 @@ interface Catalog {
   revision?: number;
   runs: ScanState[];
   drafts: ScanState[];
+  preview?: ScanState;
   maxConcurrent: number;
   historyError?: string;
 }
@@ -133,9 +134,7 @@ export function SecurityPanel(props: {
       },
     ),
   );
-  const availableDraft = createMemo(() =>
-    catalog().drafts.find((d) => d.plan && !d.planConsumed && Date.parse(d.plan.expiresAt) > now()),
-  );
+  const availableDraft = createMemo(() => latestAvailableDraft(catalog(), now()));
   const fixture = createMemo(
     () =>
       catalog().engine?.startsWith('local-patterns') ||
@@ -179,12 +178,17 @@ export function SecurityPanel(props: {
     setPreview(undefined);
   };
   const openComposer = () => {
-    touched = true;
+    edit();
+    setRepository(props.directory);
+    setMode('default');
+    setFocus('');
+    setPaths('');
+    setDocuments('');
     setComposer(true);
     setError('');
   };
   const adoptDraft = (plan: ScanPlan) => {
-    touched = true;
+    edit();
     setRepository(plan.repository);
     setMode(plan.inputs.mode ?? 'default');
     setFocus(plan.scanPrompt);
@@ -276,7 +280,7 @@ export function SecurityPanel(props: {
           <div>
             <h2>Security</h2>
             <p class="gs-muted">
-              {projectName(props.directory)}
+              Workspace · {projectName(props.directory)}
               {activeCount() > 0 ? ` · ${activeCount()} running` : ''}
             </p>
           </div>
@@ -286,6 +290,14 @@ export function SecurityPanel(props: {
             </button>
           </Show>
         </header>
+        <details class="gs-workspace">
+          <summary>Workspace and history</summary>
+          <p class="gs-id">{props.directory}</p>
+          <p>History belongs to this workspace, including runs with a different target.</p>
+          <p>
+            Global settings share model and scan defaults, not a scan target or combined history.
+          </p>
+        </details>
         <Show when={props.operations && loaded() && !fixture()}>
           <nav class="gs-tabs" aria-label="Security actions">
             <button
@@ -355,7 +367,7 @@ export function SecurityPanel(props: {
           <Show when={!composer() && availableDraft()?.plan}>
             {(_plan) => (
               <div class="gs-pending">
-                <span>A scan is prepared for review.</span>
+                <span>Prepared target: {availableDraft()?.plan?.repository}</span>
                 <button class="gs-button" onClick={() => adoptDraft(availableDraft()!.plan!)}>
                   Review draft
                 </button>
@@ -400,21 +412,27 @@ export function SecurityPanel(props: {
                           class="gs-link"
                           onClick={() => adoptDraft(availableDraft()!.plan!)}
                         >
-                          Use scan prepared in chat
+                          Review prepared scan · {availableDraft()?.plan?.repository}
                         </button>
                       </Show>
                       <label>
-                        Repository
+                        Target repository
                         <input
                           value={repository()}
                           onInput={(e) => {
                             edit();
                             setRepository(e.currentTarget.value);
+                            setPaths('');
+                            setDocuments('');
                           }}
                           required
                           aria-label="Repository"
                           spellcheck={false}
                         />
+                        <span class="gs-help">
+                          Defaults to this workspace. Changing the target clears scope and context
+                          files.
+                        </span>
                       </label>
                       <label>
                         Scan depth
@@ -529,6 +547,10 @@ export function SecurityPanel(props: {
                           <dd>{plan().settings.codex.daybreak ? 'On' : 'Off'}</dd>
                           <dt>Global configuration</dt>
                           <dd>{plan().globalConfigFile}</dd>
+                          <dt>Settings scope</dt>
+                          <dd>
+                            Shared defaults only. This target and history belong to this workspace.
+                          </dd>
                         </dl>
                         <p class="gs-muted">Model and account access have not been verified.</p>
                         <details>
@@ -620,6 +642,7 @@ export function SecurityPanel(props: {
               <summary>
                 Switch scan <span>{catalog().runs.length} recent</span>
               </summary>
+              <p class="gs-muted">Runs recorded in this workspace. Each target is shown below.</p>
               <ul class="gs-run-list">
                 <For each={catalog().runs}>
                   {(run) => (
@@ -635,8 +658,8 @@ export function SecurityPanel(props: {
                             {run.status === 'error' ? 'Failed' : run.status}
                           </span>
                         </div>
+                        <div class="gs-run-target">Target: {run.repository}</div>
                         <div class="gs-run-meta">
-                          {projectName(run.repository)} ·{' '}
                           {run.mode ?? run.plan?.settings.scan.mode ?? 'Fixture'} · {scanScope(run)}{' '}
                           · {startedTime(run.startedAt)}
                           {run.status === 'completed'
@@ -655,8 +678,8 @@ export function SecurityPanel(props: {
               <article ref={detailElement} class="gs-detail" aria-label="Selected scan">
                 <div class="gs-detail-title">
                   <h3>{runTitle(run())}</h3>
+                  <p>Target: {run().repository}</p>
                   <p>
-                    {projectName(run().repository)} ·{' '}
                     {run().mode ?? run().plan?.settings.scan.mode ?? 'Fixture'} · {scanScope(run())}
                   </p>
                 </div>

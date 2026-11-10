@@ -4,7 +4,12 @@ import { createSignal, createEffect, on, For, Show } from 'solid-js';
 import { Security } from './rpc';
 import { asState, type ScanList } from './types';
 import type { ScanInputs, ScanPlan } from './core/scan-plan';
-import { describePlan, withScanMode } from './plan-view';
+import {
+  describePlan,
+  isAbsoluteLocalDirectory,
+  latestAvailableDraft,
+  withScanMode,
+} from './plan-view';
 import { createTuiOperations } from './security-tui-operations';
 import {
   elapsedLabel,
@@ -40,6 +45,7 @@ export default Plugin.define({
     const [busy, setBusy] = createSignal(false);
     const [now, setNow] = createSignal(Date.now());
     const [nextInputs, setNextInputs] = createSignal<ScanInputs>({});
+    const [nextPlanId, setNextPlanId] = createSignal<string>();
     let stopped = false,
       polling = false;
     const location = ctx.location ?? ctx.data.location.default();
@@ -53,7 +59,24 @@ export default Plugin.define({
       ),
     );
     const open = () => ctx.ui.router.navigate({ type: 'plugin', name: 'security' });
-    const operations = createTuiOperations(ctx, location, current, open);
+    const workspace = isAbsoluteLocalDirectory(ctx.location?.directory)
+      ? ctx.location!.directory
+      : undefined;
+    const chooseTarget = async (currentTarget = workspace): Promise<string | undefined> => {
+      const value = await ctx.ui.dialog.prompt({
+        title: 'Target repository',
+        description:
+          'Choose an absolute local path. This changes only the next task, not the history workspace or global settings.',
+        value: currentTarget,
+        placeholder: '/path/to/project',
+      });
+      if (value === undefined || stopped) return;
+      if (!isAbsoluteLocalDirectory(value.trim()))
+        throw new Error('Choose an absolute local repository path before preparing a task.');
+      return value.trim();
+    };
+    const operationTarget = async () => workspace ?? chooseTarget();
+    const operations = createTuiOperations(ctx, location, current, open, operationTarget);
     const active = () => runs().filter((run) => run.status === 'running').length;
     const refresh = async () => {
       if (stopped || polling) return;
@@ -159,10 +182,13 @@ export default Plugin.define({
           throw new Error('All scan slots are in use. Start another scan after one finishes.');
         let input = {};
         if (!catalog()?.engine?.startsWith('local-patterns')) {
-          const draft = catalog()?.drafts.find(
-            (d) => d.plan && !d.planConsumed && Date.parse(d.plan.expiresAt) > Date.now(),
-          );
-          const prepared = draft ?? asState(await client.prepare(nextInputs(), { location }));
+          const draft = latestAvailableDraft(catalog(), Date.now(), nextPlanId());
+          let prepared = draft;
+          if (!prepared) {
+            const repository = nextInputs().repository || workspace || (await chooseTarget());
+            if (!repository || stopped) return;
+            prepared = asState(await client.prepare({ ...nextInputs(), repository }, { location }));
+          }
           const plan = prepared.plan!;
           if (!plan) throw new Error('No scan preview returned. Nothing was started.');
           if (!(await review(plan)) || stopped) return;
@@ -171,6 +197,8 @@ export default Plugin.define({
         const result = asState(await client.start(input, { location }));
         if (!stopped) {
           select(result.runId);
+          setNextInputs({});
+          setNextPlanId(undefined);
           await refresh();
         }
       } catch (e) {
@@ -189,11 +217,11 @@ export default Plugin.define({
         return;
       }
       const id = await ctx.ui.dialog.select({
-        title: 'Choose a scan',
+        title: 'Scans recorded in this workspace',
         current: current()?.runId,
         options: runs().map((run) => ({
           title: `${run.status.toUpperCase()} · ${runTitle(run)}`,
-          description: `${scanScope(run)} · ${run.mode ?? 'fixture'} · ${run.runId?.slice(0, 8)}`,
+          description: `${run.repository} · ${scanScope(run)} · ${run.mode ?? 'fixture'} · ${run.runId?.slice(0, 8)}`,
           value: run.runId!,
         })),
       });
@@ -230,6 +258,10 @@ export default Plugin.define({
       <scrollbox height="100%" focused>
         <box flexDirection="column" padding={1} gap={1}>
           <text fg="#9be4c6">Security</text>
+          <text fg="#b5b5b5">History workspace: {location.directory}</text>
+          <Show when={!workspace}>
+            <text>No active local workspace verified. Choose a target before preparing work.</text>
+          </Show>
           <text>
             {active()
               ? `${active()} of ${catalog()?.maxConcurrent ?? 2} scans running`
@@ -256,13 +288,14 @@ export default Plugin.define({
             </Show>
             <Show when={details() && runs().length}>
               <box flexDirection="column" gap={0}>
-                <text>RECENT SCANS</text>
+                <text>Global settings share defaults, not a target or combined history.</text>
+                <text>RECENT SCANS IN THIS WORKSPACE</text>
                 <For each={runs().slice(0, 6)}>
                   {(run) => (
                     <text fg={run.runId === current()?.runId ? '#9be4c6' : undefined}>
                       {run.runId === current()?.runId ? '> ' : '  '}
                       {run.status.toUpperCase()} · {runTitle(run)} · {run.mode ?? 'fixture'} ·{' '}
-                      {run.runId?.slice(0, 8)}
+                      {run.runId?.slice(0, 8)} · {run.repository}
                     </text>
                   )}
                 </For>
@@ -280,6 +313,7 @@ export default Plugin.define({
               {(run) => (
                 <box flexDirection="column" gap={1}>
                   <text fg="#9be4c6">{runTitle(run())}</text>
+                  <text fg="#b5b5b5">Target: {run().repository}</text>
                   <text fg="#b5b5b5">
                     {scanScope(run())} · {run().mode ?? 'Fixture pattern checks'}
                   </text>
@@ -471,6 +505,36 @@ export default Plugin.define({
           run: cancel,
         },
         {
+          id: 'security.target',
+          title: 'Security: choose next scan target',
+          group: 'Security',
+          palette: true,
+          slash: { name: 'security-target' },
+          run: async () => {
+            if (busy()) return;
+            setBusy(true);
+            setError('');
+            try {
+              const repository = await chooseTarget(workspace);
+              if (!repository || stopped) return;
+              // A different target must never inherit another repository's scope or context files.
+              const input: ScanInputs = { repository };
+              setNextInputs(input);
+              setNextPlanId('pending');
+              const prepared = asState(await client.prepare(input, { location }));
+              if (!prepared.plan) throw new Error('No scan preview returned. Nothing was started.');
+              setNextPlanId(prepared.plan.id);
+              await refresh();
+              operations.close();
+              open();
+            } catch (e) {
+              if (!stopped) setError(userError(e));
+            } finally {
+              if (!stopped) setBusy(false);
+            }
+          },
+        },
+        {
           id: 'security.mode',
           title: 'Security: choose next scan depth',
           group: 'Security',
@@ -499,10 +563,15 @@ export default Plugin.define({
                 ],
               });
               if (!mode || stopped) return;
-              const draft = catalog()?.drafts[0]?.plan;
+              const draft = latestAvailableDraft(catalog(), Date.now(), nextPlanId())?.plan;
               const input = withScanMode(draft?.inputs ?? nextInputs(), mode);
+              input.repository ||= draft?.repository || workspace || (await chooseTarget());
+              if (!input.repository || stopped) return;
               setNextInputs(input);
-              await client.prepare(input, { location });
+              setNextPlanId('pending');
+              const prepared = asState(await client.prepare(input, { location }));
+              if (!prepared.plan) throw new Error('No scan preview returned. Nothing was started.');
+              setNextPlanId(prepared.plan.id);
               await refresh();
               open();
             } catch (e) {

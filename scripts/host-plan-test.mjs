@@ -13,6 +13,8 @@ const root = fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/, '');
 // nested policy paths to the Git root; production guards correctly reject that.
 const fixture = await realpath(await mkdtemp(join(tmpdir(), 'opencode-security-fixture-')));
 await cp(`${root}/fixtures/vulnerable`, fixture, { recursive: true });
+const secondFixture = await realpath(await mkdtemp(join(tmpdir(), 'opencode-security-second-')));
+await cp(`${root}/fixtures/vulnerable`, secondFixture, { recursive: true });
 const configPath = `${root}/.runtime/plan/config/opencode/opencode.json`;
 await mkdir(`${root}/.runtime/plan/config/opencode`, { recursive: true });
 await mkdir(`${root}/.runtime/plan/home`, { recursive: true });
@@ -343,11 +345,36 @@ try {
   console.log(
     'Missing approval, missing/stale plan IDs and reuse rejected. Explicit Deep mode and exact inputs reached injected mock SDK once; omitted mode restored global Standard.',
   );
+  const secondLocation = { directory: secondFixture };
+  await client.location.get({ location: secondLocation });
+  for (let i = 0; i < 50; i++) {
+    const plugins = await client.plugin.list({ location: secondLocation });
+    if (plugins.data.some((p) => p.id === 'gill.security')) break;
+    await sleep(100);
+  }
+  assert.equal((await rpc.list({}, { location: secondLocation })).runs.length, 0);
+  assert.equal((await rpc.operationList({}, { location: secondLocation })).operations.length, 0);
+  await assert.rejects(rpc.status({ runId: b.runId }, { location: secondLocation }));
+  await assert.rejects(
+    rpc.operationStatus({ operationId: validation.operationId }, { location: secondLocation }),
+  );
+  const secondDefault = await rpc.prepare({}, { location: secondLocation });
+  assert.equal(secondDefault.repository, secondFixture);
+  const explicitTarget = await rpc.prepare({ repository: fixture }, { location: secondLocation });
+  assert.equal(explicitTarget.repository, fixture);
+  assert.equal((await rpc.prepare({}, { location: secondLocation })).repository, secondFixture);
+  assert.equal((await test.inspect({}, { location: secondLocation })).calls.length, 0);
+  assert.equal((await rpc.status({ runId: b.runId }, { location })).status, 'completed');
+  console.log(
+    'Actual host: separate local sessions isolate run/operation history; target overrides do not change the next session default. No inference started in the second session.',
+  );
   console.log('HOST SCAN-PLAN INTEGRATION PASSED (mock SDK only; no paid inference or login).');
 } finally {
   child.kill('SIGTERM');
   const timeout = setTimeout(() => child.kill('SIGKILL'), 3000);
   await new Promise((resolve) => child.once('exit', resolve));
   clearTimeout(timeout);
-  await rm(fixture, { recursive: true, force: true });
+  await Promise.all(
+    [fixture, secondFixture].map((path) => rm(path, { recursive: true, force: true })),
+  );
 }

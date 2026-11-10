@@ -13,7 +13,7 @@ let revision = 1,
   sequence = 10;
 const plan = (id, inputs = {}) => ({
   id,
-  repository,
+  repository: inputs.repository ?? repository,
   scopePaths: inputs.scopePaths ?? ['src/api'],
   scanPrompt: inputs.scanPrompt ?? 'Review authorization and tenant isolation',
   contextFiles: (inputs.contextFiles ?? []).map((path) => ({
@@ -253,6 +253,12 @@ if (scenario && runs[0]) {
     }
   }
 }
+if (params.has('multi-target')) {
+  runs[0].repository = '/Projects/other-team/atlas';
+  runs[0].plan.repository = runs[0].repository;
+  runs[2].repository = '/Projects/other-team/atlas';
+  runs[2].plan.repository = runs[2].repository;
+}
 const drafts = [];
 if (new URLSearchParams(location.search).has('narrow')) document.body.classList.add('narrow');
 const log = (message) => (document.querySelector('#journal').textContent = message);
@@ -264,6 +270,7 @@ const port = {
       revision,
       runs,
       drafts,
+      preview: drafts[0]?.planConsumed ? undefined : drafts[0],
       maxConcurrent: 2,
       historyLimit: 50,
     }),

@@ -36,7 +36,7 @@ export class PlannedScanService {
     project: string,
     options: { createClient?: SecurityFactory; mock?: boolean; historyDirectory?: string } = {},
   ) {
-    this.#project = resolve(project);
+    this.#project = project; // prepareScan validates the anchor; never guess process.cwd().
     this.#factory = options.createClient;
     this.#mock = options.mock ?? false;
     if (options.historyDirectory)

@@ -120,7 +120,12 @@ export async function prepareScan(
   mock = false,
 ): Promise<ScanPlan> {
   const input = parseInputs(raw);
-  const repository = await realpath(resolve(currentProject, input.repository || '.'));
+  // Never let node:path fall back to the plugin process's working directory.
+  // A verified session location or an explicit absolute target must anchor the request.
+  const target = input.repository || '.';
+  if (!isAbsolute(target) && (!currentProject || !isAbsolute(currentProject)))
+    throw new Error('No local project is selected. Choose an absolute repository path explicitly.');
+  const repository = await realpath(isAbsolute(target) ? target : resolve(currentProject, target));
   if (!(await stat(repository)).isDirectory()) throw new Error('Repository must be a directory.');
   const home = await realpath(homedir());
   if (inside(repository, home))

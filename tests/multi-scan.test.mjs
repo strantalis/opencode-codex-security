@@ -255,3 +255,42 @@ test('malformed history record cannot hide valid runs or block new previews', as
   assert.equal(list.historyError, undefined);
   assert.equal((await restored.prepare({})).status, 'idle');
 });
+
+test('session locations and explicit targets stay distinct even with identical repository names', async (t) => {
+  const parent = await root(t);
+  const first = join(parent, 'one', 'app');
+  const second = join(parent, 'two', 'app');
+  await mkdir(first, { recursive: true });
+  await mkdir(second, { recursive: true });
+  const a = controlled(),
+    b = controlled();
+  const firstSession = new PlannedScanService(first, { createClient: a.factory, mock: true });
+  const secondSession = new PlannedScanService(second, { createClient: b.factory, mock: true });
+  t.after(() => Promise.all([firstSession.dispose(), secondSession.dispose()]));
+  const override = await firstSession.prepare({ repository: second });
+  const ordinary = await secondSession.prepare({});
+  const runA = await firstSession.start({ planId: override.plan.id, approveOpenAIInference: true });
+  const runB = await secondSession.start({
+    planId: ordinary.plan.id,
+    approveOpenAIInference: true,
+  });
+  await tick();
+  assert.equal(a.calls[0].repo, second);
+  assert.equal(b.calls[0].repo, second);
+  assert.equal((await firstSession.prepare({})).repository, first);
+  assert.deepEqual(
+    (await firstSession.list()).runs.map((r) => r.runId),
+    [runA.runId],
+  );
+  assert.deepEqual(
+    (await secondSession.list()).runs.map((r) => r.runId),
+    [runB.runId],
+  );
+  assert.throws(() => secondSession.getState({ runId: runA.runId }), /Unknown scan run/);
+  firstSession.cancel({ runId: runA.runId });
+  await firstSession.wait(runA.runId);
+  assert.equal(b.calls[0].opts.signal.aborted, false);
+  assert.equal(secondSession.getState({ runId: runB.runId }).status, 'running');
+  b.calls[0].resolve(result('session-two'));
+  await secondSession.wait(runB.runId);
+});
