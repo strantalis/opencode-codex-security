@@ -4,15 +4,33 @@ import type { ScanInputs, ScanPlan } from './core/scan-plan';
 /** Public route details only: never resolve credentials or read configuration in the UI. */
 export function describeInferenceRoute(settings: ResolvedSdkSettings): string {
   const { provider, auth, source, model } = settings.codex;
-  const destination = provider ? `${provider.id} (${provider.baseUrl})` : 'OpenAI';
+  const destination = provider
+    ? `${provider.id} (${provider.baseUrl})`
+    : auth === 'api-key'
+      ? 'OpenAI (https://api.openai.com/v1)'
+      : 'OpenAI';
   const authentication =
     auth === 'api-key'
-      ? `API key from environment variable ${provider?.envKey ?? 'OPENAI_API_KEY'} (name only)`
+      ? provider
+        ? `API key from environment variable ${provider.envKey} (name only)`
+        : 'OpenAI API key from OPENAI_API_KEY, otherwise CODEX_API_KEY (names only; no sign-in or credential import)'
       : 'dedicated ChatGPT sign-in';
+  const headers =
+    provider?.envHttpHeaders && Object.keys(provider.envHttpHeaders).length
+      ? `; additional request headers from environment (names only): ${Object.entries(
+          provider.envHttpHeaders,
+        )
+          .map(([header, variable]) => `${header} ← ${variable}`)
+          .join(', ')}`
+      : '';
+  const temporaryCredentials =
+    headers && settings.scan.mode === 'deep'
+      ? '; Deep workers may use private temporary credential files; interrupted runs may leave them'
+      : '';
   const configuration = source
     ? `; config ${source.path}${source.profile ? `, profile ${source.profile}` : ''}, SHA-256 ${source.digest}`
     : '';
-  return `${destination}; auth: ${authentication}; model: ${model}${configuration}${provider ? '; gateway upstream routing is not verified' : ''}`;
+  return `${destination}; auth: ${authentication}${headers}; model: ${model}${configuration}${provider ? '; gateway upstream routing is not verified' : ''}${temporaryCredentials}`;
 }
 
 export function describePlan(plan: ScanPlan): string {

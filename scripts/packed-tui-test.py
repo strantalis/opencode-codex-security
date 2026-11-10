@@ -33,6 +33,8 @@ def main():
     parser.add_argument('--timeout', type=float, default=45)
     parser.add_argument('--real-default', action='store_true', help='Verify real default preview/cancel, without executing it')
     parser.add_argument('--keyless-config', action='store_true', help='Verify unsupported keyless setup error without fallback')
+    parser.add_argument('--openai-key', action='store_true', help='Verify explicit OpenAI API-key preview, without execution')
+    parser.add_argument('--header-config', action='store_true', help='Verify supported gateway environment-header preview')
     args = parser.parse_args()
     package = args.package.resolve(strict=True)
     binary = args.opencode.resolve(strict=True)
@@ -65,13 +67,22 @@ def main():
     }
     assert all(shutil.which(name, path=env['PATH']) is None for name in ['node', 'npm', 'bun'])
     Path(env['OPENCODE_CONFIG']).write_text(json.dumps({
-        'plugins': [{'package': str(package)} if args.real_default or args.keyless_config
+        'plugins': [{'package': str(package)} if args.real_default or args.keyless_config or args.openai_key or args.header_config
                     else {'package': str(package), 'options': {'engine': 'fixture'}}],
     }))
     if args.keyless_config:
         codex = Path(env['CODEX_HOME'])
         codex.mkdir()
         (codex / 'config.toml').write_text('model_provider = "network"\n[model_providers.network]\nbase_url = "https://gateway.example.test/v1"\nrequires_openai_auth = false\n')
+    if args.openai_key or args.header_config:
+        settings = {'codex': {'auth': 'api-key'}}
+        if args.header_config:
+            settings = {'codex': {'provider': {
+                'id': 'gateway', 'baseUrl': 'https://gateway.example.test/v1',
+                'envKey': 'SYNTHETIC_GATEWAY_KEY', 'wireApi': 'responses',
+                'envHttpHeaders': {'X-Workspace': 'SYNTHETIC_WORKSPACE'},
+            }}}
+        (isolated / 'config/opencode/codex-security.json').write_text(json.dumps(settings))
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 50, 180, 0, 0))
     child = subprocess.Popen([str(binary), '--standalone'], cwd=isolated / 'project',
@@ -143,11 +154,17 @@ def main():
                      'explicit keyless SDK setup blocker')
             assert '4findingsshown' not in re.sub(r'\s+', '', plain()), 'Unexpected fixture fallback'
             assert not list((isolated / 'home').rglob('auth.json')), 'Unexpected credential file'
-        elif args.real_default:
+        elif args.real_default or args.openai_key or args.header_config:
             wait_for(lambda text: 'Reviewthisscan' in re.sub(r'\s+', '', text)
                      and 'Wholerepository' in re.sub(r'\s+', '', text),
                      'real SDK repository/scope review')
             assert str(isolated / 'project') in plain(), 'Review lost actual workspace target'
+            if args.openai_key:
+                wait_for(lambda text: 'CODEX_API_KEY' in text and 'OPENAI_API_KEY' in text
+                         and 'api.openai.com/v1' in text, 'OpenAI key-source/endpoint disclosure')
+            if args.header_config:
+                wait_for(lambda text: 'SYNTHETIC_WORKSPACE' in text and 'x-workspace' in text,
+                         'environment-header disclosure')
             assert '4findingsshown' not in re.sub(r'\s+', '', plain()), 'Unexpected fixture fallback'
             send(b'\x1b')  # Cancel the preview. Never send Ctrl+Y.
             end = time.monotonic() + 1
@@ -171,6 +188,8 @@ def main():
         if child.returncode != 0:
             raise RuntimeError(f'Native TUI exited with status {child.returncode}')
         result = ('keyless setup error without fixture fallback' if args.keyless_config else
+                  'explicit OpenAI API-key preview, cancelled without scan' if args.openai_key else
+                  'gateway environment-header preview, cancelled without scan' if args.header_config else
                   'real default repository/scope preview, cancelled without scan' if args.real_default else
                   '4 explicit fixture findings')
         print(f'PACKED NATIVE TUI PASSED: /security rendered, {result}, clean exit; no Node/npm/Bun on PATH.')

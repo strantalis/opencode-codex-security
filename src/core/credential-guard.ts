@@ -1,6 +1,11 @@
 import { lstat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import {
+  OPENAI_API_BASE_URL,
+  validateOpenAiApiEndpointEnvironment,
+  ProviderConfigurationError,
+} from './provider-config.ts';
 
 type Environment = Record<string, string | undefined>;
 
@@ -16,11 +21,12 @@ export class DedicatedSecurityCredentialsRequiredError extends Error {
 
 function environmentValue(environment: Environment, requested: string, preserveWhitespace = false) {
   const exact = environment[requested];
-  const value = exact?.trim()
-    ? exact
-    : Object.entries(environment).find(
-        ([name, entry]) => name.toUpperCase() === requested && entry?.trim(),
-      )?.[1];
+  const alternate = exact?.trim()
+    ? undefined
+    : Object.keys(environment).find(
+        (name) => name.toUpperCase() === requested && environment[name]?.trim(),
+      );
+  const value = exact?.trim() ? exact : alternate ? environment[alternate] : undefined;
   return preserveWhitespace ? value : value?.trim();
 }
 
@@ -86,7 +92,7 @@ export async function requireDedicatedSecurityCredentials(
 export class ProviderCredentialsRequiredError extends Error {
   constructor() {
     super(
-      'The selected provider environment key is missing or blank. Make the configured envKey available to the OpenCode process before retrying. No sign-in or credential import was attempted.',
+      'A required provider credential environment variable is missing, blank, or contains invalid header characters. Make the configured envKey and any envHttpHeaders variables available to OpenCode; for built-in OpenAI API-key mode provide OPENAI_API_KEY or CODEX_API_KEY. No sign-in or credential import was attempted.',
     );
     this.name = 'ProviderCredentialsRequiredError';
   }
@@ -96,19 +102,46 @@ export class ProviderCredentialsRequiredError extends Error {
 export async function requireSdkCredentials(
   config: import('@openai/codex-security').CodexSecurityConfig | undefined,
   environment: Environment = process.env,
+  auth?: 'chatgpt' | 'api-key',
 ): Promise<void> {
   const routing = config?.codexOverrides;
   const id = routing?.model_provider;
-  if (id === undefined || id === 'openai') return requireDedicatedSecurityCredentials(environment);
-  const { validateProvider, record, ProviderConfigurationError } =
-    await import('./provider-config.ts');
+  if (id === undefined || id === 'openai') {
+    if (auth !== 'api-key') return requireDedicatedSecurityCredentials(environment);
+    validateOpenAiApiEndpointEnvironment(environment);
+    if (routing?.openai_base_url !== OPENAI_API_BASE_URL)
+      throw new ProviderConfigurationError(
+        'Built-in OpenAI API-key routing must use the approved OpenAI API endpoint. No authentication was initialized.',
+      );
+    // Match SDK 0.9.1's built-in key precedence, including case-insensitive
+    // lookup. Never log in, persist keys, or read credential files.
+    if (
+      !environmentValue(environment, 'OPENAI_API_KEY') &&
+      !environmentValue(environment, 'CODEX_API_KEY')
+    )
+      throw new ProviderCredentialsRequiredError();
+    return;
+  }
+  const { validateProvider, record } = await import('./provider-config.ts');
+  if (auth === 'chatgpt')
+    throw new ProviderConfigurationError(
+      'Custom providers require api-key authentication; ChatGPT credentials will not be forwarded.',
+    );
   const providers = routing?.model_providers;
   const native = typeof id === 'string' && record(providers) ? providers[id] : undefined;
   if (
     !record(native) ||
     native.requires_openai_auth !== false ||
     Object.keys(native).some(
-      (key) => !['name', 'base_url', 'env_key', 'wire_api', 'requires_openai_auth'].includes(key),
+      (key) =>
+        ![
+          'name',
+          'base_url',
+          'env_key',
+          'env_http_headers',
+          'wire_api',
+          'requires_openai_auth',
+        ].includes(key),
     )
   )
     throw new ProviderConfigurationError(
@@ -118,6 +151,7 @@ export async function requireSdkCredentials(
     id,
     baseUrl: native.base_url,
     envKey: native.env_key,
+    ...(native.env_http_headers === undefined ? {} : { envHttpHeaders: native.env_http_headers }),
     wireApi: native.wire_api,
   });
   // Exact environment-variable selection on POSIX, case-insensitive on Windows.
@@ -127,4 +161,15 @@ export async function requireSdkCredentials(
       ? Object.keys(environment).find((key) => key.toUpperCase() === provider.envKey.toUpperCase())
       : provider.envKey;
   if (!name || !environment[name]?.trim()) throw new ProviderCredentialsRequiredError();
+  for (const variable of Object.values(provider.envHttpHeaders ?? {})) {
+    const headerName =
+      process.platform === 'win32'
+        ? Object.keys(environment).find((key) => key.toUpperCase() === variable.toUpperCase())
+        : variable;
+    const value = headerName ? environment[headerName] : undefined;
+    // Reject control characters rather than letting environment values inject headers.
+    // eslint-disable-next-line no-control-regex
+    if (!value?.trim() || /[\x00-\x1f\x7f]/.test(value))
+      throw new ProviderCredentialsRequiredError();
+  }
 }

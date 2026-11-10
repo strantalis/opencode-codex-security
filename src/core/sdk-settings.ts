@@ -5,6 +5,8 @@ import { createHash } from 'node:crypto';
 import type { CodexSecurityConfig } from '@openai/codex-security';
 import {
   readProviderConfiguration,
+  OPENAI_API_BASE_URL,
+  validateOpenAiApiEndpointEnvironment,
   defaultCodexConfigFile,
   providerSource,
   validateProvider,
@@ -210,17 +212,17 @@ export async function resolveSettings(
       throw new ProviderConfigurationError(
         'Custom-provider Daybreak is not supported by this plugin yet. Disable daybreak and use the standard access program.',
       );
-  } else if (codex.auth !== 'chatgpt') {
-    throw new ProviderConfigurationError(
-      'API-key authentication requires an explicit custom provider with an envKey.',
-    );
   }
+  if (!codex.provider && codex.auth === 'api-key') validateOpenAiApiEndpointEnvironment();
   if (imported) codex.source = providerSource(imported.path, imported.profile, selected);
   return { codex, scan: { ...defaultSettings.scan, ...source.scan, ...(mode ? { mode } : {}) } };
 }
 
 /** Build the entire routing override from validated, non-secret fields. Never pass a profile. */
-export function sdkConfiguration(settings?: ResolvedSdkSettings): CodexSecurityConfig {
+export function sdkConfiguration(
+  settings?: ResolvedSdkSettings,
+  auth?: 'chatgpt' | 'api-key',
+): CodexSecurityConfig {
   const codex = settings?.codex;
   const provider = codex?.provider ? validateProvider(codex.provider) : undefined;
   if (provider && codex?.auth !== 'api-key')
@@ -228,6 +230,9 @@ export function sdkConfiguration(settings?: ResolvedSdkSettings): CodexSecurityC
   return {
     codexOverrides: {
       model_provider: provider?.id ?? 'openai',
+      ...(!provider && (codex?.auth ?? auth) === 'api-key'
+        ? { openai_base_url: OPENAI_API_BASE_URL }
+        : {}),
       ...(codex
         ? {
             model: codex.model,
@@ -243,6 +248,7 @@ export function sdkConfiguration(settings?: ResolvedSdkSettings): CodexSecurityC
                 name: provider.id,
                 base_url: provider.baseUrl,
                 env_key: provider.envKey,
+                ...(provider.envHttpHeaders ? { env_http_headers: provider.envHttpHeaders } : {}),
                 wire_api: provider.wireApi,
                 requires_openai_auth: false,
               },

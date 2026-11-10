@@ -112,8 +112,33 @@ try {
           error.type === 'security.setup' && /Keyless network identity/.test(error.message),
       );
     assert.equal((await rpc.list({}, { location })).runs.length, 0);
+    await writeFile(
+      `${isolated}/config/opencode/codex-security.json`,
+      JSON.stringify({ codex: { auth: 'api-key' } }),
+    );
+    const openAi = await rpc.prepare({}, { location });
+    assert.equal(openAi.plan.settings.codex.auth, 'api-key');
+    assert.equal(openAi.plan.settings.codex.provider, undefined);
+    await assert.rejects(rpc.start({ planId: openAi.plan.id }, { location }));
+    const provider = {
+      id: 'gateway',
+      baseUrl: 'https://gateway.example.test/v1',
+      envKey: 'SYNTHETIC_GATEWAY_KEY',
+      wireApi: 'responses',
+      envHttpHeaders: { 'X-Workspace': 'SYNTHETIC_WORKSPACE' },
+    };
+    await writeFile(
+      `${isolated}/config/opencode/codex-security.json`,
+      JSON.stringify({ codex: { provider } }),
+    );
+    const gateway = await rpc.prepare({}, { location });
+    assert.deepEqual(gateway.plan.settings.codex.provider.envHttpHeaders, {
+      'x-workspace': 'SYNTHETIC_WORKSPACE',
+    });
+    await assert.rejects(rpc.start({ planId: gateway.plan.id }, { location }));
+    assert.equal((await rpc.list({}, { location })).runs.length, 0);
     console.log(
-      'Actual OpenCode defaults to real SDK, prepares workspace scope, rejects unapproved start, and surfaces keyless setup errors without fallback; no model calls.',
+      'Actual OpenCode defaults to real SDK, prepares workspace scope, rejects unapproved start, and surfaces unsupported setup errors and prepares explicit API-key/header routes without fallback; no model calls.',
     );
   } else {
     state = await rpc.start({}, { location });

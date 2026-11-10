@@ -168,10 +168,7 @@ test('absent discovered config retains dedicated ChatGPT defaults', async (t) =>
   });
   assert.equal((await prepareScan(root)).settings.codex.source, undefined);
   assert.deepEqual(sdkConfiguration().codexOverrides, { model_provider: 'openai' });
-  await assert.rejects(
-    resolveSettings({ codex: { auth: 'api-key' } }),
-    /requires an explicit custom provider/,
-  );
+  assert.equal((await resolveSettings({ codex: { auth: 'api-key' } })).codex.auth, 'api-key');
 });
 
 test('explicit provider settings support no-login routing but reject contradictory or unsupported auth and Daybreak', async (t) => {
@@ -228,7 +225,6 @@ test('TOML parsing, unsupported provider fields, bounded files, and symlinks fai
   const { root, codexFile } = await fixture(t);
   for (const extra of [
     'http_headers = { Authorization = "SYNTHETIC_HIDDEN" }',
-    'env_http_headers = { X = "OTHER_ENV" }',
     'auth = { command = "DO_NOT_RUN" }',
     'api_key = "SYNTHETIC_HIDDEN"',
     'model_catalog_url = "https://other.example.test"',

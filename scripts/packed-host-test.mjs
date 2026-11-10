@@ -57,7 +57,13 @@ try {
       run(process.execPath, ['scripts/host-test.mjs', '--package', packageRoot, ...extra]),
     );
   }
-  for (const mode of [[], ['--real-default'], ['--keyless-config']])
+  for (const mode of [
+    [],
+    ['--real-default'],
+    ['--keyless-config'],
+    ['--openai-key'],
+    ['--header-config'],
+  ])
     process.stdout.write(
       run('python3', ['scripts/packed-tui-test.py', '--package', packageRoot, ...mode]),
     );
