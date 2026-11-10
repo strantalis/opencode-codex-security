@@ -5,6 +5,12 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
+    # typescript-eslint 8.72.2 supports TypeScript >=4.8.4 <6.1.0.
+    # Remove this compatibility limit when the lint stack supports newer compilers.
+    # Keep compatible compiler updates and all security advisory checks enabled.
+    ignore:
+      - dependency-name: typescript
+        versions: ['>=6.1.0']
     groups:
       development:
         dependency-type: development
