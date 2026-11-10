@@ -1,6 +1,6 @@
 # Codex Security SDK integration
 
-Pinned SDK: `@openai/codex-security@0.9.1`; OpenCode/plugin: 2.2.6.
+Pinned SDK: `@openai/codex-security@0.9.1`; plugin API package: `@opencode/plugin@2.2.6`. OpenCode 2.2.6 is the original host-test baseline, not an exact-patch requirement.
 
 Current global configuration is documented in [GLOBAL-CONFIG.md](GLOBAL-CONFIG.md). No per-project SDK overrides are loaded. Session-supplied target/focus/context is distinct from global model, reasoning and Daybreak settings. Optional per-scan Standard/Deep mode overrides only the global mode fallback; no other SDK settings are overridden by session inputs.
 

@@ -31,7 +31,7 @@ gh release download preview-COMMIT_PREFIX --repo strantalis/opencode-codex-secur
 shasum -a 256 -c SHA256SUMS
 # Linux: sha256sum -c SHA256SUMS
 cat build-manifest.json
-npm install --prefix ./consumer --ignore-scripts --no-audit --no-fund ./opencode-codex-security-0.1.1.tgz
+npm install --prefix ./consumer --ignore-scripts --no-audit --no-fund ./opencode-codex-security-0.1.2.tgz
 ```
 
 The tarball version follows the package manifest; the release tag, full source commit and hash uniquely identify each build. Use the archive filename actually listed in `build-manifest.json`, which may differ from the example above. A GitHub preview does not make that version live on npm. Set your OpenCode plugin's `package` to the absolute path of `consumer/node_modules/opencode-codex-security` while preserving unrelated configuration. Select `engine: fixture` for offline testing or your explicitly configured SDK mode. Keep each preview in a separate directory; switch/reload only after active scans, approval dialogs and policy forms finish. Keep the previous directory to roll back. Nothing auto-updates the watched installation.
