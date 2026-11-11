@@ -31,10 +31,10 @@ gh release download preview-COMMIT_PREFIX --repo strantalis/opencode-codex-secur
 shasum -a 256 -c SHA256SUMS
 # Linux: sha256sum -c SHA256SUMS
 cat build-manifest.json
-npm install --prefix ./consumer --ignore-scripts --no-audit --no-fund ./opencode-codex-security-0.1.2.tgz
+npm install --prefix ./consumer --ignore-scripts --no-audit --no-fund ./opencode-codex-security-VERSION.tgz
 ```
 
-The tarball version follows the package manifest; the release tag, full source commit and hash uniquely identify each build. Use the archive filename actually listed in `build-manifest.json`, which may differ from the example above. A GitHub preview does not make that version live on npm. Set your OpenCode plugin's `package` to the absolute path of `consumer/node_modules/opencode-codex-security` while preserving unrelated configuration. Real SDK mode is the default. Select `engine: fixture` only for explicit offline developer testing. Keep each preview in a separate directory; switch/reload only after active scans, approval dialogs and policy forms finish. Keep the previous directory to roll back. Nothing auto-updates the watched installation.
+The tarball version follows the package manifest; the release tag, full source commit and hash uniquely identify each build. Use the archive filename actually listed in `build-manifest.json`, which may differ from the example above. A GitHub preview does not make that version live on npm. Set your OpenCode plugin's `package` to the absolute path of `consumer/node_modules/opencode-codex-security` while preserving unrelated configuration.
 
 The tarball does not bundle its dependency tree: npm still fetches dependencies. Artifact checksums authenticate only the downloaded bytes relative to the trusted repository; they are not independent signatures or a dependency safety guarantee.
 
@@ -44,7 +44,7 @@ Develop in a separate checkout/worktree, push fixes, inspect that commit's CI, m
 
 ## npm distribution
 
-Public GitHub distribution under Apache 2.0 is approved. Verified November 10, 2026: npm `latest` is `0.1.0`, and `next` points to public `0.1.2`. The separate manual `npm-stage.yml` workflow uses maintainer-configured trust to stage later tested artifacts; it never approves them. Bootstrap and the OIDC staging flow are established; routine releases reuse the existing trust binding. Every live npm version still requires human 2FA approval. See [publishing and operating the staging flow](PUBLISHING.md).
+Public GitHub distribution under Apache 2.0 is approved. The separate manual `npm-stage.yml` workflow uses maintainer-configured trust to stage later tested artifacts; it never approves them. Bootstrap and the OIDC staging flow are established; routine releases reuse the existing trust binding. Every live npm version still requires human 2FA approval. See [publishing and operating the staging flow](PUBLISHING.md).
 
 Keep development fixes in separate worktrees and PRs; do not overwrite the watched local installation. For npm fixes, bump the patch version and lockfile together. For prerelease testing use a full prerelease version with `next`; use `latest` only deliberately for stable releases. Pin the full installed version, keep the prior consumer for rollback and reload only after active operations finish.
 

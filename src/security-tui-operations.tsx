@@ -69,23 +69,12 @@ export function createTuiOperations(
       title: op.kind === 'policy' ? 'Review policy generation' : 'Review source validation',
       message: `Repository: ${op.repository}\n${op.plan.path ? 'Component: ' + op.plan.path + '\n' : ''}Context: ${op.plan.contextFiles.map((file) => file.path).join(', ') || 'No additional documents'}\n\n${op.plan.mock ? 'Mock operation: no model calls or uploads.' : `Repository source, the selected finding if any, and listed context go to ${describeInferenceRoute(op.plan.settings)}.\n${op.plan.costNotice}`}\n\n${op.kind === 'policy' ? 'Returns a draft only. Existing files stay unchanged.' : 'Static source assessment only. No exploit execution or patch application.'}\n\nModel: ${op.plan.settings.codex.model} · ${op.plan.settings.codex.reasoningEffort} reasoning`,
       label: {
-        confirm: op.plan.mock
-          ? 'Start mock operation'
-          : op.kind === 'validation'
-            ? 'Approve without cost ceiling'
-            : 'Approve and start',
+        confirm: op.plan.mock ? 'Start mock operation' : 'Approve and start',
         cancel: 'Back',
       },
     });
     if (!confirmed || stopped) return;
-    await client.operationStart(
-      {
-        operationId: op.operationId,
-        approveOpenAIInference: true,
-        ...(op.kind === 'validation' ? { approveUncappedValidation: true } : {}),
-      },
-      { location },
-    );
+    await client.operationStart({ operationId: op.operationId }, { location });
   };
   const commands: Commands = [
     {

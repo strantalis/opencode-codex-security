@@ -64,8 +64,8 @@ export function emptyState(): ScanState {
     error: null,
     startedAt: null,
     finishedAt: null,
-    repository: 'vulnerable (synthetic fixture)',
-    engine: 'local-patterns (prototype)',
+    repository: '',
+    engine: 'codex-security-sdk',
     skipped: 0,
     revision: 0,
   };

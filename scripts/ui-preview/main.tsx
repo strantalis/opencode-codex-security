@@ -6,7 +6,13 @@ const params = new URLSearchParams(location.search);
 const list = (items = []) => ({ total: items.length, items, omitted: 0 });
 const unavailable = () => ({ total: null, items: [], omitted: 0 });
 const settings = {
-  codex: { model: 'gpt-5.6-sol', reasoningEffort: 'xhigh', daybreak: false },
+  codex: {
+    provider: 'openai',
+    model: 'gpt-5.6-sol',
+    reasoningEffort: 'xhigh',
+    daybreak: false,
+    auth: 'Codex Security sign-in',
+  },
   scan: { mode: 'standard', maxCostUsd: 1 },
 };
 let revision = 1,
@@ -16,24 +22,20 @@ const plan = (id, inputs = {}) => ({
   repository: inputs.repository ?? repository,
   scopePaths: inputs.scopePaths ?? ['src/api'],
   scanPrompt: inputs.scanPrompt ?? 'Review authorization and tenant isolation',
-  contextFiles: (inputs.contextFiles ?? []).map((path) => ({
-    path,
-    bytes: 100,
-    sha256: 'fixture',
-  })),
+  contextFiles: (inputs.contextFiles ?? []).map((path) => ({ path })),
   expiresAt: new Date(Date.now() + 600000).toISOString(),
   mock: true,
   inputs,
   settings: { ...settings, scan: { ...settings.scan, mode: inputs.mode ?? 'standard' } },
   globalConfigFile: '~/.config/opencode/codex-security.json',
-  globalConfigDigest: 'fixture',
+  sdk: { codexOverrides: {}, auth: 'auto' },
 });
 const t = Date.now();
 const run = (id, status, focus) => ({
   ...emptyState(),
   runId: id,
   scanId: 'sdk-' + id,
-  instanceId: 'fixture-ui',
+  instanceId: 'preview-ui',
   revision,
   repository,
   engine: 'codex-security-sdk',
@@ -266,7 +268,7 @@ const port = {
   list: async () =>
     structuredClone({
       engine: 'codex-security-sdk',
-      instanceId: 'fixture-ui',
+      instanceId: 'preview-ui',
       revision,
       runs,
       drafts,
@@ -343,7 +345,7 @@ const operationPort = {
   prepare: async (input) => {
     const op = operation(input.kind, 'op-' + ++operationSequence);
     op.repository = input.repository ?? repository;
-    if (input.kind === 'validation' && new URLSearchParams(location.search).has('uncapped'))
+    if (input.kind === 'validation' && new URLSearchParams(location.search).has('real'))
       op.plan.mock = false;
     op.plan.repository = op.repository;
     op.plan.finding =

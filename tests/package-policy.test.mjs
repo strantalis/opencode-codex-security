@@ -23,11 +23,11 @@ test('package policy accepts only intended package content', () => {
       'LICENSE',
       'DISCLOSURE',
       'src/plugin.ts',
-      'src/core/scanner.ts',
+      'src/core/scan-plan.ts',
       'dist/gui-experimental.cjs',
       'dist/tui.js',
       'SECURITY.md',
-      'fixtures/vulnerable/src/accounts.js',
+      'docs/CONFIG.md',
     ]),
     manifest,
   );

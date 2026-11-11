@@ -31,11 +31,9 @@ def main():
     parser.add_argument('--package', type=Path, required=True)
     parser.add_argument('--opencode', type=Path, default=Path(__file__).resolve().parents[1] / 'node_modules/.bin/opencode')
     parser.add_argument('--timeout', type=float, default=45)
-    parser.add_argument('--real-default', action='store_true', help='Verify real default preview/cancel, without executing it')
-    parser.add_argument('--keyless-config', action='store_true', help='Verify unsupported keyless setup error without fallback')
-    parser.add_argument('--openai-key', action='store_true', help='Verify explicit OpenAI API-key preview, without execution')
-    parser.add_argument('--header-config', action='store_true', help='Verify supported gateway environment-header preview')
-    parser.add_argument('--bedrock-config', action='store_true', help='Verify native Bedrock AWS identity/model preview without execution')
+    parser.add_argument('--openai-key', action='store_true', help='Verify the missing API-key setup error is shown')
+    parser.add_argument('--gateway-config', action='store_true', help='Verify a gateway from the Codex config appears in the preview')
+    parser.add_argument('--bedrock-config', action='store_true', help='Verify a native Bedrock route appears in the preview')
     args = parser.parse_args()
     package = args.package.resolve(strict=True)
     binary = args.opencode.resolve(strict=True)
@@ -49,8 +47,12 @@ def main():
     runtime = Path(__file__).resolve().parents[1] / '.runtime'
     runtime.mkdir(exist_ok=True)
     isolated = Path(tempfile.mkdtemp(prefix='packed-tui-', dir=runtime))
-    for folder in ['home', 'data', 'config/opencode', 'state', 'cache', 'project', 'bin']:
+    for folder in ['home', 'data', 'config/opencode', 'state', 'cache', 'bin']:
         (isolated / folder).mkdir(parents=True, exist_ok=True)
+    # Outside this checkout: the SDK refuses a state directory inside the repository it scans.
+    project = Path(tempfile.mkdtemp(prefix='packed-tui-project-')).resolve()
+    (project / 'src').mkdir()
+    (project / 'src' / 'example.js').write_text('// Synthetic preview target.\n')
     # Deliberately empty PATH: even system Node/Bun cannot mask packaging defects.
     env = {
         'PATH': str(isolated / 'bin'),
@@ -67,29 +69,25 @@ def main():
         'LANG': 'C.UTF-8',
     }
     assert all(shutil.which(name, path=env['PATH']) is None for name in ['node', 'npm', 'bun'])
-    Path(env['OPENCODE_CONFIG']).write_text(json.dumps({
-        'plugins': [{'package': str(package)} if args.real_default or args.keyless_config or args.openai_key or args.header_config or args.bedrock_config
-                    else {'package': str(package), 'options': {'engine': 'fixture'}}],
-    }))
-    if args.keyless_config:
+    Path(env['OPENCODE_CONFIG']).write_text(json.dumps({'plugins': [{'package': str(package)}]}))
+    if args.gateway_config:
+        # Routing comes from the user's own Codex config; the plugin needs no settings file.
         codex = Path(env['CODEX_HOME'])
         codex.mkdir()
-        (codex / 'config.toml').write_text('model_provider = "network"\n[model_providers.network]\nbase_url = "https://gateway.example.test/v1"\nrequires_openai_auth = false\n')
-    if args.openai_key or args.header_config or args.bedrock_config:
-        settings = {'codex': {'auth': 'api-key'}}
-        if args.header_config:
-            settings = {'codex': {'provider': {
-                'id': 'gateway', 'baseUrl': 'https://gateway.example.test/v1',
-                'envKey': 'SYNTHETIC_GATEWAY_KEY', 'wireApi': 'responses',
-                'envHttpHeaders': {'X-Workspace': 'SYNTHETIC_WORKSPACE'},
-            }}}
-        if args.bedrock_config:
-            settings = {'codex': {'bedrock': {'region': 'us-east-2', 'profile': 'synthetic-security'},
-                                  'model': 'openai.gpt-daybreak-blue-5.6-sol', 'reasoningEffort': 'high'}}
+        (codex / 'config.toml').write_text(
+            'model = "gateway-model"\nmodel_provider = "gateway"\n[model_providers.gateway]\n'
+            'base_url = "https://gateway.example.test/v1"\nenv_key = "SYNTHETIC_GATEWAY_KEY"\n')
+    settings = None
+    if args.openai_key:
+        settings = {'auth': 'api-key'}
+    if args.bedrock_config:
+        settings = {'codex': {'model': 'openai.gpt-daybreak-blue-5.6-sol', 'model_provider': 'amazon-bedrock',
+                              'model_providers': {'amazon-bedrock': {'aws': {'region': 'us-east-2'}}}}}
+    if settings:
         (isolated / 'config/opencode/codex-security.json').write_text(json.dumps(settings))
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 50, 180, 0, 0))
-    child = subprocess.Popen([str(binary), '--standalone'], cwd=isolated / 'project',
+    child = subprocess.Popen([str(binary), '--standalone'], cwd=project,
                              env=env, stdin=slave, stdout=slave, stderr=slave,
                              start_new_session=True)
     os.close(slave)
@@ -145,41 +143,32 @@ def main():
         send(b'\r')
         wait_for(lambda text: 'History workspace:' in text and 'Reviewcode,thenfolloweachscanhere.' in re.sub(r'\s+', '', text),
                  'rendered Security route')
-        # Return to the home prompt, then invoke only the fixture slash command.
+        # Return to the home prompt, then open a scan preview.
         send(b'\x1b')
         end = time.monotonic() + 0.5
         while time.monotonic() < end:
             pump()
         send(b'/security-scan')
-        wait_for(lambda text: 'Security: new scan' in text, 'registered fixture scan command')
+        wait_for(lambda text: 'Security: new scan' in text, 'registered scan command')
         send(b'\r')
-        if args.keyless_config:
-            wait_for(lambda text: 'Keylessnetworkidentity' in re.sub(r'\s+', '', text),
-                     'explicit keyless SDK setup blocker')
-            assert '4findingsshown' not in re.sub(r'\s+', '', plain()), 'Unexpected fixture fallback'
-            assert not list((isolated / 'home').rglob('auth.json')), 'Unexpected credential file'
-        elif args.real_default or args.openai_key or args.header_config or args.bedrock_config:
-            wait_for(lambda text: 'Reviewthisscan' in re.sub(r'\s+', '', text)
-                     and 'Wholerepository' in re.sub(r'\s+', '', text),
-                     'real SDK repository/scope review')
-            assert str(isolated / 'project') in plain(), 'Review lost actual workspace target'
-            if args.openai_key:
-                wait_for(lambda text: 'CODEX_API_KEY' in text and 'OPENAI_API_KEY' in text
-                         and 'api.openai.com/v1' in text, 'OpenAI key-source/endpoint disclosure')
-            if args.header_config:
-                wait_for(lambda text: 'SYNTHETIC_WORKSPACE' in text and 'x-workspace' in text,
-                         'environment-header disclosure')
+        squashed = lambda text: re.sub(r'\s+', '', text)
+        if args.openai_key:
+            wait_for(lambda text: 'OPENAI_API_KEYorCODEX_API_KEY' in squashed(text), 'missing API-key setup error')
+        else:
+            wait_for(lambda text: 'Reviewthisscan' in squashed(text) and 'Wholerepository' in squashed(text),
+                     'repository/scope review')
+            assert str(project) in plain(), 'Review lost actual workspace target'
+            if args.gateway_config:
+                wait_for(lambda text: 'gateway.example.test/v1' in text and 'SYNTHETIC_GATEWAY_KEY' in text
+                         and 'gateway-model' in text, 'gateway route in the preview')
             if args.bedrock_config:
-                wait_for(lambda text: 'synthetic-security' in text and 'bedrock-mantle.us-east-2.api.aws' in text
-                         and 'openai.gpt-daybreak-blue-5.6-sol' in text, 'Bedrock identity/endpoint/model disclosure')
-            assert '4findingsshown' not in re.sub(r'\s+', '', plain()), 'Unexpected fixture fallback'
+                wait_for(lambda text: 'amazon-bedrock' in text and 'openai.gpt-daybreak-blue-5.6-sol' in text
+                         and 'AWScredentials' in squashed(text), 'Bedrock route in the preview')
             send(b'\x1b')  # Cancel the preview. Never send Ctrl+Y.
             end = time.monotonic() + 1
             while time.monotonic() < end:
                 pump()
-            assert not list((isolated / 'home').rglob('auth.json')), 'Unexpected credential file'
-        else:
-            wait_for(lambda text: '4findingsshown' in re.sub(r'\s+', '', text), 'four rendered fixture findings')
+        assert not list((isolated / 'home').rglob('auth.json')), 'Unexpected credential file'
         # Native exit binding, rather than a forced kill, is part of the smoke test.
         send(b'\x03')
         end = time.monotonic() + 0.4
@@ -194,12 +183,10 @@ def main():
             raise RuntimeError('Native TUI did not exit after Ctrl+C')
         if child.returncode != 0:
             raise RuntimeError(f'Native TUI exited with status {child.returncode}')
-        result = ('keyless setup error without fixture fallback' if args.keyless_config else
-                  'explicit OpenAI API-key preview, cancelled without scan' if args.openai_key else
-                  'gateway environment-header preview, cancelled without scan' if args.header_config else
-                  'native Bedrock identity/model preview, cancelled without scan' if args.bedrock_config else
-                  'real default repository/scope preview, cancelled without scan' if args.real_default else
-                  '4 explicit fixture findings')
+        result = ('missing API-key setup error shown' if args.openai_key else
+                  'gateway preview from the Codex config, cancelled without scan' if args.gateway_config else
+                  'native Bedrock preview, cancelled without scan' if args.bedrock_config else
+                  'default repository/scope preview, cancelled without scan')
         print(f'PACKED NATIVE TUI PASSED: /security rendered, {result}, clean exit; no Node/npm/Bun on PATH.')
     finally:
         if child.poll() is None:
@@ -212,6 +199,7 @@ def main():
         transcript.write_bytes(output)
         (isolated / 'terminal.txt').write_text(plain())
         os.close(master)
+        shutil.rmtree(project, ignore_errors=True)
 
 
 if __name__ == '__main__':

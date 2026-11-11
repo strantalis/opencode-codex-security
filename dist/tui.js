@@ -12,28 +12,25 @@ var h = {
 		mode: {
 			type: "string",
 			enum: ["standard", "deep"],
-			description: "Optional mode for this scan. Explicit user request wins; otherwise omit to use global mode (standard by default). Do not ask when the request is clear."
+			description: "Omit to use the configured default (standard). Deep is slower and costs more."
 		},
 		repository: {
 			type: "string",
-			description: "Optional local repository path. Defaults to the known current OpenCode workspace; use an absolute path when session context is unknown. This request only, never a global target."
+			description: "Repository path. Defaults to the current workspace."
 		},
 		scopePaths: {
 			type: "array",
 			items: { type: "string" },
-			maxItems: 32,
-			description: "Existing paths relative to repository. Omit or use [] for whole repository. No globs or traversal."
+			description: "Paths relative to the repository. Omit to scan the whole repository."
 		},
 		scanPrompt: {
 			type: "string",
-			maxLength: 8e3,
-			description: "Focused security instructions and relevant architecture/threat assumptions. Ask the user for missing material context. Never copy whole conversation or include secrets."
+			description: "What to focus on, plus architecture or threat assumptions the scan should know."
 		},
 		contextFiles: {
 			type: "array",
 			items: { type: "string" },
-			maxItems: 8,
-			description: "Repository-relative text documentation to add as supporting context. No credentials or files outside repository."
+			description: "Supporting documents (text, PDF, DOCX) or directories, relative to the repository."
 		}
 	},
 	additionalProperties: !1
@@ -48,8 +45,7 @@ var h = {
 		path: { type: "string" },
 		contextFiles: {
 			type: "array",
-			items: { type: "string" },
-			maxItems: 8
+			items: { type: "string" }
 		},
 		finding: { anyOf: [{ type: "string" }, { type: "object" }] }
 	},
@@ -60,50 +56,81 @@ var h = {
 	properties: { operationId: { type: "string" } },
 	required: ["operationId"],
 	additionalProperties: !1
-}, b = m.define({
+}, b = { type: "string" }, x = { type: "object" }, S = g, C = m.define({
 	id: "gill.security",
 	methods: {
 		capabilities: {
 			input: h,
-			output: { type: "object" }
+			output: x,
+			errors: S
 		},
-		operationPrepare: {
-			input: v,
-			output: { type: "object" },
-			errors: g
+		prepare: {
+			input: _,
+			output: x,
+			errors: S
 		},
-		operationStart: {
-			errors: g,
+		start: {
+			input: {
+				type: "object",
+				properties: { planId: b },
+				additionalProperties: !1
+			},
+			output: x,
+			errors: S
+		},
+		list: {
+			input: h,
+			output: x,
+			errors: S
+		},
+		status: {
 			input: {
 				type: "object",
 				properties: {
-					operationId: { type: "string" },
-					approveOpenAIInference: { type: "boolean" },
-					approveUncappedValidation: { type: "boolean" }
+					runId: b,
+					planId: b
 				},
-				required: ["operationId"],
 				additionalProperties: !1
 			},
-			output: { type: "object" }
+			output: x,
+			errors: S
+		},
+		cancel: {
+			input: {
+				type: "object",
+				properties: { runId: b },
+				additionalProperties: !1
+			},
+			output: x,
+			errors: S
+		},
+		operationPrepare: {
+			input: v,
+			output: x,
+			errors: S
+		},
+		operationStart: {
+			input: y,
+			output: x,
+			errors: S
 		},
 		operationStatus: {
 			input: y,
-			output: { type: "object" }
+			output: x,
+			errors: S
 		},
 		operationList: {
 			input: h,
-			output: { type: "object" }
+			output: x,
+			errors: S
 		},
 		operationAnswer: {
 			input: {
 				type: "object",
 				properties: {
-					operationId: { type: "string" },
-					questionId: { type: "string" },
-					answer: {
-						type: "string",
-						maxLength: 16384
-					}
+					operationId: b,
+					questionId: b,
+					answer: b
 				},
 				required: [
 					"operationId",
@@ -112,51 +139,13 @@ var h = {
 				],
 				additionalProperties: !1
 			},
-			output: { type: "object" }
+			output: x,
+			errors: S
 		},
 		operationCancel: {
 			input: y,
-			output: { type: "object" }
-		},
-		prepare: {
-			input: _,
-			output: { type: "object" },
-			errors: g
-		},
-		start: {
-			errors: g,
-			input: {
-				type: "object",
-				properties: {
-					planId: { type: "string" },
-					approveOpenAIInference: { type: "boolean" }
-				},
-				additionalProperties: !1
-			},
-			output: { type: "object" }
-		},
-		list: {
-			input: h,
-			output: { type: "object" }
-		},
-		status: {
-			input: {
-				type: "object",
-				properties: {
-					runId: { type: "string" },
-					planId: { type: "string" }
-				},
-				additionalProperties: !1
-			},
-			output: { type: "object" }
-		},
-		cancel: {
-			input: {
-				type: "object",
-				properties: { runId: { type: "string" } },
-				additionalProperties: !1
-			},
-			output: { type: "object" }
+			output: x,
+			errors: S
 		}
 	},
 	events: {
@@ -165,63 +154,54 @@ var h = {
 	}
 });
 // src/types.ts
-function x(e) {
+function w(e) {
 	if (!e || typeof e != "object" || !("status" in e) || !("findings" in e) || !Array.isArray(e.findings)) throw Error("Invalid security state");
 	return e;
 }
-// src/core/provider-validation.ts
-var S = class extends Error {
-	constructor(e) {
-		super(e), this.name = "ProviderConfigurationError";
-	}
-}, C = (e) => typeof e == "object" && !!e && !Array.isArray(e);
-// src/core/bedrock-config.ts
-function w(e) {
-	if (!C(e) || Object.keys(e).some((e) => !["region", "profile"].includes(e)) || typeof e.region != "string" || !/^(?:(?:af|ap|ca|eu|il|me|mx|sa|us)-[a-z]+|us-gov-(?:east|west))-[1-9][0-9]?$/.test(e.region) || e.profile !== void 0 && (typeof e.profile != "string" || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(e.profile))) throw new S("codex.bedrock accepts an explicit AWS region in the commercial or GovCloud partition and an optional profile name only. China and isolated partitions are unsupported. Credential values, endpoint overrides, and arbitrary AWS options are not accepted.");
-	return {
-		region: e.region,
-		...e.profile === void 0 ? {} : { profile: e.profile }
-	};
-}
-function T(e) {
-	let { region: t } = w(e);
-	return `https://bedrock-mantle.${t}.api.aws/openai/v1`;
-}
 // src/plan-view.ts
+function T(e) {
+	return e === void 0 ? "No cost limit is configured." : `Stops at an estimated USD ${e}. This is an estimate, not a billing cap.`;
+}
 function E(e) {
-	return e === void 0 ? "No dollar-based stop limit is configured. Provider charges still apply." : `USD ${e} estimated stop threshold, not a hard cap; in-flight usage may exceed it.`;
+	let { provider: t, baseUrl: n, auth: r, model: i, reasoningEffort: a } = e.codex;
+	return `${t}${n ? ` (${n})` : ""} · ${i}, ${a} reasoning · ${r}`;
 }
 function D(e) {
-	let { provider: t, bedrock: n, auth: r, source: i, model: a } = e.codex, o = n ? `Amazon Bedrock (${T(n)}, region ${n.region})` : t ? `${t.id} (${t.baseUrl})` : r === "api-key" ? "OpenAI (https://api.openai.com/v1)" : "OpenAI", s = n ? `existing AWS ${n.profile ? `profile ${n.profile}` : "credential chain"} (access unverified; may use existing AWS credential helpers and identity services); no OpenAI sign-in or key` : r === "api-key" ? t ? `API key from environment variable ${t.envKey} (name only)` : "OpenAI API key from OPENAI_API_KEY, otherwise CODEX_API_KEY (names only; no sign-in or credential import)" : "dedicated ChatGPT sign-in", c = t?.envHttpHeaders && Object.keys(t.envHttpHeaders).length ? `; additional request headers from environment (names only): ${Object.entries(t.envHttpHeaders).map(([e, t]) => `${e} ← ${t}`).join(", ")}` : "", l = c && e.scan.mode === "deep" ? "; Deep workers may use private temporary credential files; interrupted runs may leave them" : "";
-	return `${o}; auth: ${s}${c}; model: ${a}${i ? `; config ${i.path}${i.profile ? `, profile ${i.profile}` : ""}, SHA-256 ${i.digest}` : ""}${t ? "; gateway upstream routing is not verified" : ""}${l}`;
+	return [
+		...e.mock ? ["MOCK SDK TEST: no model calls or uploads."] : [],
+		`Repository: ${e.repository}`,
+		`Scope: ${e.scopePaths.join(", ") || "whole repository"}`,
+		`Mode: ${e.settings.scan.mode}`,
+		...e.scanPrompt ? [`Instructions: ${e.scanPrompt}`] : [],
+		...e.contextFiles.length ? [`Context: ${e.contextFiles.map((e) => e.path).join(", ")}`] : [],
+		`Sent to: ${E(e.settings)}`,
+		T(e.settings.scan.maxCostUsd)
+	].join("\n");
 }
-function O(e) {
-	return `${e.mock ? "MOCK SDK TEST: no model calls or uploads.\n" : ""}Repository: ${e.repository}\nScope: ${e.scopePaths.join(", ") || "whole repository"}\nScan prompt:\n${e.scanPrompt || "(none)"}\nContext files: ${e.contextFiles.map((e) => `${e.path} (${e.bytes} bytes, SHA-256 ${e.sha256})`).join("; ") || "(none)"}\nSDK settings: model ${e.settings.codex.model}, reasoning ${e.settings.codex.reasoningEffort}, Daybreak ${e.settings.codex.daybreak ? "on" : "off"}; mode ${e.settings.scan.mode} (${e.inputs.mode ? "per-scan choice" : "global default"}), access program ${e.settings.scan.cyberAccessProgram ?? "Codex default"}, ${E(e.settings.scan.maxCostUsd)} Account/model/Daybreak access is not verified by these settings.\nGlobal config: ${e.globalConfigFile}${e.globalConfigDigest ? "" : " (not present)"}\nOnly this explicit prompt and these files are added as context; conversation history is not copied. Scoped paths guide the scan, not a filesystem sandbox.\n${e.mock ? "Synthetic SDK responses only." : `Repository source and listed context go to ${D(e.settings)}. Local results. ${E(e.settings.scan.maxCostUsd)}`}`;
-}
-function k(e, t) {
+function ee(e, t) {
 	let { mode: n, ...r } = e;
 	return t === "default" ? r : {
 		...r,
 		mode: t
 	};
 }
-function A(e) {
+function O(e) {
 	return !!e && (e.startsWith("/") || /^[A-Za-z]:[\\/]/.test(e));
 }
-function j(e, t = Date.now(), n) {
+function k(e, t = Date.now(), n) {
 	let r = (e) => !!e?.plan && !e.planConsumed && Date.parse(e.plan.expiresAt) > t;
 	if (n) return e?.drafts.find((e) => e.plan?.id === n && r(e));
 	if (r(e?.preview)) return e.preview;
 }
 // src/scan-display.ts
-var M = (e) => e.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1) || e || "Project";
-function N(e) {
-	return e.plan?.scanPrompt?.split("\n")[0].slice(0, 72) || (e.plan?.scopePaths.length ? e.plan.scopePaths.join(", ") : M(e.repository));
+var A = (e) => e.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1) || e || "Project";
+function j(e) {
+	return e.plan?.scanPrompt?.split("\n")[0].slice(0, 72) || (e.plan?.scopePaths.length ? e.plan.scopePaths.join(", ") : A(e.repository));
 }
-function P(e) {
+function M(e) {
 	return e.plan?.scopePaths.join(", ") || "Whole repository";
 }
-function F(e) {
+function N(e) {
 	let t = e.replace(/\s*\((files|reviews)\)$/, "").replaceAll("_", " "), n = {
 		preflight: "Preparing scan",
 		discovery: "Reviewing source",
@@ -233,7 +213,7 @@ function F(e) {
 	};
 	return n[t] ? n[t] : t ? t[0].toUpperCase() + t.slice(1) : "Starting scan";
 }
-function I(e) {
+function P(e) {
 	let t = e.telemetry?.phaseProgress, n = t ? t.reviews && t.reviews.total > 0 ? {
 		...t.reviews,
 		unit: "reviews"
@@ -250,74 +230,74 @@ function I(e) {
 		total: Number.isFinite(n.total) ? Math.max(0, n.total) : 0
 	};
 }
-function L(e) {
+function F(e) {
 	return e.status === "running" && e.telemetry?.lifecycle?.status === "completed";
 }
-function R(e) {
+function I(e) {
 	let t = e.telemetry?.lifecycle?.status;
 	return e.status === "running" && t !== void 0 && t !== "running";
 }
-function ee(e) {
-	return e.status === "cancelled" ? "Scan cancelled" : e.status === "error" ? "Scan stopped" : e.status === "completed" ? "Scan complete" : L(e) ? "Finalizing results" : R(e) ? e.telemetry?.lifecycle?.status === "failed" ? "Finishing failed scan" : "Finishing cancelled scan" : e.deepProgress?.consolidating ? "Consolidating deep review" : F(e.telemetry?.phaseProgress?.phase ?? e.phase);
-}
 function te(e) {
-	return e.status === "running" && !R(e) && !e.deepProgress?.consolidating;
+	return e.status === "cancelled" ? "Scan cancelled" : e.status === "error" ? "Scan stopped" : e.status === "completed" ? "Scan complete" : F(e) ? "Finalizing results" : I(e) ? e.telemetry?.lifecycle?.status === "failed" ? "Finishing failed scan" : "Finishing cancelled scan" : e.deepProgress?.consolidating ? "Consolidating deep review" : N(e.telemetry?.phaseProgress?.phase ?? e.phase);
 }
 function ne(e) {
-	let { done: t, total: n, unit: r } = I(e);
-	return n > 0 ? `${t} of ${n} ${r}` : t > 0 ? `${t} ${r} completed` : "Waiting for progress details";
+	return e.status === "running" && !I(e) && !e.deepProgress?.consolidating;
 }
 function re(e) {
+	let { done: t, total: n, unit: r } = P(e);
+	return n > 0 ? `${t} of ${n} ${r}` : t > 0 ? `${t} ${r} completed` : "Waiting for progress details";
+}
+function ie(e) {
 	let t = e.telemetry?.phaseProgress;
 	return t?.reviews && t.reviews.total > 0 && t.files.total > 0 ? `Current phase only · ${t.files.done} of ${t.files.total} files` : "Current phase only";
 }
-function ie(e) {
+function ae(e) {
 	let t = e.deepProgress;
 	return t ? `${t.completed} deep ${t.completed === 1 ? "pass" : "passes"} complete · ${t.active} active · cap ${t.maximum}` : "";
 }
-function ae(e) {
-	return R(e) && !L(e) ? `The SDK reported ${e.telemetry?.lifecycle?.status === "failed" ? "a scan failure" : "cancellation"}. Waiting for the final result; this is not a completed assessment.` : L(e) ? "Analysis complete. Waiting for the SDK’s final result and findings." : "Findings will appear when the scan finishes.";
-}
-var z = (e) => e > 0 && e < .01 ? "<0.01" : e.toFixed(2);
 function oe(e) {
+	return I(e) && !F(e) ? `The SDK reported ${e.telemetry?.lifecycle?.status === "failed" ? "a scan failure" : "cancellation"}. Waiting for the final result; this is not a completed assessment.` : F(e) ? "Analysis complete. Waiting for the SDK’s final result and findings." : "Findings will appear when the scan finishes.";
+}
+var L = (e) => e > 0 && e < .01 ? "<0.01" : e.toFixed(2);
+function se(e) {
 	let t = e.telemetry?.measurement;
 	if (t) {
 		let e = t.cost;
 		if (!e || !Number.isFinite(e.baselineUsd)) return "Cost estimate unavailable";
-		let n = `USD ${z(e.baselineUsd)}`;
+		let n = `USD ${L(e.baselineUsd)}`;
 		return t.coverage === "partial" ? `Partial estimate ${n}` : t.coverage === "unavailable" ? `Last estimate ${n} · coverage unavailable` : `Estimated usage ${n}`;
 	}
-	return e.estimatedCostUsd !== void 0 && Number.isFinite(e.estimatedCostUsd) ? `Estimated usage USD ${z(e.estimatedCostUsd)} · coverage unknown` : "Cost estimate unavailable";
+	return e.estimatedCostUsd !== void 0 && Number.isFinite(e.estimatedCostUsd) ? `Estimated usage USD ${L(e.estimatedCostUsd)} · coverage unknown` : "Cost estimate unavailable";
 }
-function se(e) {
+function ce(e) {
 	let t = e.telemetry?.measurement;
 	if (!t) return "Usage coverage was not reported. Estimates are not invoices.";
 	let n = t.missingThreadCount;
 	return t.coverage === "partial" ? `Measured subtotal only${n ? `; ${n} ${n === 1 ? "session is" : "sessions are"} missing` : ""}. The full estimate may be higher.` : t.coverage === "unavailable" ? "The SDK could not establish usage coverage." : "All reported sessions are included. This is a usage estimate, not an invoice.";
 }
-function B(e) {
+function R(e) {
 	return [...e.telemetry?.activity ?? []].sort((e, t) => t.updatedAt.localeCompare(e.updatedAt));
 }
-function ce(e) {
+function le(e) {
 	let t = /* @__PURE__ */ new Set();
-	return B(e).filter((e) => {
+	return R(e).filter((e) => {
 		let n = e.worker ?? "coordinator";
 		return !t.has(n) && (t.add(n), !0);
 	});
 }
-function le(e) {
+function ue(e) {
 	return e === void 0 ? "Coordinator" : `Worker ${e}`;
 }
-function ue(e, t) {
-	return e === "running" && (t.status !== "running" || R(t) || t.deepProgress?.consolidating) ? "Last reported running" : e === "running" ? "Working" : e === "failed" ? "Failed" : "Done";
+function de(e, t) {
+	return e === "running" && (t.status !== "running" || I(t) || t.deepProgress?.consolidating) ? "Last reported running" : e === "running" ? "Working" : e === "failed" ? "Failed" : "Done";
 }
-function de(e) {
+function z(e) {
 	let t = e.telemetry?.observedWorkers.length;
 	return t ? `${t} worker ${t === 1 ? "session" : "sessions"} observed` : "";
 }
 function fe(e) {
 	let t = e.workers;
-	return t ? `${F(t.phase)}: ${t.started} started · ${t.planned} planned` : "";
+	return t ? `${N(t.phase)}: ${t.started} started · ${t.planned} planned` : "";
 }
 function pe(e) {
 	let t = e.assessment?.returnedFindings;
@@ -344,55 +324,51 @@ function ge(e, t, n = Date.now()) {
 	let r = Math.max(0, Math.floor(((t ? Date.parse(t) : n) - Date.parse(e)) / 1e3));
 	return Number.isFinite(r) ? r < 60 ? `${r}s` : r < 3600 ? `${Math.floor(r / 60)}m ${r % 60}s` : `${Math.floor(r / 3600)}h ${Math.floor(r % 3600 / 60)}m` : "";
 }
-function V(e) {
+function B(e) {
 	return e && typeof e == "object" && "message" in e ? String(e.message) : String(e);
 }
-function H(e) {
+function V(e) {
 	return `${e.title}\nSeverity: ${e.severity} · ${e.cwe}\nLocation: ${e.path}:${e.line}\n\n${e.summary}\n\nEvidence:\n${e.evidence}\n\nSuggested remediation:\n${e.remediation}`;
 }
 // src/security-tui-operations.tsx
 function _e(r, o, c, d, p) {
-	let m = r.client.rpc(b), [h, g] = f([]), [_, v] = f(), [y, x] = f(!1), [S, C] = f(!1), [w, T] = f(""), [E, O] = f({
+	let m = r.client.rpc(C), [h, g] = f([]), [_, v] = f(), [y, b] = f(!1), [x, S] = f(!1), [w, T] = f(""), [D, ee] = f({
 		policy: !1,
 		validation: !1,
 		questionAnswers: !1
-	}), k = !1, A = () => h().find((e) => e.operationId === _()) ?? h()[0], j = async () => {
-		if (!(k || !E().policy && !E().validation)) try {
+	}), O = !1, k = () => h().find((e) => e.operationId === _()) ?? h()[0], A = async () => {
+		if (!(O || !D().policy && !D().validation)) try {
 			let e = await m.operationList({}, { location: o });
-			k || g(e.operations);
+			O || g(e.operations);
 		} catch (e) {
-			!k && y() && T(V(e));
+			!O && y() && T(B(e));
 		}
 	};
 	m.capabilities({}, { location: o }).then((e) => {
-		k || O(e);
+		O || ee(e);
 	}).catch(() => {});
-	let M = async (e) => {
-		if (!(k || S())) {
-			C(!0), T("");
+	let j = async (e) => {
+		if (!(O || x())) {
+			S(!0), T("");
 			try {
-				await e(), k || await j();
+				await e(), O || await A();
 			} catch (e) {
-				k || T(V(e));
+				O || T(B(e));
 			} finally {
-				k || C(!1);
+				O || S(!1);
 			}
 		}
-	}, N = () => {
-		x(!0), d();
+	}, M = () => {
+		b(!0), d();
 	}, P = async (e) => {
 		await r.ui.dialog.confirm({
 			title: e.kind === "policy" ? "Review policy generation" : "Review source validation",
-			message: `Repository: ${e.repository}\n${e.plan.path ? "Component: " + e.plan.path + "\n" : ""}Context: ${e.plan.contextFiles.map((e) => e.path).join(", ") || "No additional documents"}\n\n${e.plan.mock ? "Mock operation: no model calls or uploads." : `Repository source, the selected finding if any, and listed context go to ${D(e.plan.settings)}.\n${e.plan.costNotice}`}\n\n${e.kind === "policy" ? "Returns a draft only. Existing files stay unchanged." : "Static source assessment only. No exploit execution or patch application."}\n\nModel: ${e.plan.settings.codex.model} · ${e.plan.settings.codex.reasoningEffort} reasoning`,
+			message: `Repository: ${e.repository}\n${e.plan.path ? "Component: " + e.plan.path + "\n" : ""}Context: ${e.plan.contextFiles.map((e) => e.path).join(", ") || "No additional documents"}\n\n${e.plan.mock ? "Mock operation: no model calls or uploads." : `Repository source, the selected finding if any, and listed context go to ${E(e.plan.settings)}.\n${e.plan.costNotice}`}\n\n${e.kind === "policy" ? "Returns a draft only. Existing files stay unchanged." : "Static source assessment only. No exploit execution or patch application."}\n\nModel: ${e.plan.settings.codex.model} · ${e.plan.settings.codex.reasoningEffort} reasoning`,
 			label: {
-				confirm: e.plan.mock ? "Start mock operation" : e.kind === "validation" ? "Approve without cost ceiling" : "Approve and start",
+				confirm: e.plan.mock ? "Start mock operation" : "Approve and start",
 				cancel: "Back"
 			}
-		}) && !k && await m.operationStart({
-			operationId: e.operationId,
-			approveOpenAIInference: !0,
-			...e.kind === "validation" ? { approveUncappedValidation: !0 } : {}
-		}, { location: o });
+		}) && !O && await m.operationStart({ operationId: e.operationId }, { location: o });
 	};
 	return {
 		commands: [
@@ -401,24 +377,24 @@ function _e(r, o, c, d, p) {
 				title: "Security: draft a policy",
 				group: "Security",
 				palette: !0,
-				enabled: () => E().policy,
+				enabled: () => D().policy,
 				slash: { name: "security-policy" },
 				run: async () => {
-					N(), await M(async () => {
+					M(), await j(async () => {
 						let e = await p();
-						if (!e || k) return;
+						if (!e || O) return;
 						let t = await r.ui.dialog.prompt({
 							title: "Policy component",
 							description: `Target: ${e}. Repository-relative directory, or leave blank for the whole project. Preparation makes no model calls.`,
 							placeholder: "src/api"
 						});
-						if (t === void 0 || k) return;
+						if (t === void 0 || O) return;
 						let n = await m.operationPrepare({
 							kind: "policy",
 							repository: e,
 							...t.trim() ? { path: t.trim() } : {}
 						}, { location: o });
-						v(n.operationId), await j(), await P(n);
+						v(n.operationId), await A(), await P(n);
 					});
 				}
 			},
@@ -427,10 +403,10 @@ function _e(r, o, c, d, p) {
 				title: "Security: validate a finding",
 				group: "Security",
 				palette: !0,
-				enabled: () => E().validation,
+				enabled: () => D().validation,
 				slash: { name: "security-validate" },
 				run: async () => {
-					N(), await M(async () => {
+					M(), await j(async () => {
 						let e = c(), t, n;
 						if (e?.findings.length) {
 							let i = await r.ui.dialog.select({
@@ -442,21 +418,21 @@ function _e(r, o, c, d, p) {
 								}))
 							});
 							if (!i) return;
-							t = H(e.findings.find((e) => e.id === i)), n = e.repository;
+							t = V(e.findings.find((e) => e.id === i)), n = e.repository;
 						} else {
-							if (n = await p(), !n || k) return;
+							if (n = await p(), !n || O) return;
 							t = await r.ui.dialog.prompt({
 								title: "Finding to validate",
 								description: `Target: ${n}. Describe the suspected issue, source location and evidence. Do not include secrets. Validation has no SDK cost ceiling.`
 							});
 						}
-						if (!t?.trim() || k) return;
+						if (!t?.trim() || O) return;
 						let i = await m.operationPrepare({
 							kind: "validation",
 							repository: n,
 							finding: t
 						}, { location: o });
-						v(i.operationId), await j(), await P(i);
+						v(i.operationId), await A(), await P(i);
 					});
 				}
 			},
@@ -465,10 +441,10 @@ function _e(r, o, c, d, p) {
 				title: "Security: choose policy or validation work",
 				group: "Security",
 				palette: !0,
-				enabled: () => E().policy || E().validation,
+				enabled: () => D().policy || D().validation,
 				slash: { name: "security-operations" },
 				run: async () => {
-					if (N(), await j(), !h().length) {
+					if (M(), await A(), !h().length) {
 						await r.ui.dialog.alert({
 							title: "Security operations",
 							message: "No policy or validation work yet. Use /security-policy or /security-validate to prepare one."
@@ -477,14 +453,14 @@ function _e(r, o, c, d, p) {
 					}
 					let e = await r.ui.dialog.select({
 						title: "Choose an operation",
-						current: A()?.operationId,
+						current: k()?.operationId,
 						options: h().map((e) => ({
-							title: `${e.kind === "policy" ? "Policy" : "Validation"} · ${F(e.status)}`,
+							title: `${e.kind === "policy" ? "Policy" : "Validation"} · ${N(e.status)}`,
 							description: `${e.repository} · ${e.operationId.slice(0, 8)}`,
 							value: e.operationId
 						}))
 					});
-					e && !k && v(e);
+					e && !O && v(e);
 				}
 			},
 			{
@@ -492,11 +468,11 @@ function _e(r, o, c, d, p) {
 				title: "Security: review selected prepared operation",
 				group: "Security",
 				palette: !0,
-				enabled: () => A()?.status === "prepared",
+				enabled: () => k()?.status === "prepared",
 				slash: { name: "security-operation-start" },
 				run: async () => {
-					let e = A();
-					e && await M(() => P(e));
+					let e = k();
+					e && await j(() => P(e));
 				}
 			},
 			{
@@ -504,16 +480,16 @@ function _e(r, o, c, d, p) {
 				title: "Security: answer policy questions",
 				group: "Security",
 				palette: !0,
-				enabled: () => !!A()?.question,
+				enabled: () => !!k()?.question,
 				slash: { name: "security-answer" },
 				run: async () => {
-					let e = A(), t = e?.question;
-					e && t && (N(), await M(async () => {
+					let e = k(), t = e?.question;
+					e && t && (M(), await j(async () => {
 						let n = await r.ui.dialog.prompt({
 							title: "Answer security questions",
-							description: t.questions.map((e, t) => `${t + 1}. ${e}`).join("\n") + `\n\nAnswer each question or state what is unknown. Your answer will be sent to the already-approved route: ${D(e.plan.settings)}. Do not include secrets.`
+							description: t.questions.map((e, t) => `${t + 1}. ${e}`).join("\n") + `\n\nAnswer each question or state what is unknown. Your answer will be sent to the already-approved route: ${E(e.plan.settings)}. Do not include secrets.`
 						});
-						n?.trim() && !k && await m.operationAnswer({
+						n?.trim() && !O && await m.operationAnswer({
 							operationId: e.operationId,
 							questionId: t.id,
 							answer: n
@@ -530,11 +506,11 @@ function _e(r, o, c, d, p) {
 					"prepared",
 					"running",
 					"awaiting_answers"
-				].includes(A()?.status ?? ""),
+				].includes(k()?.status ?? ""),
 				slash: { name: "security-operation-cancel" },
 				run: async () => {
-					let e = A();
-					e && await M(() => m.operationCancel({ operationId: e.operationId }, { location: o }));
+					let e = k();
+					e && await j(() => m.operationCancel({ operationId: e.operationId }, { location: o }));
 				}
 			},
 			{
@@ -542,12 +518,12 @@ function _e(r, o, c, d, p) {
 				title: "Security: read operation result",
 				group: "Security",
 				palette: !0,
-				enabled: () => !!A()?.result,
+				enabled: () => !!k()?.result,
 				slash: { name: "security-operation-result" },
 				run: async () => {
-					let e = A()?.result;
+					let e = k()?.result;
 					e && await r.ui.dialog.alert({
-						title: e.kind === "policy" ? "Policy draft · not applied" : `Source assessment · ${F(e.disposition)}`,
+						title: e.kind === "policy" ? "Policy draft · not applied" : `Source assessment · ${N(e.disposition)}`,
 						message: (e.kind === "policy" ? e.content + "\n\nReview notes:\n" + e.reviewNotes.join("\n") : e.report) + "\n\n" + (e.truncated ? "Preview truncated. Read full local SDK artifacts." : e.kind === "policy" ? "No repository files changed." : "Static assessment, not runtime reproduction.")
 					});
 				}
@@ -565,7 +541,7 @@ function _e(r, o, c, d, p) {
 				}
 			}), null), i(r, e(u, {
 				get when() {
-					return A();
+					return k();
 				},
 				get fallback() {
 					return (() => {
@@ -575,7 +551,7 @@ function _e(r, o, c, d, p) {
 				},
 				children: (r) => (() => {
 					var o = t("box"), c = t("text"), d = n(" · "), f = t("text"), p = n("Target: "), m = t("text");
-					return a(o, c), a(o, f), a(o, m), s(o, "flexDirection", "column"), s(o, "gap", 1), a(c, d), s(c, "fg", "#9be4c6"), i(c, () => r().kind === "policy" ? "Policy draft" : "Finding validation", d), i(c, () => F(r().status), null), a(f, p), i(f, () => r().repository, null), i(m, () => r().phase), i(o, e(u, {
+					return a(o, c), a(o, f), a(o, m), s(o, "flexDirection", "column"), s(o, "gap", 1), a(c, d), s(c, "fg", "#9be4c6"), i(c, () => r().kind === "policy" ? "Policy draft" : "Finding validation", d), i(c, () => N(r().status), null), a(f, p), i(f, () => r().repository, null), i(m, () => r().phase), i(o, e(u, {
 						get when() {
 							return r().status === "prepared";
 						},
@@ -636,24 +612,24 @@ function _e(r, o, c, d, p) {
 			}), null), r;
 		})(),
 		visible: y,
-		close: () => x(!1),
-		refresh: j,
+		close: () => b(!1),
+		refresh: A,
 		questionCount: () => h().filter((e) => e.status === "awaiting_answers").length,
 		dispose: () => {
-			k = !0;
+			O = !0;
 		}
 	};
 }
 // src/tui.tsx
-var U = c.define({
+var H = c.define({
 	id: "gill.security.tui",
 	setup(c) {
-		let [m, h] = f(), [g, _] = f(), [v, y] = f(!1), [S, C] = f(""), [w, T] = f(!1), [M, F] = f(Date.now()), [I, L] = f({}), [R, z] = f(), H = !1, U = !1, W = c.location ?? c.data.location.default(), G = c.client.rpc(b), K = () => m()?.runs ?? [], q = () => K().find((e) => e.runId === g()) ?? K()[0];
+		let [m, h] = f(), [g, _] = f(), [v, y] = f(!1), [b, x] = f(""), [S, A] = f(!1), [N, P] = f(Date.now()), [F, I] = f({}), [L, V] = f(), H = !1, U = !1, W = c.location ?? c.data.location.default(), G = c.client.rpc(C), K = () => m()?.runs ?? [], q = () => K().find((e) => e.runId === g()) ?? K()[0];
 		d(p(() => q()?.runId, () => y(!1)));
 		let J = () => c.ui.router.navigate({
 			type: "plugin",
 			name: "security"
-		}), Y = A(c.location?.directory) ? c.location.directory : void 0, X = async (e = Y) => {
+		}), Y = O(c.location?.directory) ? c.location.directory : void 0, X = async (e = Y) => {
 			let t = await c.ui.dialog.prompt({
 				title: "Target repository",
 				description: "Choose an absolute local path. This changes only the next task, not the history workspace or global settings.",
@@ -661,7 +637,7 @@ var U = c.define({
 				placeholder: "/path/to/project"
 			});
 			if (!(t === void 0 || H)) {
-				if (!A(t.trim())) throw Error("Choose an absolute local repository path before preparing a task.");
+				if (!O(t.trim())) throw Error("Choose an absolute local repository path before preparing a task.");
 				return t.trim();
 			}
 		}, Z = _e(c, W, q, J, async () => Y ?? X()), Q = () => K().filter((e) => e.status === "running").length, $ = async () => {
@@ -671,7 +647,7 @@ var U = c.define({
 					let e = await G.list({}, { location: W });
 					H || h(e);
 				} catch (e) {
-					H || C(V(e));
+					H || x(B(e));
 				} finally {
 					U = !1;
 				}
@@ -730,20 +706,13 @@ var U = c.define({
 							})();
 						},
 						get children() {
-							return [
-								(() => {
-									var e = t("text"), r = n("Repository source and listed context will be sent to"), s = n(". Results stay local.");
-									return a(e, r), a(e, s), i(e, () => D(o.settings), s), e;
-								})(),
-								(() => {
-									var e = t("text");
-									return i(e, () => E(o.settings.scan.maxCostUsd)), e;
-								})(),
-								(() => {
-									var e = t("text");
-									return a(e, n("Conversation history is not copied. Scope guides the scan; it is not a filesystem sandbox.")), e;
-								})()
-							];
+							return [(() => {
+								var e = t("text"), r = n("Repository source and listed context will be sent to "), s = n(". Results stay local.");
+								return a(e, r), a(e, s), i(e, () => E(o.settings), s), e;
+							})(), (() => {
+								var e = t("text");
+								return i(e, () => T(o.settings.scan.maxCostUsd)), e;
+							})()];
 						}
 					}), null), i(m, e(u, {
 						get when() {
@@ -751,7 +720,7 @@ var U = c.define({
 						},
 						get children() {
 							var e = t("text");
-							return i(e, () => O(o)), e;
+							return i(e, () => D(o)), e;
 						}
 					}), null), a(b, x), a(b, S), a(b, C), i(b, () => o.mock ? "start mock scan" : "approve and start", S), i(b, () => l() ? "hide" : "show", C), r((e) => s(p, "height", Math.max(6, Math.min(22, c.renderer.height - 12)), e)), d;
 				})();
@@ -763,35 +732,28 @@ var U = c.define({
 				centered: !0
 			});
 		}), ye = async () => {
-			if (!(w() || H)) {
-				T(!0), C("");
+			if (!(S() || H)) {
+				A(!0), x("");
 				try {
 					if (await $(), Q() >= (m()?.maxConcurrent ?? 2)) throw Error("All scan slots are in use. Start another scan after one finishes.");
-					let e = {};
-					if (!m()?.engine?.startsWith("local-patterns")) {
-						let t = j(m(), Date.now(), R());
-						if (!t) {
-							let e = I().repository || Y || await X();
-							if (!e || H) return;
-							t = x(await G.prepare({
-								...I(),
-								repository: e
-							}, { location: W }));
-						}
-						let n = t.plan;
-						if (!n) throw Error("No scan preview returned. Nothing was started.");
-						if (!await ve(n) || H) return;
-						e = {
-							planId: n.id,
-							approveOpenAIInference: !0
-						};
+					let e = k(m(), Date.now(), L());
+					if (!e) {
+						let t = F().repository || Y || await X();
+						if (!t || H) return;
+						e = w(await G.prepare({
+							...F(),
+							repository: t
+						}, { location: W }));
 					}
-					let t = x(await G.start(e, { location: W }));
-					H || (_(t.runId), L({}), z(void 0), await $());
+					let t = e.plan;
+					if (!t) throw Error("No scan preview returned. Nothing was started.");
+					if (!await ve(t) || H) return;
+					let n = { planId: t.id }, r = w(await G.start(n, { location: W }));
+					H || (_(r.runId), I({}), V(void 0), await $());
 				} catch (e) {
-					H || C(V(e));
+					H || x(B(e));
 				} finally {
-					H || T(!1);
+					H || A(!1);
 				}
 			}
 		}, be = async () => {
@@ -806,8 +768,8 @@ var U = c.define({
 				title: "Scans recorded in this workspace",
 				current: q()?.runId,
 				options: K().map((e) => ({
-					title: `${e.status.toUpperCase()} · ${N(e)}`,
-					description: `${e.repository} · ${P(e)} · ${e.mode ?? "fixture"} · ${e.runId?.slice(0, 8)}`,
+					title: `${e.status.toUpperCase()} · ${j(e)}`,
+					description: `${e.repository} · ${M(e)} · ${e.mode ?? "standard"} · ${e.runId?.slice(0, 8)}`,
 					value: e.runId
 				}))
 			});
@@ -818,20 +780,20 @@ var U = c.define({
 				title: "Cancel scan",
 				message: "Select a running scan with /security-scans first."
 			});
-			else if (!w()) {
-				T(!0), C("");
+			else if (!S()) {
+				A(!0), x("");
 				try {
 					await G.cancel({ runId: e.runId }, { location: W }), await $();
 				} catch (e) {
-					H || C(V(e));
+					H || x(B(e));
 				} finally {
-					H || T(!1);
+					H || A(!1);
 				}
 			}
 		};
 		$();
 		let Se = setInterval(() => {
-			F(Date.now()), $(), Z.refresh();
+			P(Date.now()), $(), Z.refresh();
 		}, 1500), Ce = c.ui.router.register({
 			name: "security",
 			render: () => (() => {
@@ -869,11 +831,11 @@ var U = c.define({
 						return [
 							e(u, {
 								get when() {
-									return S();
+									return b();
 								},
 								get children() {
 									var e = t("text");
-									return s(e, "fg", "#ffb3b3"), i(e, S), e;
+									return s(e, "fg", "#ffb3b3"), i(e, b), e;
 								}
 							}),
 							e(u, {
@@ -897,7 +859,7 @@ var U = c.define({
 										},
 										children: (e) => (() => {
 											var o = t("text"), c = n(" · "), l = n(" · "), u = n(" · "), d = n(" · ");
-											return a(o, c), a(o, l), a(o, u), a(o, d), i(o, () => e.runId === q()?.runId ? "> " : "  ", c), i(o, () => e.status.toUpperCase(), c), i(o, () => N(e), l), i(o, () => e.mode ?? "fixture", u), i(o, () => e.runId?.slice(0, 8), d), i(o, () => e.repository, null), r((t) => s(o, "fg", e.runId === q()?.runId ? "#9be4c6" : void 0, t)), o;
+											return a(o, c), a(o, l), a(o, u), a(o, d), i(o, () => e.runId === q()?.runId ? "> " : "  ", c), i(o, () => e.status.toUpperCase(), c), i(o, () => j(e), l), i(o, () => e.mode ?? "standard", u), i(o, () => e.runId?.slice(0, 8), d), i(o, () => e.repository, null), r((t) => s(o, "fg", e.runId === q()?.runId ? "#9be4c6" : void 0, t)), o;
 										})()
 									}), null), o;
 								}
@@ -914,18 +876,18 @@ var U = c.define({
 								},
 								children: (c) => (() => {
 									var d = t("box"), f = t("text"), p = t("text"), m = n("Target: "), h = t("text"), g = n(" · "), _ = t("text"), y = t("b"), b = t("text"), x = t("text"), S = n("Ctrl+D: "), C = n(" activity, coverage and scan details");
-									return a(d, f), a(d, p), a(d, h), a(d, _), a(d, b), a(d, x), s(d, "flexDirection", "column"), s(d, "gap", 1), s(f, "fg", "#9be4c6"), i(f, () => N(c())), a(p, m), s(p, "fg", "#b5b5b5"), i(p, () => c().repository, null), a(h, g), s(h, "fg", "#b5b5b5"), i(h, () => P(c()), g), i(h, () => c().mode ?? "Fixture pattern checks", null), a(_, y), i(y, () => ee(c())), i(_, e(u, {
+									return a(d, f), a(d, p), a(d, h), a(d, _), a(d, b), a(d, x), s(d, "flexDirection", "column"), s(d, "gap", 1), s(f, "fg", "#9be4c6"), i(f, () => j(c())), a(p, m), s(p, "fg", "#b5b5b5"), i(p, () => c().repository, null), a(h, g), s(h, "fg", "#b5b5b5"), i(h, () => M(c()), g), i(h, () => c().mode ?? "standard", null), a(_, y), i(y, () => te(c())), i(_, e(u, {
 										get when() {
-											return ge(c().startedAt, c().finishedAt, M());
+											return ge(c().startedAt, c().finishedAt, N());
 										},
 										children: (e) => [" · ", o(e)]
 									}), null), i(d, e(u, {
 										get when() {
-											return te(c());
+											return ne(c());
 										},
 										get children() {
 											var e = t("text"), r = n(" · ");
-											return a(e, r), i(e, () => ne(c()), r), i(e, () => re(c()), null), e;
+											return a(e, r), i(e, () => re(c()), r), i(e, () => ie(c()), null), e;
 										}
 									}), b), i(d, e(u, {
 										get when() {
@@ -934,13 +896,13 @@ var U = c.define({
 										get children() {
 											return [(() => {
 												var e = t("text");
-												return i(e, () => ae(c())), e;
+												return i(e, () => oe(c())), e;
 											})(), (() => {
 												var e = t("text");
 												return a(e, n("/security-cancel: stop this scan")), s(e, "fg", "#b5b5b5"), e;
 											})()];
 										}
-									}), b), i(b, () => oe(c())), i(d, e(u, {
+									}), b), i(b, () => se(c())), i(d, e(u, {
 										get when() {
 											return c().error;
 										},
@@ -1004,16 +966,16 @@ var U = c.define({
 													},
 													get children() {
 														var e = t("text");
-														return i(e, () => se(c())), e;
+														return i(e, () => ce(c())), e;
 													}
 												}),
 												e(u, {
 													get when() {
-														return de(c());
+														return z(c());
 													},
 													get children() {
 														var e = t("text");
-														return i(e, () => de(c())), e;
+														return i(e, () => z(c())), e;
 													}
 												}),
 												e(u, {
@@ -1031,7 +993,7 @@ var U = c.define({
 													},
 													get children() {
 														var e = t("text"), r = n(". The cap is not a completion target.");
-														return a(e, r), i(e, () => ie(c()), r), e;
+														return a(e, r), i(e, () => ae(c()), r), e;
 													}
 												}),
 												e(u, {
@@ -1061,7 +1023,7 @@ var U = c.define({
 												})(),
 												e(u, {
 													get when() {
-														return B(c()).length;
+														return R(c()).length;
 													},
 													get fallback() {
 														return (() => {
@@ -1072,11 +1034,11 @@ var U = c.define({
 													get children() {
 														return e(l, {
 															get each() {
-																return ce(c()).slice(0, 5);
+																return le(c()).slice(0, 5);
 															},
 															children: (e) => (() => {
 																var r = t("text"), o = n(" · "), s = n(" · ");
-																return a(r, o), a(r, s), i(r, () => le(e.worker), o), i(r, () => e.label, s), i(r, () => ue(e.status, c()), null), r;
+																return a(r, o), a(r, s), i(r, () => ue(e.worker), o), i(r, () => e.label, s), i(r, () => de(e.status, c()), null), r;
 															})()
 														});
 													}
@@ -1123,7 +1085,7 @@ var U = c.define({
 					slash: { name: "security-details" },
 					enabled: () => {
 						let e = c.ui.router.current();
-						return !w() && !Z.visible() && !!q() && e.type === "plugin" && e.name === "security";
+						return !S() && !Z.visible() && !!q() && e.type === "plugin" && e.name === "security";
 					},
 					run: () => {
 						y((e) => !e);
@@ -1135,7 +1097,7 @@ var U = c.define({
 					bind: "escape",
 					enabled: () => {
 						let e = c.ui.router.current();
-						return !w() && e.type === "plugin" && e.name === "security";
+						return !S() && e.type === "plugin" && e.name === "security";
 					},
 					run: () => c.ui.router.navigate({ type: "home" })
 				},
@@ -1184,20 +1146,20 @@ var U = c.define({
 					palette: !0,
 					slash: { name: "security-target" },
 					run: async () => {
-						if (!w()) {
-							T(!0), C("");
+						if (!S()) {
+							A(!0), x("");
 							try {
 								let e = await X(Y);
 								if (!e || H) return;
 								let t = { repository: e };
-								L(t), z("pending");
-								let n = x(await G.prepare(t, { location: W }));
+								I(t), V("pending");
+								let n = w(await G.prepare(t, { location: W }));
 								if (!n.plan) throw Error("No scan preview returned. Nothing was started.");
-								z(n.plan.id), await $(), Z.close(), J();
+								V(n.plan.id), await $(), Z.close(), J();
 							} catch (e) {
-								H || C(V(e));
+								H || x(B(e));
 							} finally {
-								H || T(!1);
+								H || A(!1);
 							}
 						}
 					}
@@ -1209,12 +1171,12 @@ var U = c.define({
 					palette: !0,
 					slash: { name: "security-mode" },
 					run: async () => {
-						if (!w()) {
-							T(!0), C("");
+						if (!S()) {
+							A(!0), x("");
 							try {
 								let e = await c.ui.dialog.select({
 									title: "Depth for the next scan",
-									current: I().mode ?? "default",
+									current: F().mode ?? "default",
 									options: [
 										{
 											title: "Global default",
@@ -1234,16 +1196,16 @@ var U = c.define({
 									]
 								});
 								if (!e || H) return;
-								let t = j(m(), Date.now(), R())?.plan, n = k(t?.inputs ?? I(), e);
+								let t = k(m(), Date.now(), L())?.plan, n = ee(t?.inputs ?? F(), e);
 								if (n.repository ||= t?.repository || Y || await X(), !n.repository || H) return;
-								L(n), z("pending");
-								let r = x(await G.prepare(n, { location: W }));
+								I(n), V("pending");
+								let r = w(await G.prepare(n, { location: W }));
 								if (!r.plan) throw Error("No scan preview returned. Nothing was started.");
-								z(r.plan.id), await $(), J();
+								V(r.plan.id), await $(), J();
 							} catch (e) {
-								H || C(V(e));
+								H || x(B(e));
 							} finally {
-								H || T(!1);
+								H || A(!1);
 							}
 						}
 					}
@@ -1283,4 +1245,4 @@ var U = c.define({
 		};
 	}
 });
-export { U as default };
+export { H as default };

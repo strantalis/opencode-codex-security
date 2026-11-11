@@ -1,18 +1,14 @@
 import { describeInferenceRoute } from './plan-view';
 import { createEffect, createMemo, createSignal, For, Show, on, onCleanup } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
-import type {
-  SecurityOperationInputs,
-  SecurityOperationState,
-  SecurityOperationApproval,
-} from './core/security-operations';
+import type { SecurityOperationInputs, SecurityOperationState } from './core/security-operations';
 import { elapsedLabel, phaseLabel, projectName, splitPaths, userError } from './scan-display';
 
 export interface OperationPort {
   capabilities?: { policy: boolean; validation: boolean; questionAnswers: boolean };
   list(): Promise<unknown>;
   prepare(input: SecurityOperationInputs): Promise<unknown>;
-  start(input: SecurityOperationApproval): Promise<unknown>;
+  start(input: { operationId: string }): Promise<unknown>;
   answer(input: { operationId: string; questionId: string; answer: string }): Promise<unknown>;
   cancel(input: { operationId: string }): Promise<unknown>;
 }
@@ -35,7 +31,6 @@ export function SecurityOperationsPanel(props: {
   const [finding, setFinding] = createSignal(props.seed?.finding ?? '');
   const [seeded, setSeeded] = createSignal(!!props.seed);
   const [answer, setAnswer] = createSignal('');
-  const [uncapped, setUncapped] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal('');
   const [now, setNow] = createSignal(Date.now());
@@ -51,7 +46,6 @@ export function SecurityOperationsPanel(props: {
     setPath('');
     setDocuments('');
     setAnswer('');
-    setUncapped(false);
     setError('');
     select(undefined);
     setForm(true);
@@ -77,7 +71,6 @@ export function SecurityOperationsPanel(props: {
   });
   createEffect(() => {
     void current()?.operationId;
-    setUncapped(false);
   });
   const refresh = async () => {
     if (stopped || polling) return;
@@ -142,13 +135,7 @@ export function SecurityOperationsPanel(props: {
     });
   };
   const start = (op: SecurityOperationState) =>
-    void perform(() =>
-      props.port.start({
-        operationId: op.operationId,
-        approveOpenAIInference: true,
-        ...(op.kind === 'validation' ? { approveUncappedValidation: true as const } : {}),
-      }),
-    );
+    void perform(() => props.port.start({ operationId: op.operationId }));
   void refresh();
   const timer = setInterval(() => {
     setNow(Date.now());
@@ -368,25 +355,13 @@ export function SecurityOperationsPanel(props: {
                     <p>Mock operation only. No model calls or source uploads.</p>
                   </Show>
                 </div>
-                <Show when={op().kind === 'validation' && !op().plan.mock}>
-                  <label class="gs-check">
-                    <input
-                      type="checkbox"
-                      checked={uncapped()}
-                      onChange={(e) => setUncapped(e.currentTarget.checked)}
-                    />{' '}
-                    I approve validation without a cost ceiling.
-                  </label>
-                </Show>
                 <details class="gs-advanced">
                   <summary>Model settings</summary>
                   <p>
                     {op().plan.settings.codex.model} · {op().plan.settings.codex.reasoningEffort}{' '}
                     reasoning · Daybreak {op().plan.settings.codex.daybreak ? 'on' : 'off'}
                   </p>
-                  <p class="gs-muted">
-                    Account and model access are not verified. {op().plan.globalConfigFile}
-                  </p>
+                  <p class="gs-muted">{op().plan.globalConfigFile}</p>
                 </details>
                 <Show when={Date.parse(op().plan.expiresAt) <= now()}>
                   <p class="gs-error">This preview expired. Prepare a new one before starting.</p>
@@ -394,11 +369,7 @@ export function SecurityOperationsPanel(props: {
                 <div class="gs-actions">
                   <button
                     class="gs-button gs-primary"
-                    disabled={
-                      busy() ||
-                      Date.parse(op().plan.expiresAt) <= now() ||
-                      (op().kind === 'validation' && !op().plan.mock && !uncapped())
-                    }
+                    disabled={busy() || Date.parse(op().plan.expiresAt) <= now()}
                     onClick={() => start(op())}
                   >
                     {busy()

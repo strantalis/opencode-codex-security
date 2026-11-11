@@ -1,12 +1,13 @@
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OpenCode } from '@opencode/client';
 import { Security } from '../src/rpc.ts';
 const root = fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/, '');
-const codexGate = process.argv.includes('--codex-gate');
 const packageArgument = process.argv.indexOf('--package');
 const packageRoot = packageArgument < 0 ? root : process.argv[packageArgument + 1];
 assert.ok(packageRoot, 'Provide the extracted package path after --package.');
@@ -15,21 +16,11 @@ const isolated = await mkdtemp(`${root}/.runtime/host-`);
 const configPath = `${isolated}/config/opencode/opencode.json`;
 await mkdir(`${isolated}/config/opencode`, { recursive: true });
 await mkdir(`${isolated}/home`, { recursive: true });
-const project = codexGate ? `${isolated}/project` : root;
-if (codexGate) {
-  await mkdir(`${project}/src`, { recursive: true });
-  await writeFile(`${project}/src/example.js`, '// Synthetic scan-free onboarding target.\n');
-}
-await writeFile(
-  configPath,
-  JSON.stringify({
-    plugins: [
-      codexGate
-        ? { package: packageRoot }
-        : { package: packageRoot, options: { engine: 'fixture' } },
-    ],
-  }),
-);
+// Outside this checkout: the SDK refuses a state directory inside the repository it scans.
+const project = await realpath(await mkdtemp(join(tmpdir(), 'opencode-security-host-')));
+await mkdir(`${project}/src`, { recursive: true });
+await writeFile(`${project}/src/example.js`, '// Synthetic preview target.\n');
+await writeFile(configPath, JSON.stringify({ plugins: [{ package: packageRoot }] }));
 const processEnv = {
   PATH: process.env.PATH,
   HOME: `${isolated}/home`,
@@ -82,77 +73,45 @@ try {
   const rpc = client.rpc(Security);
   let state = await rpc.status({}, { location });
   assert.equal(state.status, 'idle');
-  if (codexGate) {
-    assert.equal(state.engine, 'codex-security-sdk');
-    await assert.rejects(rpc.start({}, { location }));
-    assert.equal((await rpc.status({}, { location })).status, 'idle');
-    const catalog = await rpc.list({}, { location });
-    assert.equal(catalog.engine, 'codex-security-sdk');
-    assert.equal(catalog.runs.length, 0);
-    assert.equal(catalog.drafts.length, 0);
-    const prepared = await rpc.prepare({ scopePaths: ['src'] }, { location });
-    assert.equal(prepared.status, 'idle');
-    assert.equal(prepared.plan.repository, project);
-    assert.deepEqual(prepared.plan.scopePaths, ['src']);
-    assert.equal((await rpc.list({}, { location })).runs.length, 0);
-    await assert.rejects(rpc.start({ planId: prepared.plan.id }, { location }));
-    assert.equal((await rpc.list({}, { location })).runs.length, 0);
-    await mkdir(`${isolated}/home/.codex`, { recursive: true });
-    await writeFile(
-      `${isolated}/home/.codex/config.toml`,
-      'model_provider = "network"\n[model_providers.network]\nbase_url = "https://gateway.example.test/v1"\nrequires_openai_auth = false\n',
-    );
-    for (const prepare of [
-      () => rpc.prepare({}, { location }),
-      () => rpc.operationPrepare({ kind: 'policy' }, { location }),
-    ])
-      await assert.rejects(
-        prepare(),
-        (error) =>
-          error.type === 'security.setup' && /Keyless network identity/.test(error.message),
-      );
-    assert.equal((await rpc.list({}, { location })).runs.length, 0);
-    await writeFile(
-      `${isolated}/config/opencode/codex-security.json`,
-      JSON.stringify({ codex: { auth: 'api-key' } }),
-    );
-    const openAi = await rpc.prepare({}, { location });
-    assert.equal(openAi.plan.settings.codex.auth, 'api-key');
-    assert.equal(openAi.plan.settings.codex.provider, undefined);
-    await assert.rejects(rpc.start({ planId: openAi.plan.id }, { location }));
-    const provider = {
-      id: 'gateway',
-      baseUrl: 'https://gateway.example.test/v1',
-      envKey: 'SYNTHETIC_GATEWAY_KEY',
-      wireApi: 'responses',
-      envHttpHeaders: { 'X-Workspace': 'SYNTHETIC_WORKSPACE' },
-    };
-    await writeFile(
-      `${isolated}/config/opencode/codex-security.json`,
-      JSON.stringify({ codex: { provider } }),
-    );
-    const gateway = await rpc.prepare({}, { location });
-    assert.deepEqual(gateway.plan.settings.codex.provider.envHttpHeaders, {
-      'x-workspace': 'SYNTHETIC_WORKSPACE',
-    });
-    await assert.rejects(rpc.start({ planId: gateway.plan.id }, { location }));
-    assert.equal((await rpc.list({}, { location })).runs.length, 0);
-    console.log(
-      'Actual OpenCode defaults to real SDK, prepares workspace scope, rejects unapproved start, and surfaces unsupported setup errors and prepares explicit API-key/header routes without fallback; no model calls.',
-    );
-  } else {
-    state = await rpc.start({}, { location });
-    assert.equal(state.status, 'running');
-    const duplicate = await rpc.start({}, { location });
-    assert.equal(duplicate.scanId, state.scanId);
-    for (let i = 0; i < 100 && state.status === 'running'; i++) {
-      await sleep(100);
-      state = await rpc.status({}, { location });
-    }
-    assert.equal(state.status, 'completed');
-    assert.equal(state.findings.length, 4);
-    console.log('Actual OpenCode RPC scan passed: 4 seeded findings; repeated start idempotent.');
-  }
+  assert.equal(state.engine, 'codex-security-sdk');
+  const setupError = (pattern) => (error) =>
+    error.type === 'security.setup' && pattern.test(error.message);
+  await assert.rejects(rpc.start({}, { location }), setupError(/Prepare a scan preview/));
+  const prepared = await rpc.prepare({ scopePaths: ['src'] }, { location });
+  assert.equal(prepared.status, 'idle');
+  assert.equal(prepared.plan.repository, project);
+  assert.deepEqual(prepared.plan.scopePaths, ['src']);
+  assert.equal(prepared.plan.settings.codex.provider, 'openai');
+  await assert.rejects(
+    rpc.prepare({ scopePaths: ['missing'] }, { location }),
+    setupError(/does not exist: missing/),
+  );
+  // Routing follows the user's own Codex config without any plugin settings.
+  await mkdir(`${isolated}/home/.codex`, { recursive: true });
+  await writeFile(
+    `${isolated}/home/.codex/config.toml`,
+    'model = "gateway-model"\nmodel_provider = "gateway"\n[model_providers.gateway]\nbase_url = "https://gateway.example.test/v1"\nenv_key = "SYNTHETIC_GATEWAY_KEY"\n',
+  );
+  const gateway = await rpc.prepare({}, { location });
+  assert.equal(gateway.plan.settings.codex.provider, 'gateway');
+  assert.equal(gateway.plan.settings.codex.baseUrl, 'https://gateway.example.test/v1');
+  assert.match(gateway.plan.settings.codex.auth, /SYNTHETIC_GATEWAY_KEY \(not set/);
+  const policy = await rpc.operationPrepare({ kind: 'policy' }, { location });
+  assert.equal(policy.plan.targetPath, `${project}/SECURITY.md`);
+  // The plugin settings file wins, and SDK setup errors are shown as written.
+  await writeFile(
+    `${isolated}/config/opencode/codex-security.json`,
+    JSON.stringify({ auth: 'api-key', useCodexConfig: false }),
+  );
+  await assert.rejects(
+    rpc.prepare({}, { location }),
+    setupError(/OPENAI_API_KEY or CODEX_API_KEY/),
+  );
+  // Previews never start anything.
+  assert.equal((await rpc.list({}, { location })).runs.length, 0);
+  console.log(
+    'Actual OpenCode prepares previews through the SDK, follows the Codex config, and reports setup errors; no model calls.',
+  );
   const gui = await client.plugin.gui({ location, id: 'gill.security' });
   assert.ok(gui.data.code.includes('Security'));
   console.log('Actual OpenCode GUI bundle endpoint:', Object.keys(gui.data).join(', '));
@@ -162,4 +121,5 @@ try {
   const timeout = setTimeout(() => child.kill('SIGKILL'), 3000);
   await new Promise((resolve) => child.once('exit', resolve));
   clearTimeout(timeout);
+  await rm(project, { recursive: true, force: true });
 }

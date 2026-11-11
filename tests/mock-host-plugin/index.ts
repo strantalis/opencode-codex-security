@@ -1,12 +1,10 @@
 import { createSecurityPlugin } from '../../src/plugin.ts';
 import { resolve } from 'node:path';
 import { Rpc } from '@opencode/plugin/rpc';
-import { scanInputSchema } from '../../src/rpc.ts';
 export const TestRpc = Rpc.define({
   id: 'gill.security.mock-test',
   events: {},
   methods: {
-    prepareByTool: { input: scanInputSchema, output: { type: 'object' } },
     inspect: { input: { type: 'object' }, output: { type: 'object' } },
     toolCall: {
       input: {
@@ -173,12 +171,6 @@ export default {
   async setup(ctx: any) {
     const cleanup = await implementation.setup(ctx);
     const registration = await ctx.rpc.register(TestRpc, {
-      prepareByTool: async (input: unknown) => {
-        const tools = await ctx.tool.list();
-        const tool = tools.find((t: any) => t.name === 'security_prepare_scan');
-        if (!tool) throw new Error('Registered model tool missing');
-        return { result: await tool.execute(input, {}) };
-      },
       inspect: async () => ({
         calls,
         operationCalls,

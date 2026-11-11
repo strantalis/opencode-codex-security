@@ -1,35 +1,38 @@
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import assert from 'node:assert/strict';
-import { cp, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OpenCode } from '@opencode/client';
 import { Rpc } from '@opencode/plugin/rpc';
-import { Security, scanInputSchema } from '../src/rpc.ts';
+import { Security } from '../src/rpc.ts';
 const root = fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/, '');
-// Keep policy fixtures outside this checkout with their own Git markers. The real
-// SDK can expand nested policy paths; production guards correctly reject that.
-const fixture = await realpath(await mkdtemp(join(tmpdir(), 'opencode-security-fixture-')));
-await cp(`${root}/fixtures/vulnerable`, fixture, { recursive: true });
-await mkdir(join(fixture, '.git'));
-const secondFixture = await realpath(await mkdtemp(join(tmpdir(), 'opencode-security-second-')));
-await cp(`${root}/fixtures/vulnerable`, secondFixture, { recursive: true });
-await mkdir(join(secondFixture, '.git'));
+// Synthetic projects outside this checkout, so nothing resolves to the plugin's own repository.
+async function sampleProject(name) {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), `opencode-security-${name}-`)));
+  await mkdir(join(directory, 'src'));
+  await mkdir(join(directory, 'docs'));
+  await writeFile(join(directory, 'src', 'accounts.js'), 'export const accounts = [];\n');
+  await writeFile(join(directory, 'docs', 'ARCHITECTURE.md'), '# Synthetic architecture\n');
+  return directory;
+}
+const fixture = await sampleProject('first');
+const secondFixture = await sampleProject('second');
 const configPath = `${root}/.runtime/plan/config/opencode/opencode.json`;
 await mkdir(`${root}/.runtime/plan/config/opencode`, { recursive: true });
 await mkdir(`${root}/.runtime/plan/home`, { recursive: true });
 await writeFile(
   configPath,
   JSON.stringify({
-    plugins: [{ package: `${root}/tests/mock-host-plugin`, options: { engine: 'codex' } }],
+    plugins: [{ package: `${root}/tests/mock-host-plugin` }],
   }),
 );
 await writeFile(
   `${root}/.runtime/plan/config/opencode/codex-security.json`,
   JSON.stringify({
-    codex: { model: 'gpt-6.1-sol', reasoningEffort: 'high', daybreak: true },
+    codex: { model_reasoning_effort: 'high', daybreak: true },
     scan: { mode: 'standard', maxCostUsd: 2, cyberAccessProgram: 'daybreak_blue' },
   }),
 );
@@ -37,7 +40,6 @@ const TestRpc = Rpc.define({
   id: 'gill.security.mock-test',
   events: {},
   methods: {
-    prepareByTool: { input: scanInputSchema, output: { type: 'object' } },
     inspect: { input: { type: 'object' }, output: { type: 'object' } },
     toolCall: {
       input: {
@@ -91,7 +93,7 @@ try {
   }
   await assert.rejects(rpc.prepare({ repository: env.HOME }, { location }));
   assert.equal((await test.inspect({}, { location })).calls.length, 0);
-  const response = await test.prepareByTool(
+  let state = await rpc.prepare(
     {
       mode: 'deep',
       scopePaths: ['src'],
@@ -100,15 +102,13 @@ try {
     },
     { location },
   );
-  assert.match(response.result.content, /Prepared, not executed/);
-  let state = await rpc.status({}, { location });
+  assert.equal((await rpc.status({}, { location })).plan.id, state.plan.id);
   assert.equal(state.repository, fixture);
   assert.equal(state.status, 'idle');
   assert.equal(state.plan.mock, true);
   assert.equal(state.plan.settings.scan.mode, 'deep');
   assert.equal((await test.inspect({}, { location })).calls.length, 0);
-  await assert.rejects(rpc.start({ approveOpenAIInference: true }, { location }));
-  await assert.rejects(rpc.start({ planId: state.plan.id }, { location }));
+  await assert.rejects(rpc.start({}, { location }));
   const old = state.plan.id;
   state = await rpc.prepare(
     {
@@ -121,7 +121,7 @@ try {
     { location },
   );
   assert.equal((await rpc.status({ planId: old }, { location })).plan.id, old); // Independent previews remain usable.
-  await rpc.start({ planId: state.plan.id, approveOpenAIInference: true }, { location });
+  await rpc.start({ planId: state.plan.id }, { location });
   for (let i = 0; i < 100; i++) {
     state = await rpc.status({}, { location });
     if (state.status !== 'running') break;
@@ -131,8 +131,6 @@ try {
   assert.equal(state.findings.length, 1);
   const inspected = await test.inspect({}, { location });
   assert.deepEqual(inspected.constructorConfig.codexOverrides, {
-    model_provider: 'openai',
-    model: 'gpt-6.1-sol',
     model_reasoning_effort: 'high',
     daybreak: true,
   });
@@ -145,19 +143,17 @@ try {
   assert.deepEqual(calls[0].target, ['src/accounts.js']);
   assert.equal(calls[0].scanPrompt, 'Focused synthetic scan.');
   assert.deepEqual(calls[0].knowledgeBasePaths, [`${fixture}/docs/ARCHITECTURE.md`]);
-  await assert.rejects(
-    rpc.start({ planId: state.plan.id, approveOpenAIInference: true }, { location }),
-  );
+  await assert.rejects(rpc.start({ planId: state.plan.id }, { location }));
   const first = await rpc.prepare({ scanPrompt: 'Concurrent A' }, { location });
   const second = await rpc.prepare({ scanPrompt: 'Concurrent B', mode: 'deep' }, { location });
   const [a, b] = await Promise.all([
-    rpc.start({ planId: first.plan.id, approveOpenAIInference: true }, { location }),
-    rpc.start({ planId: second.plan.id, approveOpenAIInference: true }, { location }),
+    rpc.start({ planId: first.plan.id }, { location }),
+    rpc.start({ planId: second.plan.id }, { location }),
   ]);
   assert.notEqual(a.runId, b.runId);
   const live = await rpc.list({}, { location });
   assert.equal(live.runs.filter((s) => s.status === 'running').length, 2);
-  const modelList = await test.toolCall({ name: 'security_list_scans', args: {} }, { location });
+  const modelList = await test.toolCall({ name: 'security_scans', args: {} }, { location });
   assert.equal(
     JSON.parse(modelList.result.content).runs.filter((s) => s.status === 'running').length,
     2,
@@ -173,7 +169,7 @@ try {
   assert.deepEqual(modelStatus.telemetry.observedWorkers, [1]);
   assert.equal(modelStatus.telemetry.lastReconnect.reason, 'network');
   const activityRead = await test.toolCall(
-    { name: 'security_scan_activity', args: { runId: b.runId } },
+    { name: 'security_scan_status', args: { runId: b.runId, activity: true } },
     { location },
   );
   const activity = JSON.parse(activityRead.result.content);
@@ -181,7 +177,6 @@ try {
   assert.equal(activity.activity[0].label, 'Reading source');
   assert.deepEqual(activity.activity[0].paths, ['src/accounts.js']);
   assert.doesNotMatch(activityRead.result.content, /SECRET|password/);
-  await test.toolCall({ name: 'security_scan_activity', args: { runId: a.runId } }, { location });
   assert.equal(
     JSON.parse(
       (
@@ -223,7 +218,6 @@ try {
   assert.equal(finalResults.assessment.returnedFindings.reportable, 1);
   assert.equal(finalResults.assessment.coverage.surfaces.total, 1);
   assert.equal(finalResults.assessment.repositoryFindings.withMatchedFindingIds, 1);
-  assert.equal(finalResults.sdkLifecycle.hasReportableFindings, true);
   const finalStatus = await rpc.status({ runId: b.runId }, { location });
   assert.equal(finalStatus.telemetry.measurement.coverage, 'complete');
   assert.equal(finalStatus.telemetry.activity.length, 1);
@@ -233,18 +227,10 @@ try {
   assert.equal(caps.policy, true);
   assert.equal(caps.validation, true);
   assert.equal(caps.patch, false);
-  const policyPreview = JSON.parse(
-    (await test.toolCall({ name: 'security_prepare_policy', args: {} }, { location })).result
-      .content,
-  );
+  const policyPreview = await rpc.operationPrepare({ kind: 'policy' }, { location });
+  assert.equal(policyPreview.plan.targetPath, join(fixture, 'SECURITY.md'));
   assert.equal((await test.inspect({}, { location })).operationCalls.length, 0);
-  await assert.rejects(
-    rpc.operationStart({ operationId: policyPreview.operationId }, { location }),
-  );
-  await rpc.operationStart(
-    { operationId: policyPreview.operationId, approveOpenAIInference: true },
-    { location },
-  );
+  await rpc.operationStart({ operationId: policyPreview.operationId }, { location });
   let policy;
   for (let i = 0; i < 40; i++) {
     policy = await rpc.operationStatus({ operationId: policyPreview.operationId }, { location });
@@ -257,7 +243,7 @@ try {
     JSON.parse(
       (
         await test.toolCall(
-          { name: 'security_operation_status', args: { operationId: policy.operationId } },
+          { name: 'security_operations', args: { operationId: policy.operationId } },
           { location },
         )
       ).result.content,
@@ -284,39 +270,19 @@ try {
     (
       await test.toolCall(
         {
-          name: 'security_finding_detail',
+          name: 'security_scan_results',
           args: { runId: b.runId, findingId: completeB.findings[0].id },
         },
         { location },
       )
     ).result.content,
   );
-  assert.equal('evidence' in detail.finding, false);
-  const validation = JSON.parse(
-    (
-      await test.toolCall(
-        {
-          name: 'security_prepare_validation',
-          args: { runId: b.runId, findingId: completeB.findings[0].id },
-        },
-        { location },
-      )
-    ).result.content,
-  );
-  await assert.rejects(
-    rpc.operationStart(
-      { operationId: validation.operationId, approveOpenAIInference: true },
-      { location },
-    ),
-  );
-  await rpc.operationStart(
-    {
-      operationId: validation.operationId,
-      approveOpenAIInference: true,
-      approveUncappedValidation: true,
-    },
+  assert.equal(detail.finding.evidence, '// synthetic test evidence');
+  const validation = await rpc.operationPrepare(
+    { kind: 'validation', repository: completeB.repository, finding: completeB.findings[0] },
     { location },
   );
+  await rpc.operationStart({ operationId: validation.operationId }, { location });
   let validated;
   for (let i = 0; i < 40; i++) {
     validated = await rpc.operationStatus({ operationId: validation.operationId }, { location });
@@ -327,13 +293,12 @@ try {
   assert.equal((await rpc.operationList({}, { location })).operations.length, 2);
   assert.equal(
     JSON.parse(
-      (await test.toolCall({ name: 'security_list_operations', args: {} }, { location })).result
-        .content,
+      (await test.toolCall({ name: 'security_operations', args: {} }, { location })).result.content,
     ).operations.length,
     2,
   );
   console.log(
-    'Actual host: policy owner-question callback resumes with answer; unapplied draft and separately authorized uncapped validation passed (mock SDK).',
+    'Actual host: policy owner-question callback resumes with answer; unapplied draft and validation passed (mock SDK).',
   );
   console.log(
     'Actual host: two independent mock runs, stable IDs, per-run cancellation, list/status/activity/results tools and optional telemetry passed.',
@@ -342,10 +307,7 @@ try {
   assert.equal(reset.plan.settings.scan.mode, 'standard');
   assert.equal(reset.plan.inputs.mode, undefined);
   console.log(
-    'Actual OpenCode 2.2.6: registered model tool prepared current-project target/context, no model execution.',
-  );
-  console.log(
-    'Missing approval, missing/stale plan IDs and reuse rejected. Explicit Deep mode and exact inputs reached injected mock SDK once; omitted mode restored global Standard.',
+    'Actual host: previews start nothing, reuse is rejected, and exact inputs reached the mock SDK once.',
   );
   const secondLocation = { directory: secondFixture };
   await client.location.get({ location: secondLocation });

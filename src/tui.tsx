@@ -139,14 +139,10 @@ export default Plugin.define({
                     }
                   >
                     <text>
-                      Repository source and listed context will be sent to{}
+                      Repository source and listed context will be sent to{' '}
                       {describeInferenceRoute(plan.settings)}. Results stay local.
                     </text>
                     <text>{describeCostLimit(plan.settings.scan.maxCostUsd)}</text>
-                    <text>
-                      Conversation history is not copied. Scope guides the scan; it is not a
-                      filesystem sandbox.
-                    </text>
                   </Show>
                   <Show when={advanced()}>
                     <text>{describePlan(plan)}</text>
@@ -179,20 +175,16 @@ export default Plugin.define({
         await refresh();
         if (active() >= (catalog()?.maxConcurrent ?? 2))
           throw new Error('All scan slots are in use. Start another scan after one finishes.');
-        let input = {};
-        if (!catalog()?.engine?.startsWith('local-patterns')) {
-          const draft = latestAvailableDraft(catalog(), Date.now(), nextPlanId());
-          let prepared = draft;
-          if (!prepared) {
-            const repository = nextInputs().repository || workspace || (await chooseTarget());
-            if (!repository || stopped) return;
-            prepared = asState(await client.prepare({ ...nextInputs(), repository }, { location }));
-          }
-          const plan = prepared.plan!;
-          if (!plan) throw new Error('No scan preview returned. Nothing was started.');
-          if (!(await review(plan)) || stopped) return;
-          input = { planId: plan.id, approveOpenAIInference: true };
+        let prepared = latestAvailableDraft(catalog(), Date.now(), nextPlanId());
+        if (!prepared) {
+          const repository = nextInputs().repository || workspace || (await chooseTarget());
+          if (!repository || stopped) return;
+          prepared = asState(await client.prepare({ ...nextInputs(), repository }, { location }));
         }
+        const plan = prepared.plan;
+        if (!plan) throw new Error('No scan preview returned. Nothing was started.');
+        if (!(await review(plan)) || stopped) return;
+        const input = { planId: plan.id };
         const result = asState(await client.start(input, { location }));
         if (!stopped) {
           select(result.runId);
@@ -220,7 +212,7 @@ export default Plugin.define({
         current: current()?.runId,
         options: runs().map((run) => ({
           title: `${run.status.toUpperCase()} · ${runTitle(run)}`,
-          description: `${run.repository} · ${scanScope(run)} · ${run.mode ?? 'fixture'} · ${run.runId?.slice(0, 8)}`,
+          description: `${run.repository} · ${scanScope(run)} · ${run.mode ?? 'standard'} · ${run.runId?.slice(0, 8)}`,
           value: run.runId!,
         })),
       });
@@ -293,7 +285,7 @@ export default Plugin.define({
                   {(run) => (
                     <text fg={run.runId === current()?.runId ? '#9be4c6' : undefined}>
                       {run.runId === current()?.runId ? '> ' : '  '}
-                      {run.status.toUpperCase()} · {runTitle(run)} · {run.mode ?? 'fixture'} ·{' '}
+                      {run.status.toUpperCase()} · {runTitle(run)} · {run.mode ?? 'standard'} ·{' '}
                       {run.runId?.slice(0, 8)} · {run.repository}
                     </text>
                   )}
@@ -314,7 +306,7 @@ export default Plugin.define({
                   <text fg="#9be4c6">{runTitle(run())}</text>
                   <text fg="#b5b5b5">Target: {run().repository}</text>
                   <text fg="#b5b5b5">
-                    {scanScope(run())} · {run().mode ?? 'Fixture pattern checks'}
+                    {scanScope(run())} · {run().mode ?? 'standard'}
                   </text>
                   <text>
                     <b>{runPhaseLabel(run())}</b>

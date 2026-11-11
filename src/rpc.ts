@@ -7,33 +7,27 @@ export const scanInputSchema = {
     mode: {
       type: 'string',
       enum: ['standard', 'deep'],
-      description:
-        'Optional mode for this scan. Explicit user request wins; otherwise omit to use global mode (standard by default). Do not ask when the request is clear.',
+      description: 'Omit to use the configured default (standard). Deep is slower and costs more.',
     },
     repository: {
       type: 'string',
-      description:
-        'Optional local repository path. Defaults to the known current OpenCode workspace; use an absolute path when session context is unknown. This request only, never a global target.',
+      description: 'Repository path. Defaults to the current workspace.',
     },
     scopePaths: {
       type: 'array',
       items: { type: 'string' },
-      maxItems: 32,
-      description:
-        'Existing paths relative to repository. Omit or use [] for whole repository. No globs or traversal.',
+      description: 'Paths relative to the repository. Omit to scan the whole repository.',
     },
     scanPrompt: {
       type: 'string',
-      maxLength: 8000,
       description:
-        'Focused security instructions and relevant architecture/threat assumptions. Ask the user for missing material context. Never copy whole conversation or include secrets.',
+        'What to focus on, plus architecture or threat assumptions the scan should know.',
     },
     contextFiles: {
       type: 'array',
       items: { type: 'string' },
-      maxItems: 8,
       description:
-        'Repository-relative text documentation to add as supporting context. No credentials or files outside repository.',
+        'Supporting documents (text, PDF, DOCX) or directories, relative to the repository.',
     },
   },
   additionalProperties: false,
@@ -44,7 +38,7 @@ export const operationInputSchema = {
     kind: { type: 'string', enum: ['policy', 'validation'] },
     repository: { type: 'string' },
     path: { type: 'string' },
-    contextFiles: { type: 'array', items: { type: 'string' }, maxItems: 8 },
+    contextFiles: { type: 'array', items: { type: 'string' } },
     finding: { anyOf: [{ type: 'string' }, { type: 'object' }] },
   },
   required: ['kind'],
@@ -56,72 +50,49 @@ const operationID = {
   required: ['operationId'],
   additionalProperties: false,
 } as const;
+const text = { type: 'string' } as const;
+const output = { type: 'object' } as const;
+const errors = setupErrors;
 export const Security = Rpc.define({
   id: 'gill.security',
   methods: {
-    capabilities: { input: empty, output: { type: 'object' } },
-    operationPrepare: {
-      input: operationInputSchema,
-      output: { type: 'object' },
-      errors: setupErrors,
-    },
-    operationStart: {
-      errors: setupErrors,
-      input: {
-        type: 'object',
-        properties: {
-          operationId: { type: 'string' },
-          approveOpenAIInference: { type: 'boolean' },
-          approveUncappedValidation: { type: 'boolean' },
-        },
-        required: ['operationId'],
-        additionalProperties: false,
-      },
-      output: { type: 'object' },
-    },
-    operationStatus: { input: operationID, output: { type: 'object' } },
-    operationList: { input: empty, output: { type: 'object' } },
-    operationAnswer: {
-      input: {
-        type: 'object',
-        properties: {
-          operationId: { type: 'string' },
-          questionId: { type: 'string' },
-          answer: { type: 'string', maxLength: 16384 },
-        },
-        required: ['operationId', 'questionId', 'answer'],
-        additionalProperties: false,
-      },
-      output: { type: 'object' },
-    },
-    operationCancel: { input: operationID, output: { type: 'object' } },
-    prepare: { input: scanInputSchema, output: { type: 'object' }, errors: setupErrors },
+    capabilities: { input: empty, output, errors },
+    prepare: { input: scanInputSchema, output, errors },
     start: {
-      errors: setupErrors,
-      input: {
-        type: 'object',
-        properties: { planId: { type: 'string' }, approveOpenAIInference: { type: 'boolean' } },
-        additionalProperties: false,
-      },
-      output: { type: 'object' },
+      input: { type: 'object', properties: { planId: text }, additionalProperties: false },
+      output,
+      errors,
     },
-    list: { input: empty, output: { type: 'object' } },
+    list: { input: empty, output, errors },
     status: {
       input: {
         type: 'object',
-        properties: { runId: { type: 'string' }, planId: { type: 'string' } },
+        properties: { runId: text, planId: text },
         additionalProperties: false,
       },
-      output: { type: 'object' },
+      output,
+      errors,
     },
     cancel: {
+      input: { type: 'object', properties: { runId: text }, additionalProperties: false },
+      output,
+      errors,
+    },
+    operationPrepare: { input: operationInputSchema, output, errors },
+    operationStart: { input: operationID, output, errors },
+    operationStatus: { input: operationID, output, errors },
+    operationList: { input: empty, output, errors },
+    operationAnswer: {
       input: {
         type: 'object',
-        properties: { runId: { type: 'string' } },
+        properties: { operationId: text, questionId: text, answer: text },
+        required: ['operationId', 'questionId', 'answer'],
         additionalProperties: false,
       },
-      output: { type: 'object' },
+      output,
+      errors,
     },
+    operationCancel: { input: operationID, output, errors },
   },
   events: {
     changed: { schema: { type: 'object' } },

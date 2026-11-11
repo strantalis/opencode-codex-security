@@ -1,7 +1,7 @@
-import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { CodexScanService, type SecurityFactory } from './codex-adapter.ts';
-import { prepareScan, validatePlan, type ScanInputs, type ScanPlan } from './scan-plan.ts';
+import { prepareScan, type ScanInputs, type ScanPlan } from './scan-plan.ts';
+import { SecurityInputError } from './errors.ts';
 import { RunHistory } from './run-history.ts';
 import type { ScanState, ScanList } from '../types.ts';
 type Draft = { plan: ScanPlan; consumed: boolean; runId?: string; starting?: Promise<ScanState> };
@@ -9,7 +9,7 @@ type Run = {
   state: ScanState;
   service: CodexScanService;
   unsubscribe: () => void;
-  cancelledBeforeStart?: boolean;
+  cancelled?: boolean;
   lastSavedAt?: number;
 };
 /** Independent approved runs. A draft or another run never mutates a running scan's inputs. */
@@ -36,7 +36,7 @@ export class PlannedScanService {
     project: string,
     options: { createClient?: SecurityFactory; mock?: boolean; historyDirectory?: string } = {},
   ) {
-    this.#project = project; // prepareScan validates the anchor; never guess process.cwd().
+    this.#project = project;
     this.#factory = options.createClient;
     this.#mock = options.mock ?? false;
     if (options.historyDirectory)
@@ -85,15 +85,14 @@ export class PlannedScanService {
     };
   }
   getState(input: { runId?: string; planId?: string } = {}): ScanState {
-    if (input.runId && input.planId) throw new Error('Select a run or a preview, not both.');
     if (input.runId) {
       const state = this.#runs.get(input.runId)?.state ?? this.#archived.get(input.runId);
-      if (!state) throw new Error('Unknown scan run.');
+      if (!state) throw new SecurityInputError('Unknown scan run.');
       return structuredClone(state);
     }
     if (input.planId) {
       const d = this.#drafts.get(input.planId);
-      if (!d) throw new Error('Unknown scan preview.');
+      if (!d) throw new SecurityInputError('Unknown scan preview.');
       return this.#idle(d.plan);
     }
     const d = this.#latestDraft ? this.#drafts.get(this.#latestDraft) : undefined;
@@ -158,55 +157,42 @@ export class PlannedScanService {
     if (this.#disposed) throw new Error('Scan service is closed');
     for (const [id, d] of this.#drafts)
       if (!d.runId && Date.parse(d.plan.expiresAt) <= Date.now()) this.#drafts.delete(id);
-    if ([...this.#drafts.values()].filter((d) => !d.consumed).length >= 20)
-      throw new Error('Too many unstarted previews. Wait for old previews to expire.');
     this.#drafts.set(plan.id, { plan, consumed: false });
     this.#latestDraft = plan.id;
     const state = this.#idle(plan);
     this.#emit(state);
     return state;
   }
-  async start(
-    input: { planId?: string; approveOpenAIInference?: boolean } = {},
-  ): Promise<ScanState> {
+  /** Starting a preview is the approval; callers show the preview first. */
+  async start(input: { planId?: string } = {}): Promise<ScanState> {
     if (this.#disposed) throw new Error('Scan service is closed');
     await this.#ready;
     const d = input.planId ? this.#drafts.get(input.planId) : undefined;
-    if (input.approveOpenAIInference !== true || !d)
-      throw new Error('Prepare and approve this exact scan preview first.');
+    if (!d) throw new SecurityInputError('Prepare a scan preview first.');
     if (d.starting) return d.starting;
-    if (d.runId) {
-      const s = this.getState({ runId: d.runId });
-      if (s.status === 'running') return s;
-      throw new Error('This preview is already used. Prepare a new scan.');
-    }
-    if (d.consumed) throw new Error('This preview is already used. Prepare a new scan.');
+    if (d.runId && this.getState({ runId: d.runId }).status === 'running')
+      return this.getState({ runId: d.runId });
+    if (d.consumed)
+      throw new SecurityInputError('This preview is already used. Prepare a new scan.');
+    if (Date.now() >= Date.parse(d.plan.expiresAt))
+      throw new SecurityInputError('Scan preview expired. Prepare it again.');
+    if (this.#historyError) throw new SecurityInputError(this.#historyError);
     if (
       [...this.#drafts.values()].filter(
         (v) => v.starting || (v.runId && this.#runs.get(v.runId)?.state.status === 'running'),
       ).length >= this.maxConcurrent
     )
-      throw new Error(
+      throw new SecurityInputError(
         'Two scans are already active in this project. Wait or cancel one before starting another.',
       );
-    const task = this.#start(d);
-    d.starting = task;
+    d.starting = this.#start(d);
     try {
-      return await task;
+      return await d.starting;
     } finally {
       d.starting = undefined;
     }
   }
   async #start(d: Draft): Promise<ScanState> {
-    try {
-      await validatePlan(d.plan);
-    } catch (e) {
-      d.consumed = true;
-      this.#emit(this.#idle(d.plan));
-      throw e;
-    }
-    if (this.#disposed) throw new Error('Scan service is closed');
-    if (this.#historyError) throw new Error(this.#historyError);
     const runId = randomUUID(),
       plan = structuredClone(d.plan),
       service = new CodexScanService(plan.repository, { createClient: this.#factory });
@@ -227,36 +213,28 @@ export class PlannedScanService {
       state: decorate({
         ...service.getState(),
         status: 'running',
-        phase: 'Starting approved scan',
+        phase: 'Starting scan',
         startedAt: new Date().toISOString(),
       }),
       unsubscribe: () => {},
     };
     this.#runs.set(runId, entry);
-    try {
-      await this.#save(entry.state);
-    } catch {
-      entry.state = {
-        ...entry.state,
-        status: 'error',
-        phase: 'Local history unavailable',
-        error: 'Scan did not start because its local history could not be saved.',
-        finishedAt: new Date().toISOString(),
-      };
-      this.#emit(entry.state);
-      return structuredClone(entry.state);
-    }
-    if (this.#disposed || entry.cancelledBeforeStart) {
-      entry.state = {
-        ...entry.state,
-        status: 'cancelled',
-        phase: 'Cancelled before execution',
-        finishedAt: new Date().toISOString(),
-      };
+    const stop = async (status: 'error' | 'cancelled', phase: string, error: string | null) => {
+      entry.state = { ...entry.state, status, phase, error, finishedAt: new Date().toISOString() };
       await this.#save(entry.state).catch(() => {});
       this.#emit(entry.state);
       return structuredClone(entry.state);
+    };
+    try {
+      await this.#save(entry.state);
+    } catch {
+      return stop(
+        'error',
+        'Local history unavailable',
+        'Scan did not start because its local history could not be saved.',
+      );
     }
+    if (this.#disposed || entry.cancelled) return stop('cancelled', 'Cancelled before start', null);
     entry.unsubscribe = service.subscribe((state) => {
       const previous = entry.state;
       entry.state = decorate(state);
@@ -271,62 +249,19 @@ export class PlannedScanService {
         void this.#save(entry.state).catch(() => {});
       }
     });
-    try {
-      await validatePlan(plan);
-    } catch {
-      entry.state = {
-        ...entry.state,
-        status: this.#disposed || entry.cancelledBeforeStart ? 'cancelled' : 'error',
-        phase:
-          this.#disposed || entry.cancelledBeforeStart
-            ? 'Cancelled before execution'
-            : 'Preview invalid; prepare again',
-        error:
-          this.#disposed || entry.cancelledBeforeStart
-            ? null
-            : 'Target, context, or provider settings changed after approval. Prepare and review a new scan.',
-        finishedAt: new Date().toISOString(),
-      };
-      await this.#save(entry.state).catch(() => {});
-      this.#emit(entry.state);
-      return structuredClone(entry.state);
-    }
-    if (this.#disposed || entry.cancelledBeforeStart) {
-      entry.state = {
-        ...entry.state,
-        status: 'cancelled',
-        phase: 'Cancelled before execution',
-        finishedAt: new Date().toISOString(),
-      };
-      await this.#save(entry.state).catch(() => {});
-      this.#emit(entry.state);
-      return structuredClone(entry.state);
-    }
-    service.start({
-      approved: true,
-      repository: plan.repository,
-      allowNetworkModelInference: true,
-      ...(plan.settings.scan.maxCostUsd !== undefined
-        ? { maxCostUsd: plan.settings.scan.maxCostUsd }
-        : {}),
-      auth: plan.settings.codex.auth,
-      settings: plan.settings,
-      scopePaths: [...plan.scopePaths],
-      scanPrompt: plan.scanPrompt,
-      contextFiles: plan.contextFiles.map((f) => resolve(plan.repository, f.path)),
-    });
+    service.start(plan);
     return structuredClone(entry.state);
   }
   cancel(input: { runId?: string } = {}): ScanState {
     let id = input.runId;
     if (!id) {
       const active = [...this.#runs.entries()].filter(([, r]) => r.state.status === 'running');
-      if (active.length !== 1) throw new Error('Select the exact run to cancel.');
+      if (active.length !== 1) throw new SecurityInputError('Select the run to cancel.');
       id = active[0][0];
     }
     const run = this.#runs.get(id);
-    if (!run) throw new Error('Run is not active in this instance.');
-    run.cancelledBeforeStart = true;
+    if (!run) throw new SecurityInputError('That run is not active.');
+    run.cancelled = true;
     run.service.cancel();
     return structuredClone(run.state);
   }

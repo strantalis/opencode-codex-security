@@ -49,7 +49,7 @@ import { securityStyles } from './security-styles';
 export interface SecurityPort {
   list(): Promise<unknown>;
   prepare(input: ScanInputs): Promise<unknown>;
-  start(input: { planId?: string; approveOpenAIInference?: boolean }): Promise<unknown>;
+  start(input: { planId?: string }): Promise<unknown>;
   cancel(input: { runId: string }): Promise<unknown>;
 }
 interface Catalog {
@@ -140,12 +140,6 @@ export function SecurityPanel(props: {
     ),
   );
   const availableDraft = createMemo(() => latestAvailableDraft(catalog(), now()));
-  const fixture = createMemo(
-    () =>
-      catalog().engine?.startsWith('local-patterns') ||
-      catalog().runs[0]?.engine?.startsWith('local-patterns') ||
-      catalog().drafts[0]?.engine?.startsWith('local-patterns'),
-  );
   const refresh = async () => {
     if (refreshing || stopped) return;
     refreshing = true;
@@ -230,14 +224,11 @@ export function SecurityPanel(props: {
     }
   };
   const start = async () => {
-    if (busy() || stopped || (!preview() && !fixture())) return;
+    if (busy() || stopped || !preview()) return;
     setBusy('start');
     setError('');
     try {
-      const plan = preview();
-      const run = asState(
-        await props.port.start(plan ? { planId: plan.id, approveOpenAIInference: true } : {}),
-      );
+      const run = asState(await props.port.start({ planId: preview()!.id }));
       if (stopped) return;
       acceptedSequence = ++refreshSequence;
       selectRun(run.runId);
@@ -303,7 +294,7 @@ export function SecurityPanel(props: {
             Global settings share model and scan defaults, not a scan target or combined history.
           </p>
         </details>
-        <Show when={props.operations && loaded() && !fixture()}>
+        <Show when={props.operations && loaded()}>
           <nav class="gs-tabs" aria-label="Security actions">
             <button
               aria-current={view() === 'scans' ? 'page' : undefined}
@@ -390,242 +381,220 @@ export function SecurityPanel(props: {
                 </Show>
               </div>
               <Show
-                when={!fixture()}
+                when={preview()}
                 fallback={
-                  <>
-                    <p class="gs-muted gs-small">
-                      Synthetic fixture test. Local pattern matching only, with no source upload or
-                      model calls.
-                    </p>
-                    <button
-                      class="gs-button gs-primary"
-                      disabled={!!busy()}
-                      onClick={() => void start()}
-                    >
-                      Scan fixture
-                    </button>
-                  </>
+                  <form onSubmit={(event) => void prepare(event)}>
+                    <Show when={availableDraft()?.plan}>
+                      <button
+                        type="button"
+                        class="gs-link"
+                        onClick={() => adoptDraft(availableDraft()!.plan!)}
+                      >
+                        Review prepared scan · {availableDraft()?.plan?.repository}
+                      </button>
+                    </Show>
+                    <label>
+                      Target repository
+                      <input
+                        value={repository()}
+                        onInput={(e) => {
+                          edit();
+                          setRepository(e.currentTarget.value);
+                          setPaths('');
+                          setDocuments('');
+                        }}
+                        required
+                        aria-label="Repository"
+                        spellcheck={false}
+                      />
+                      <span class="gs-help">
+                        Defaults to this workspace. Changing the target clears scope and context
+                        files.
+                      </span>
+                    </label>
+                    <label>
+                      Scan depth
+                      <select
+                        value={mode()}
+                        onChange={(e) => {
+                          edit();
+                          setMode(e.currentTarget.value as 'default' | 'standard' | 'deep');
+                        }}
+                        aria-label="Scan depth"
+                      >
+                        <option value="default">Use global default</option>
+                        <option value="standard">Standard</option>
+                        <option value="deep">Deep</option>
+                      </select>
+                      <span class="gs-help">
+                        Deep can take longer and cost more. This choice applies only to this scan.
+                      </span>
+                    </label>
+                    <label>
+                      What should this scan focus on? <span class="gs-muted">Optional</span>
+                      <textarea
+                        value={focus()}
+                        maxLength={8000}
+                        onInput={(e) => {
+                          edit();
+                          setFocus(e.currentTarget.value);
+                        }}
+                        placeholder="For example, review authorization and tenant isolation."
+                        aria-label="Scan focus"
+                      />
+                    </label>
+                    <details>
+                      <summary>Scope and supporting documents</summary>
+                      <label>
+                        Paths to review
+                        <textarea
+                          value={paths()}
+                          onInput={(e) => {
+                            edit();
+                            setPaths(e.currentTarget.value);
+                          }}
+                          placeholder={'src/auth\nsrc/api'}
+                          aria-label="Scope paths"
+                        />
+                        <span class="gs-help">
+                          One repository-relative path per line. Leave blank for the whole
+                          repository.
+                        </span>
+                      </label>
+                      <label>
+                        Context files
+                        <textarea
+                          value={documents()}
+                          onInput={(e) => {
+                            edit();
+                            setDocuments(e.currentTarget.value);
+                          }}
+                          placeholder={'docs/architecture.md\nSECURITY.md'}
+                          aria-label="Context files"
+                        />
+                        <span class="gs-help">
+                          Optional text documents within this repository. Do not include secrets.
+                        </span>
+                      </label>
+                    </details>
+                    <div class="gs-actions">
+                      <button
+                        type="submit"
+                        class="gs-button gs-primary"
+                        disabled={!!busy() || !loaded()}
+                      >
+                        {busy() === 'prepare' ? 'Preparing preview…' : 'Review scan'}
+                      </button>
+                      <span class="gs-muted gs-small">No source has been sent yet.</span>
+                    </div>
+                  </form>
                 }
               >
-                <Show
-                  when={preview()}
-                  fallback={
-                    <form onSubmit={(event) => void prepare(event)}>
-                      <Show when={availableDraft()?.plan}>
-                        <button
-                          type="button"
-                          class="gs-link"
-                          onClick={() => adoptDraft(availableDraft()!.plan!)}
-                        >
-                          Review prepared scan · {availableDraft()?.plan?.repository}
-                        </button>
+                {(plan) => (
+                  <div class="gs-review">
+                    <h3>Review this scan</h3>
+                    <dl>
+                      <dt>Repository</dt>
+                      <dd>{plan().repository}</dd>
+                      <dt>Scope</dt>
+                      <dd>{plan().scopePaths.join(', ') || 'Whole repository'}</dd>
+                      <dt>Depth</dt>
+                      <dd>{plan().settings.scan.mode === 'deep' ? 'Deep' : 'Standard'}</dd>
+                      <Show when={plan().scanPrompt}>
+                        <dt>Focus</dt>
+                        <dd>{plan().scanPrompt}</dd>
                       </Show>
-                      <label>
-                        Target repository
-                        <input
-                          value={repository()}
-                          onInput={(e) => {
-                            edit();
-                            setRepository(e.currentTarget.value);
-                            setPaths('');
-                            setDocuments('');
-                          }}
-                          required
-                          aria-label="Repository"
-                          spellcheck={false}
-                        />
-                        <span class="gs-help">
-                          Defaults to this workspace. Changing the target clears scope and context
-                          files.
-                        </span>
-                      </label>
-                      <label>
-                        Scan depth
-                        <select
-                          value={mode()}
-                          onChange={(e) => {
-                            edit();
-                            setMode(e.currentTarget.value as 'default' | 'standard' | 'deep');
-                          }}
-                          aria-label="Scan depth"
-                        >
-                          <option value="default">Use global default</option>
-                          <option value="standard">Standard</option>
-                          <option value="deep">Deep</option>
-                        </select>
-                        <span class="gs-help">
-                          Deep can take longer and cost more. This choice applies only to this scan.
-                        </span>
-                      </label>
-                      <label>
-                        What should this scan focus on? <span class="gs-muted">Optional</span>
-                        <textarea
-                          value={focus()}
-                          maxLength={8000}
-                          onInput={(e) => {
-                            edit();
-                            setFocus(e.currentTarget.value);
-                          }}
-                          placeholder="For example, review authorization and tenant isolation."
-                          aria-label="Scan focus"
-                        />
-                      </label>
-                      <details>
-                        <summary>Scope and supporting documents</summary>
-                        <label>
-                          Paths to review
-                          <textarea
-                            value={paths()}
-                            onInput={(e) => {
-                              edit();
-                              setPaths(e.currentTarget.value);
-                            }}
-                            placeholder={'src/auth\nsrc/api'}
-                            aria-label="Scope paths"
-                          />
-                          <span class="gs-help">
-                            One repository-relative path per line. Leave blank for the whole
-                            repository.
-                          </span>
-                        </label>
-                        <label>
-                          Context files
-                          <textarea
-                            value={documents()}
-                            onInput={(e) => {
-                              edit();
-                              setDocuments(e.currentTarget.value);
-                            }}
-                            placeholder={'docs/architecture.md\nSECURITY.md'}
-                            aria-label="Context files"
-                          />
-                          <span class="gs-help">
-                            Optional text documents within this repository. Do not include secrets.
-                          </span>
-                        </label>
-                      </details>
-                      <div class="gs-actions">
-                        <button
-                          type="submit"
-                          class="gs-button gs-primary"
-                          disabled={!!busy() || !loaded()}
-                        >
-                          {busy() === 'prepare' ? 'Preparing preview…' : 'Review scan'}
-                        </button>
-                        <span class="gs-muted gs-small">No source has been sent yet.</span>
-                      </div>
-                    </form>
-                  }
-                >
-                  {(plan) => (
-                    <div class="gs-review">
-                      <h3>Review this scan</h3>
-                      <dl>
-                        <dt>Repository</dt>
-                        <dd>{plan().repository}</dd>
-                        <dt>Scope</dt>
-                        <dd>{plan().scopePaths.join(', ') || 'Whole repository'}</dd>
-                        <dt>Depth</dt>
-                        <dd>{plan().settings.scan.mode === 'deep' ? 'Deep' : 'Standard'}</dd>
-                        <Show when={plan().scanPrompt}>
-                          <dt>Focus</dt>
-                          <dd>{plan().scanPrompt}</dd>
-                        </Show>
-                        <Show when={plan().contextFiles.length}>
-                          <dt>Supporting documents</dt>
-                          <dd>
-                            {plan()
-                              .contextFiles.map((f) => f.path)
-                              .join(', ')}
-                          </dd>
-                        </Show>
+                      <Show when={plan().contextFiles.length}>
+                        <dt>Supporting documents</dt>
+                        <dd>
+                          {plan()
+                            .contextFiles.map((f) => f.path)
+                            .join(', ')}
+                        </dd>
+                      </Show>
+                    </dl>
+                    <details class="gs-advanced">
+                      <summary>Model and advanced settings</summary>
+                      <dl class="gs-details-list">
+                        <dt>Model</dt>
+                        <dd>
+                          {plan().settings.codex.model} · {plan().settings.codex.reasoningEffort}{' '}
+                          reasoning
+                        </dd>
+                        <dt>Daybreak</dt>
+                        <dd>{plan().settings.codex.daybreak ? 'On' : 'Off'}</dd>
+                        <dt>Global configuration</dt>
+                        <dd>{plan().globalConfigFile}</dd>
+                        <dt>Settings scope</dt>
+                        <dd>
+                          Shared defaults only. This target and history belong to this workspace.
+                        </dd>
                       </dl>
-                      <details class="gs-advanced">
-                        <summary>Model and advanced settings</summary>
-                        <dl class="gs-details-list">
-                          <dt>Model</dt>
-                          <dd>
-                            {plan().settings.codex.model} · {plan().settings.codex.reasoningEffort}{' '}
-                            reasoning
-                          </dd>
-                          <dt>Daybreak</dt>
-                          <dd>{plan().settings.codex.daybreak ? 'On' : 'Off'}</dd>
-                          <dt>Global configuration</dt>
-                          <dd>{plan().globalConfigFile}</dd>
-                          <dt>Settings scope</dt>
-                          <dd>
-                            Shared defaults only. This target and history belong to this workspace.
-                          </dd>
-                        </dl>
-                        <p class="gs-muted">Model and account access have not been verified.</p>
-                        <details>
-                          <summary>Full approval details</summary>
-                          <pre>{describePlan(plan())}</pre>
-                        </details>
+                      <p class="gs-muted">Model and account access have not been verified.</p>
+                      <details>
+                        <summary>Full approval details</summary>
+                        <pre>{describePlan(plan())}</pre>
                       </details>
-                      <div class="gs-approval">
-                        <Show
-                          when={plan().mock}
-                          fallback={
-                            <>
-                              <p>
-                                Repository source and listed context will be sent to{}
-                                {describeInferenceRoute(plan().settings)}. Results are stored
-                                locally.
-                              </p>
-                              <p>{describeCostLimit(plan().settings.scan.maxCostUsd)}</p>
-                              <p>
-                                Only the focus and documents above are added as context, not your
-                                conversation. Scope guides the review; it is not a filesystem
-                                sandbox.
-                              </p>
-                            </>
-                          }
-                        >
-                          <p>
-                            Mock SDK test. Synthetic responses only; no model calls or source
-                            uploads.
-                          </p>
-                        </Show>
-                      </div>
-                      <Show when={activeCount() >= catalog().maxConcurrent}>
-                        <p role="status" class="gs-small gs-muted">
-                          {catalog().maxConcurrent} scans are already running. Start this scan after
-                          one finishes.
+                    </details>
+                    <div class="gs-approval">
+                      <Show
+                        when={plan().mock}
+                        fallback={
+                          <>
+                            <p>
+                              Repository source and listed context will be sent to{}
+                              {describeInferenceRoute(plan().settings)}. Results are stored locally.
+                            </p>
+                            <p>{describeCostLimit(plan().settings.scan.maxCostUsd)}</p>
+                            <p>
+                              Only the focus and documents above are added as context, not your
+                              conversation. Scope guides the review; it is not a filesystem sandbox.
+                            </p>
+                          </>
+                        }
+                      >
+                        <p>
+                          Mock SDK test. Synthetic responses only; no model calls or source uploads.
                         </p>
                       </Show>
-                      <Show when={Date.parse(plan().expiresAt) <= now()}>
-                        <p class="gs-small gs-error">
-                          This preview has expired. Edit and review it again.
-                        </p>
-                      </Show>
-                      <div class="gs-actions">
-                        <button
-                          class="gs-button gs-primary"
-                          disabled={
-                            !!busy() ||
-                            activeCount() >= catalog().maxConcurrent ||
-                            Date.parse(plan().expiresAt) <= now()
-                          }
-                          onClick={() => void start()}
-                        >
-                          {busy() === 'start'
-                            ? 'Starting…'
-                            : plan().mock
-                              ? 'Start mock scan'
-                              : 'Approve and start'}
-                        </button>
-                        <button
-                          class="gs-button"
-                          disabled={!!busy()}
-                          onClick={() => setPreview(undefined)}
-                        >
-                          Edit scan
-                        </button>
-                      </div>
                     </div>
-                  )}
-                </Show>
+                    <Show when={activeCount() >= catalog().maxConcurrent}>
+                      <p role="status" class="gs-small gs-muted">
+                        {catalog().maxConcurrent} scans are already running. Start this scan after
+                        one finishes.
+                      </p>
+                    </Show>
+                    <Show when={Date.parse(plan().expiresAt) <= now()}>
+                      <p class="gs-small gs-error">
+                        This preview has expired. Edit and review it again.
+                      </p>
+                    </Show>
+                    <div class="gs-actions">
+                      <button
+                        class="gs-button gs-primary"
+                        disabled={
+                          !!busy() ||
+                          activeCount() >= catalog().maxConcurrent ||
+                          Date.parse(plan().expiresAt) <= now()
+                        }
+                        onClick={() => void start()}
+                      >
+                        {busy() === 'start'
+                          ? 'Starting…'
+                          : plan().mock
+                            ? 'Start mock scan'
+                            : 'Approve and start'}
+                      </button>
+                      <button
+                        class="gs-button"
+                        disabled={!!busy()}
+                        onClick={() => setPreview(undefined)}
+                      >
+                        Edit scan
+                      </button>
+                    </div>
+                  </div>
+                )}
               </Show>
             </section>
           </Show>
@@ -666,8 +635,8 @@ export function SecurityPanel(props: {
                         </div>
                         <div class="gs-run-target">Target: {run.repository}</div>
                         <div class="gs-run-meta">
-                          {run.mode ?? run.plan?.settings.scan.mode ?? 'Fixture'} · {scanScope(run)}{' '}
-                          · {startedTime(run.startedAt)}
+                          {run.mode ?? run.plan?.settings.scan.mode ?? 'standard'} ·{' '}
+                          {scanScope(run)} · {startedTime(run.startedAt)}
                           {run.status === 'completed'
                             ? ` · ${run.findings.length} ${run.findings.length === 1 ? 'finding' : 'findings'} shown`
                             : ''}
@@ -690,7 +659,8 @@ export function SecurityPanel(props: {
                   <h3>{runTitle(run())}</h3>
                   <p>Target: {run().repository}</p>
                   <p>
-                    {run().mode ?? run().plan?.settings.scan.mode ?? 'Fixture'} · {scanScope(run())}
+                    {run().mode ?? run().plan?.settings.scan.mode ?? 'standard'} ·{' '}
+                    {scanScope(run())}
                   </p>
                 </div>
                 <div class="gs-progress-heading" role="status" aria-live="polite">
@@ -769,8 +739,7 @@ export function SecurityPanel(props: {
                           <Show
                             when={
                               props.operations &&
-                              (props.operations.capabilities?.validation ?? true) &&
-                              !fixture()
+                              (props.operations.capabilities?.validation ?? true)
                             }
                           >
                             <button
@@ -962,9 +931,7 @@ export function SecurityPanel(props: {
                     <dt>Scope</dt>
                     <dd>{scanScope(run())}</dd>
                     <dt>Depth</dt>
-                    <dd>
-                      {run().mode ?? run().plan?.settings.scan.mode ?? 'Fixture pattern checks'}
-                    </dd>
+                    <dd>{run().mode ?? run().plan?.settings.scan.mode ?? 'standard'}</dd>
                     <Show when={run().model ?? run().plan?.settings.codex.model}>
                       <dt>Model</dt>
                       <dd>{run().model ?? run().plan?.settings.codex.model}</dd>
@@ -991,9 +958,7 @@ export function SecurityPanel(props: {
           </Show>
         </Show>
         <footer class="gs-footer">
-          {fixture()
-            ? 'Fixture engine · not a security assessment'
-            : 'Codex Security · local results, configured inference'}
+          Codex Security · results stay local
           <Show when={catalog().runs.length}>
             {' '}
             · Up to {catalog().maxConcurrent} concurrent scans per project

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitizeStoredOutcomeSummary, summarizeScanResult } from '../src/core/result-summary.ts';
+import { summarizeScanResult } from '../src/core/result-summary.ts';
 
 const repository = '/tmp/synthetic-repository';
 const finding = (level = 'high') => ({
@@ -405,111 +405,4 @@ test('mapper is pure and never consults raw reports, result serializers, or arti
   first.repositoryFindings.items[0].matchedFindingIds.items.push('mutation');
   assert.deepEqual(input.manifest, snapshot.manifest);
   assert.deepEqual(input.repositoryFindings, snapshot.repositoryFindings);
-});
-
-test('stored summaries preserve aggregates and missing metadata through safe round trips', () => {
-  const input = result();
-  input.repositoryFindings = Array.from({ length: 35 }, () => input.repositoryFindings[0]);
-  input.manifest.scan.reviewState.surfaces = Array.from({ length: 31 }, () => ({
-    id: 'fixture-surface',
-    disposition: 'reported',
-  }));
-  for (const source of [input, {}, { findings: { findings: [] }, repositoryFindings: [] }]) {
-    const expected = summarizeScanResult(source, repository);
-    const restored = sanitizeStoredOutcomeSummary(JSON.parse(JSON.stringify(expected)));
-    assert.deepEqual(restored, expected);
-    assert.deepEqual(sanitizeStoredOutcomeSummary(restored), restored);
-  }
-  const restored = sanitizeStoredOutcomeSummary(summarizeScanResult(input, repository));
-  assert.equal(restored.repositoryFindings.total, 35);
-  assert.equal(restored.repositoryFindings.items.length, 20);
-  assert.equal(restored.repositoryFindings.omitted, 15);
-  assert.equal(restored.coverage.surfaces.dispositions.reported, 31);
-});
-
-test('modified stored summaries cannot expose raw text or bypass list and path bounds', () => {
-  const secret = 'sk-syntheticSavedSummarySecret0123456789';
-  const rawOnly = 'FORBIDDEN_STORED_RAW_REPORT';
-  const saved = summarizeScanResult(result(), repository);
-  saved.repository = `/private/home/${secret}`;
-  saved.coverage.surfaces.items[0].label = secret;
-  saved.coverage.surfaces.items[0].rawEvidence = rawOnly;
-  saved.coverage.explicitExclusions.items[0].reason = secret;
-  saved.coverage.deferred.items[0].reason = secret;
-  saved.coverage.deferred.items[0].paths = {
-    total: 30,
-    items: Array.from({ length: 30 }, () => `${secret}${'x'.repeat(1000)}`),
-    omitted: 0,
-  };
-  saved.coverage.resolvedDeferred.items[0].reason = secret;
-  saved.coverage.openQuestions.items[0].question = secret;
-  saved.coverage.limitations.items[0] = secret;
-  saved.repositoryFindings.items[0].findingId = secret;
-  saved.repositoryFindings.items[0].knownSince = secret;
-  saved.repositoryFindings.items[0].matchedFindingIds.items[0] = secret;
-  saved.repositoryFindings.items[0].rawReport = rawOnly;
-  saved.artifacts = {
-    total: 3,
-    omitted: 0,
-    items: [
-      { path: '/private/outside.md', mediaType: secret },
-      { path: 'https://example.com/report', mediaType: secret },
-      { path: `reports/${secret}.md`, mediaType: secret },
-    ],
-  };
-  saved.notes = [rawOnly, secret];
-  saved.turnResult = { finalResponse: rawOnly };
-  const restored = sanitizeStoredOutcomeSummary(saved);
-  assert.ok(restored);
-  const serialized = JSON.stringify(restored);
-  assert.ok(!serialized.includes(secret));
-  assert.ok(!serialized.includes(rawOnly));
-  assert.ok(!serialized.includes('/private'));
-  assert.equal(restored.coverage.deferred.items[0].paths.items.length, 20);
-  assert.equal(restored.coverage.deferred.items[0].paths.total, 30);
-  assert.equal(restored.coverage.deferred.items[0].paths.omitted, 10);
-  // Only the sanitized relative entry survives; absolute paths and URLs are omitted.
-  assert.deepEqual(restored.artifacts.items, [
-    { path: 'reports/[REDACTED CREDENTIAL].md', mediaType: '[REDACTED CREDENTIAL]' },
-  ]);
-  assert.equal(restored.artifacts.omitted, 2);
-  assert.deepEqual(restored.notes, summarizeScanResult({}, repository).notes);
-});
-
-test('invalid stored assessment schema and contradictory counts are discarded independently', () => {
-  for (const value of [undefined, null, 3, 'summary', [], {}, { source: 'live-sdk' }])
-    assert.equal(sanitizeStoredOutcomeSummary(value), undefined);
-  const edits = [
-    (s) => delete s.coverage,
-    (s) => delete s.returnedFindings.informational,
-    (s) => (s.returnedFindings.total = -1),
-    (s) => (s.returnedFindings.total = Infinity),
-    (s) => (s.returnedFindings.total = Number.MAX_SAFE_INTEGER + 1),
-    (s) => (s.returnedFindings.total = 1.5),
-    (s) => (s.returnedFindings.total = null),
-    (s) => (s.returnedFindings.reportable = 2),
-    (s) => (s.coverage.source = 'live-stream'),
-    (s) => (s.coverage.source = 'unavailable'),
-    (s) => delete s.coverage.deferred,
-    (s) => (s.coverage.surfaces.items = {}),
-    (s) => (s.coverage.surfaces.omitted = -1),
-    (s) => (s.coverage.surfaces.total = null),
-    (s) => (s.coverage.surfaces.dispositions = null),
-    (s) => (s.coverage.surfaces.dispositions.reported = 3),
-    (s) => (s.repositoryFindings.available = false),
-    (s) => (s.repositoryFindings.open = 2),
-    (s) => (s.repositoryFindings.confirmedInLatestScan = 2),
-    (s) => (s.repositoryFindings.withMatchedFindingIds = 50),
-    (s) => (s.artifacts.omitted = 100),
-    (s) => delete s.artifacts,
-  ];
-  for (const edit of edits) {
-    const saved = summarizeScanResult(result(), repository);
-    edit(saved);
-    const run = { status: 'completed', findings: [], assessment: saved };
-    run.assessment = sanitizeStoredOutcomeSummary(run.assessment);
-    assert.equal(run.assessment, undefined, edit.toString());
-    assert.equal(run.status, 'completed');
-    assert.deepEqual(run.findings, []);
-  }
 });

@@ -1,24 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { lstat, stat } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import type {
   CodexSecurity,
   CodexSecurityConfig,
-  SecurityPolicyDraft,
   SecurityPolicyOptions,
   ValidationOptions,
   ValidationResult,
 } from '@openai/codex-security';
-import { prepareScan, validatePlan, type ScanPlan } from './scan-plan.ts';
+import { prepareScan, withSdk, type ScanPlan } from './scan-plan.ts';
 import { safeReportText } from './report-safety.ts';
-import { sdkConfiguration, sdkAuthentication } from './sdk-settings.ts';
-import { ProviderConfigurationError } from './provider-config.ts';
-import { unsupportedPricingMessage } from './codex-adapter.ts';
-import {
-  requireSdkCredentials,
-  ProviderCredentialsRequiredError,
-  DedicatedSecurityCredentialsRequiredError,
-} from './credential-guard.ts';
+import { SecurityInputError, userMessage } from './errors.ts';
 
 export type SecurityOperationKind = 'policy' | 'validation';
 export type SecurityOperationStatus =
@@ -34,10 +25,11 @@ export interface SecurityOperationInputs {
 }
 export interface SecurityOperationPlan extends ScanPlan {
   kind: SecurityOperationKind;
+  /** Policy component, relative to the repository. Absent for the repository root. */
   path?: string;
+  /** Where an accepted policy draft belongs. The plugin never writes it. */
+  targetPath?: string;
   finding?: string;
-  /** Policy has an estimated SDK limit, not a guaranteed billing cap. Validation has none. */
-  costLimitEnforced: boolean;
   costNotice: string;
 }
 export interface SecurityOperationQuestion {
@@ -79,25 +71,16 @@ export interface SecurityOperationState {
 }
 export type SecurityOperationsClient = Pick<CodexSecurity, 'generatePolicy' | 'validate' | 'close'>;
 export type SecurityOperationsFactory = (
-  config?: CodexSecurityConfig,
-  auth?: 'chatgpt' | 'api-key' | 'aws',
+  config: CodexSecurityConfig,
 ) => SecurityOperationsClient | Promise<SecurityOperationsClient>;
 export interface SecurityOperationsOptions {
   createClient?: SecurityOperationsFactory;
   mock?: boolean;
 }
-export interface SecurityOperationApproval {
-  operationId: string;
-  /** Trusted UI/host permission decision. Never expose approval booleans as model input. */
-  approveOpenAIInference: true;
-  /** Required separately because SDK 0.9.1 validation has no maxCostUsd support. */
-  approveUncappedValidation?: true;
-}
 
 type Entry = {
   state: SecurityOperationState;
   controller: AbortController;
-  starting?: Promise<SecurityOperationState>;
   task?: Promise<void>;
   pending?: {
     id: string;
@@ -106,98 +89,33 @@ type Entry = {
     cleanup: () => void;
   };
 };
-const realClient: SecurityOperationsFactory = async (config, auth) => {
-  await requireSdkCredentials(config, process.env, auth);
-  const { CodexSecurity } = await import('@openai/codex-security');
-  return new CodexSecurity(config);
-};
+const realClient: SecurityOperationsFactory = async (config) =>
+  new (await import('@openai/codex-security')).CodexSecurity(config);
 const active = (state: SecurityOperationState) =>
   state.status === 'running' || state.status === 'awaiting_answers';
 const textLimit = 48_000;
 
 function parseInputs(raw: unknown): SecurityOperationInputs {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw))
-    throw new Error('Operation inputs must be an object.');
-  const value = raw as Record<string, unknown>;
-  for (const key of Object.keys(value))
-    if (!['kind', 'repository', 'path', 'contextFiles', 'finding'].includes(key))
-      throw new Error(
-        'Unsupported operation input. Approval, authentication, and SDK settings cannot come from model input.',
-      );
+  const value = (raw ?? {}) as Record<string, unknown>;
   if (value.kind !== 'policy' && value.kind !== 'validation')
-    throw new Error(
-      'Choose policy or validation. Patch and fix verification require a separate isolated workspace.',
-    );
-  if (value.kind === 'policy' && value.finding !== undefined)
-    throw new Error('Finding input is only supported for validation.');
-  if (value.kind === 'validation' && value.path !== undefined)
-    throw new Error(
-      'Validation reviews the selected repository. Policy path is not a validation scope.',
-    );
-  if (
-    value.path !== undefined &&
-    (typeof value.path !== 'string' || !value.path || value.path.length > 4096)
-  )
-    throw new Error('Invalid policy directory.');
-  // The caller may reuse or mutate its input object while path checks await I/O.
-  // Capture it now rather than letting later edits change the operation kind/scope.
+    throw new SecurityInputError('Choose policy or validation.');
+  if (value.kind === 'policy' ? value.finding !== undefined : value.path !== undefined)
+    throw new SecurityInputError('Policy takes a path; validation takes a finding.');
+  if (value.path !== undefined && typeof value.path !== 'string')
+    throw new SecurityInputError('Policy path must be a directory inside the repository.');
+  // Callers may reuse their input object while preparation awaits I/O.
   return structuredClone(value) as unknown as SecurityOperationInputs;
 }
 function findingText(value: SecurityOperationInputs['finding']): string {
-  let text: string | undefined;
-  if (typeof value === 'string') text = value;
-  else if (value && typeof value === 'object' && !Array.isArray(value)) {
-    try {
-      text = JSON.stringify(value);
-    } catch {
-      throw new Error('Finding must be JSON serializable.');
-    }
-  }
-  if (!text?.trim() || Buffer.byteLength(text) > 32 * 1024)
-    throw new Error('Validation requires literal finding text or an object of at most 32 KiB.');
-  if (safeReportText(text) !== text)
-    throw new Error(
-      'Remove credential-like values and control characters from the finding before preparing validation.',
-    );
+  const text = typeof value === 'string' ? value : value ? JSON.stringify(value) : '';
+  if (!text.trim() || Buffer.byteLength(text) > 32 * 1024)
+    throw new SecurityInputError('Validation needs finding text or an object of at most 32 KiB.');
   return text;
-}
-async function checkPolicyDirectory(plan: ScanPlan) {
-  const directory = resolve(plan.repository, plan.scopePaths[0] || '.');
-  if (!(await stat(directory)).isDirectory())
-    throw new Error('Policy path must be an existing directory.');
-  // SDK policy generation discovers the enclosing Git root. Do not silently broaden
-  // the approved repository, or cross a nested worktree boundary.
-  for (let current = directory; ; current = dirname(current)) {
-    try {
-      await lstat(join(current, '.git'));
-      if (current !== plan.repository)
-        throw new Error(
-          'Select the Git repository root as repository and its component as policy path.',
-        );
-      break;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    }
-    if (dirname(current) === current) break;
-  }
-}
-function checkRepositoryPath(repository: string) {
-  if (
-    repository
-      .split(/[\\/]/)
-      .some(
-        (part) =>
-          ['.git', '.ssh', '.aws', '.codex', '.runtime', 'node_modules'].includes(part) ||
-          /^\.env(?:\.|$)/.test(part),
-      )
-  )
-    throw new Error('Credential, runtime, and dependency directories cannot be operation targets.');
 }
 
 /**
- * Memory-only, project-bound operation coordinator. Preparation never creates the SDK.
- * Each immutable preview can start once. Auth/paid execution belongs to the trusted host.
- * Generated policies remain drafts; this class never applies a file or publishes findings.
+ * Policy drafts and finding validation, in memory for the session. Each preview starts
+ * once. Policies come back as drafts; nothing here writes to the repository.
  */
 export class SecurityOperationsService {
   readonly maxConcurrent = 2;
@@ -208,7 +126,7 @@ export class SecurityOperationsService {
   #entries = new Map<string, Entry>();
   #listeners = new Set<(state: SecurityOperationState) => void>();
   constructor(project: string, options: SecurityOperationsOptions = {}) {
-    this.#project = project; // prepareScan validates the anchor; never guess process.cwd().
+    this.#project = project;
     this.#factory = options.createClient ?? realClient;
     this.#mock = options.mock ?? false;
     if (this.#mock && !options.createClient)
@@ -216,7 +134,7 @@ export class SecurityOperationsService {
   }
   #entry(operationId: string) {
     const entry = this.#entries.get(operationId);
-    if (!entry) throw new Error('Unknown security operation.');
+    if (!entry) throw new SecurityInputError('Unknown security operation.');
     return entry;
   }
   getState(operationId: string): SecurityOperationState {
@@ -247,49 +165,51 @@ export class SecurityOperationsService {
     const finding = input.kind === 'validation' ? findingText(input.finding) : undefined;
     const scan = await prepareScan(
       this.#project,
-      {
-        ...(input.repository === undefined ? {} : { repository: input.repository }),
-        contextFiles: input.contextFiles ?? [],
-        ...(input.kind === 'policy' ? { scopePaths: [input.path ?? '.'] } : {}),
-      },
+      { repository: input.repository, contextFiles: input.contextFiles },
       this.#mock,
     );
-    checkRepositoryPath(scan.repository);
-    if (input.kind === 'policy') await checkPolicyDirectory(scan);
+    const limit = scan.settings.scan.maxCostUsd;
+    // The SDK decides which repository and SECURITY.md a policy path belongs to.
+    const target =
+      input.kind === 'policy'
+        ? await withSdk(scan.sdk.codexOverrides, (client) =>
+            client.preflightPolicy(scan.repository, {
+              auth: scan.sdk.auth,
+              ...(input.path ? { path: input.path } : {}),
+              ...(limit === undefined ? {} : { maxCostUsd: limit }),
+            }),
+          )
+        : undefined;
     if (this.#disposed) throw new Error('Security operations service is closed.');
-    // Keep bounded per-session state. Never evict running operations or outstanding questions.
     for (const [id, entry] of this.#entries)
-      if (
-        !active(entry.state) &&
-        !entry.starting &&
-        Date.parse(entry.state.plan.expiresAt) <= Date.now()
-      )
+      if (entry.state.status === 'prepared' && Date.parse(entry.state.plan.expiresAt) <= Date.now())
         this.#entries.delete(id);
-    if (this.#entries.size >= 50)
-      throw new Error(
-        'Too many recent operations. Wait for previews to expire or open a fresh session.',
-      );
     const plan: SecurityOperationPlan = {
       ...scan,
       kind: input.kind,
-      ...(input.kind === 'policy' ? { path: scan.scopePaths[0] } : { finding }),
-      costLimitEnforced: input.kind === 'policy' && scan.settings.scan.maxCostUsd !== undefined,
+      ...(target
+        ? {
+            repository: target.repository,
+            targetPath: target.targetPath,
+            ...(target.scope === '.' ? {} : { path: target.scope }),
+          }
+        : { finding }),
       costNotice:
-        input.kind === 'policy'
-          ? scan.settings.scan.maxCostUsd === undefined
-            ? 'No dollar-based stop limit is configured. Provider charges still apply.'
-            : `Model inference uses an estimated USD ${scan.settings.scan.maxCostUsd} SDK limit, not a guaranteed billing cap.`
-          : 'Model inference has no SDK cost limit for validation in version 0.9.1. The scan budget does not apply.',
+        input.kind === 'validation'
+          ? 'Validation has no cost limit in the SDK; scan.maxCostUsd does not apply.'
+          : limit === undefined
+            ? 'No cost limit is configured.'
+            : `Stops at an estimated USD ${limit}. This is an estimate, not a billing cap.`,
     };
     const entry: Entry = {
       controller: new AbortController(),
       state: {
         operationId: scan.id,
         kind: input.kind,
-        repository: scan.repository,
+        repository: plan.repository,
         plan,
         status: 'prepared',
-        phase: 'Prepared; review and authorize model inference',
+        phase: 'Ready to review',
         question: null,
         answeredQuestionCount: 0,
         result: null,
@@ -304,58 +224,27 @@ export class SecurityOperationsService {
     this.#emit(entry);
     return this.getState(scan.id);
   }
-  async start(approval: SecurityOperationApproval): Promise<SecurityOperationState> {
+  /** Starting a preview is the approval; callers show the preview first. */
+  async start(input: { operationId: string }): Promise<SecurityOperationState> {
     if (this.#disposed) throw new Error('Security operations service is closed.');
-    if (approval?.approveOpenAIInference !== true)
-      throw new Error('Prepare and authorize this exact operation before model inference.');
-    const entry = this.#entry(approval.operationId);
-    if (entry.state.kind === 'validation' && approval.approveUncappedValidation !== true)
-      throw new Error(
-        'Explicit approval required: SDK validation has no cost limit; the scan budget does not apply.',
-      );
-    if (entry.starting) return entry.starting;
-    if (active(entry.state)) return this.getState(approval.operationId);
+    const entry = this.#entry(input?.operationId);
+    if (active(entry.state)) return this.getState(input.operationId);
     if (entry.state.status !== 'prepared')
-      throw new Error('This operation is already used. Prepare and authorize a new operation.');
+      throw new SecurityInputError('This operation is already used. Prepare a new one.');
+    if (Date.now() >= Date.parse(entry.state.plan.expiresAt))
+      throw new SecurityInputError('Operation preview expired. Prepare it again.');
     if (
-      [...this.#entries.values()].filter((other) => other.starting || active(other.state)).length >=
+      [...this.#entries.values()].filter((other) => active(other.state)).length >=
       this.maxConcurrent
     )
-      throw new Error('Two operations are already active. Wait or cancel one.');
-    entry.starting = this.#start(entry);
-    try {
-      return await entry.starting;
-    } finally {
-      entry.starting = undefined;
-    }
-  }
-  async #start(entry: Entry): Promise<SecurityOperationState> {
-    try {
-      await validatePlan(entry.state.plan);
-      checkRepositoryPath(entry.state.plan.repository);
-      if (entry.state.kind === 'policy') await checkPolicyDirectory(entry.state.plan);
-    } catch (error) {
-      if (!entry.controller.signal.aborted) {
-        entry.state.status = 'error';
-        entry.state.phase = 'Preview invalid; prepare again';
-        entry.state.error =
-          'Target, context, or settings changed, or the preview expired. Prepare and authorize a new operation.';
-        entry.state.finishedAt = new Date().toISOString();
-        this.#emit(entry);
-      }
-      throw error;
-    }
-    if (this.#disposed || entry.controller.signal.aborted)
-      return this.getState(entry.state.operationId);
+      throw new SecurityInputError('Two operations are already active. Wait or cancel one.');
     entry.state.status = 'running';
     entry.state.phase =
-      entry.state.kind === 'policy'
-        ? 'Generating security policy draft'
-        : 'Validating finding with source evidence';
+      entry.state.kind === 'policy' ? 'Generating security policy draft' : 'Validating finding';
     entry.state.startedAt = new Date().toISOString();
     this.#emit(entry);
     entry.task = this.#run(entry);
-    return this.getState(entry.state.operationId);
+    return this.getState(input.operationId);
   }
   async #run(entry: Entry) {
     const { plan } = entry.state;
@@ -365,13 +254,13 @@ export class SecurityOperationsService {
     const observing = () => !signal.aborted && active(entry.state);
     try {
       signal.throwIfAborted();
-      client = await this.#factory(sdkConfiguration(plan.settings), plan.settings.codex.auth);
+      client = await this.#factory({ codexOverrides: plan.sdk.codexOverrides });
       signal.throwIfAborted();
       const context = plan.contextFiles.map((file) => resolve(plan.repository, file.path));
       if (plan.kind === 'policy') {
         const options: SecurityPolicyOptions = {
-          auth: sdkAuthentication(plan.settings.codex.auth),
-          path: plan.path,
+          auth: plan.sdk.auth,
+          ...(plan.path ? { path: plan.path } : {}),
           knowledgeBasePaths: context,
           ...(plan.settings.scan.maxCostUsd !== undefined
             ? { maxCostUsd: plan.settings.scan.maxCostUsd }
@@ -400,7 +289,14 @@ export class SecurityOperationsService {
         };
         const result = await client.generatePolicy(plan.repository, options);
         signal.throwIfAborted();
-        entry.state.result = this.#policyResult(plan, result);
+        entry.state.result = {
+          kind: 'policy',
+          content: safeReportText(result.content),
+          reviewNotes: result.reviewNotes.slice(0, 100).map((note) => safeReportText(note, 2000)),
+          targetPath: result.targetPath,
+          applied: false,
+          truncated: result.content.length > textLimit || result.reviewNotes.length > 100,
+        };
         if (
           result.cost &&
           Number.isFinite(result.cost.estimatedUsd) &&
@@ -411,7 +307,7 @@ export class SecurityOperationsService {
         const options: ValidationOptions = {
           repositoryPath: plan.repository,
           finding: plan.finding!,
-          auth: sdkAuthentication(plan.settings.codex.auth),
+          auth: plan.sdk.auth,
           knowledgeBasePaths: context,
           signal,
           ...(plan.settings.scan.cyberAccessProgram
@@ -420,13 +316,6 @@ export class SecurityOperationsService {
         };
         const result = await client.validate(options);
         signal.throwIfAborted();
-        if (
-          !['reportable', 'suppressed', 'not_applicable', 'deferred'].includes(
-            result.disposition,
-          ) ||
-          typeof result.report !== 'string'
-        )
-          throw new Error('Invalid validation result.');
         entry.state.result = {
           kind: 'validation',
           disposition: result.disposition,
@@ -440,18 +329,13 @@ export class SecurityOperationsService {
       entry.state.result = null;
       entry.state.error = signal.aborted
         ? null
-        : error instanceof DedicatedSecurityCredentialsRequiredError ||
-            error instanceof ProviderCredentialsRequiredError ||
-            error instanceof ProviderConfigurationError
-          ? error.message
-          : (unsupportedPricingMessage(error) ??
-            'SDK operation failed. Review local SDK diagnostics and runtime prerequisites. Raw output is not exposed.');
+        : userMessage(error, 'Operation failed. Check the Codex Security logs and runtime setup.');
     } finally {
       this.#rejectQuestion(entry, new Error('Operation ended before this question was answered.'));
       try {
         await client?.close();
       } catch {
-        /* Never surface potentially sensitive SDK errors. */
+        /* Nothing useful to report from a failed close. */
       }
       if (signal.aborted) {
         outcome = 'cancelled';
@@ -470,24 +354,6 @@ export class SecurityOperationsService {
       entry.state.finishedAt = new Date().toISOString();
       this.#emit(entry);
     }
-  }
-  #policyResult(plan: SecurityOperationPlan, draft: SecurityPolicyDraft): SecurityOperationResult {
-    const expectedPath = resolve(plan.repository, plan.path || '.', 'SECURITY.md');
-    if (
-      draft.repository !== plan.repository ||
-      resolve(draft.targetPath) !== expectedPath ||
-      typeof draft.content !== 'string' ||
-      !Array.isArray(draft.reviewNotes)
-    )
-      throw new Error('Policy draft did not match approved target.');
-    return {
-      kind: 'policy',
-      content: safeReportText(draft.content),
-      reviewNotes: draft.reviewNotes.slice(0, 100).map((note) => safeReportText(note, 2000)),
-      targetPath: expectedPath,
-      applied: false,
-      truncated: draft.content.length > textLimit || draft.reviewNotes.length > 100,
-    };
   }
   #ask(
     entry: Entry,
@@ -545,15 +411,13 @@ export class SecurityOperationsService {
       !entry.pending ||
       entry.pending.id !== input.questionId
     )
-      throw new Error('This question is no longer pending for this operation.');
+      throw new SecurityInputError('This question is no longer pending.');
     if (
       typeof input.answer !== 'string' ||
       !input.answer.trim() ||
       Buffer.byteLength(input.answer) > 16 * 1024
     )
-      throw new Error('Answer must be nonempty text of at most 16 KiB. State unknowns explicitly.');
-    if (safeReportText(input.answer) !== input.answer)
-      throw new Error('Remove credential-like values and control characters from your answer.');
+      throw new SecurityInputError('Answer must be nonempty text of at most 16 KiB.');
     const pending = entry.pending;
     const count = entry.state.question?.questions.length ?? 0;
     entry.pending = undefined;
@@ -562,7 +426,6 @@ export class SecurityOperationsService {
     entry.state.answeredQuestionCount += count;
     entry.state.status = 'running';
     entry.state.phase = 'Continuing with supplied clarification';
-    // Answers are passed to this SDK call only; no answer transcript is retained in state.
     pending.resolve(input.answer.trim());
     this.#emit(entry);
     return this.getState(input.operationId);
@@ -585,19 +448,13 @@ export class SecurityOperationsService {
   }
   async wait(operationId: string): Promise<SecurityOperationState> {
     const entry = this.#entry(operationId);
-    await entry.starting;
     await entry.task;
     return this.getState(operationId);
   }
   async dispose() {
     this.#disposed = true;
     for (const id of this.#entries.keys()) this.cancel(id);
-    await Promise.all(
-      [...this.#entries.values()].map(async (entry) => {
-        await entry.starting?.catch(() => {});
-        await entry.task;
-      }),
-    );
+    await Promise.all([...this.#entries.values()].map((entry) => entry.task));
     this.#listeners.clear();
   }
 }
