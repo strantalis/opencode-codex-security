@@ -25,6 +25,9 @@ test('a preview resolves the workspace, scope and default route through the SDK'
     contextFiles: ['ARCHITECTURE.md'],
     mode: 'deep',
   });
+  // The host carries plans over RPC as JSON, which has no undefined members.
+  const { sdk: _sdk, ...shown } = plan;
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(shown)), shown);
   assert.equal(plan.repository, root);
   assert.deepEqual(plan.scopePaths, ['src']);
   assert.deepEqual(plan.contextFiles, [{ path: 'ARCHITECTURE.md' }]);

@@ -194,7 +194,14 @@ export async function prepareScan(
       sdk: { codexOverrides: settings.codex, auth: settings.auth },
       expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
       mock,
-      inputs: { ...input, repository: preflight.repository, scopePaths, changes, contextFiles },
+      // No undefined members: the host only carries JSON values over RPC.
+      inputs: {
+        ...input,
+        repository: preflight.repository,
+        scopePaths,
+        ...(changes ? { changes } : {}),
+        contextFiles,
+      },
     };
   });
 }
