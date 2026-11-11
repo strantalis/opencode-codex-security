@@ -8,6 +8,7 @@ import { createTuiOperations } from '../security-tui-operations';
 import { reviewScan, validTarget } from './review';
 import { createStore } from './store';
 import { colors } from './theme';
+import { userError } from '../scan-display';
 import { cancellable, type SetupInfo } from './text';
 import { SecurityView, type Key } from './view';
 
@@ -25,8 +26,29 @@ export function createApp(ctx: Plugin.Context) {
   const [findingIndex, setFindingIndex] = createSignal(0);
   const [operationId, setOperationId] = createSignal<string>();
   const [details, setDetails] = createSignal(false);
-  // Filled by the planned `setup` RPC; see setupLine in ./text.
-  const [setup] = createSignal<SetupInfo>();
+  const [setup, setSetup] = createSignal<SetupInfo>();
+  // A setup problem (for example a missing API key) is reported by the SDK; show it as written.
+  const loadSetup = () =>
+    store.client
+      .setup({}, { location: store.location })
+      .then((value) => setSetup(value as unknown as SetupInfo))
+      .catch((error) => store.setError(userError(error)));
+  const chooseProfile = () =>
+    store.perform(async () => {
+      const current = setup();
+      if (!current) return;
+      const profile = await ctx.ui.dialog.select<string>({
+        title: 'Codex profile',
+        current: current.profile ?? '',
+        options: [
+          { title: 'None', description: 'Use the Codex config as it is.', value: '' },
+          ...current.profiles.map((name) => ({ title: name, value: name })),
+        ],
+      });
+      if (profile === undefined) return;
+      await store.client.setProfile({ profile }, { location: store.location });
+      await loadSetup();
+    });
   let origin: Route | undefined;
 
   const workspace = isAbsoluteLocalDirectory(ctx.location?.directory)
@@ -228,6 +250,13 @@ export function createApp(ctx: Plugin.Context) {
     },
     { bind: 'n', key: 'n', label: () => 'new scan', run: newScan, when: () => true },
     {
+      bind: 'o',
+      key: 'o',
+      label: () => 'profile',
+      run: chooseProfile,
+      when: () => listing() && (setup()?.profiles.length ?? 0) > 1,
+    },
+    {
       bind: 'p',
       key: 'p',
       label: () => 'draft policy',
@@ -247,6 +276,7 @@ export function createApp(ctx: Plugin.Context) {
   const View = () => {
     const [now, setNow] = createSignal(Date.now());
     onMount(() => {
+      void loadSetup();
       void store.loadCapabilities();
       onCleanup(store.watch());
     });

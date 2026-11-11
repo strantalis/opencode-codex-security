@@ -22,6 +22,8 @@ import {
   runTitle,
   scanScope,
   usageContext,
+  trustedAccessLabel,
+  targetChangedLabel,
   usageLabel,
   workerActivityRows,
   workerSummary,
@@ -86,17 +88,6 @@ export function SecurityView(props: Props) {
           <b>Security</b>
           <span style={{ fg: c.muted() }}> · {props.store.location.directory}</span>
         </text>
-        {/* SETUP LINE: rendered once the `setup` RPC result is passed in as props.setup. */}
-        <Show when={props.setup}>
-          {(info) => (
-            <text fg={c.muted()}>
-              {setupLine(info()).text}
-              <Show when={setupLine(info()).warning}>
-                {(warning) => <span style={{ fg: c.warning() }}> · {warning()}</span>}
-              </Show>
-            </text>
-          )}
-        </Show>
         <text>
           <span style={{ fg: props.tab === 'scans' ? c.accent() : c.muted() }}>
             {props.tab === 'scans' ? <b>Scans</b> : 'Scans'} {runs().length}
@@ -119,6 +110,17 @@ export function SecurityView(props: Props) {
             </span>
           </Show>
         </text>
+        {/* Last in the box: OpenTUI blanks a sibling that follows a late-mounted node. */}
+        <Show when={props.setup}>
+          {(info) => (
+            <text fg={c.muted()}>
+              {setupLine(info()).text}
+              <Show when={setupLine(info()).warning}>
+                {(warning) => <span style={{ fg: c.warning() }}> · {warning()}</span>}
+              </Show>
+            </text>
+          )}
+        </Show>
       </box>
     );
   };
@@ -165,6 +167,15 @@ export function SecurityView(props: Props) {
     return (
       <box flexDirection="column" paddingTop={1}>
         <Label>Run {run().runId}</Label>
+        <Show when={run().telemetry?.authentication}>
+          <Label>Signed in with {run().telemetry?.authentication}</Label>
+        </Show>
+        <Show when={trustedAccessLabel(run())}>
+          <text fg={c.warning()}>{trustedAccessLabel(run())}</text>
+        </Show>
+        <Show when={targetChangedLabel(run())}>
+          <text fg={c.warning()}>{targetChangedLabel(run())}</text>
+        </Show>
         <Show when={run().telemetry?.measurement?.coverage !== 'complete'}>
           <Label>{usageContext(run())}</Label>
         </Show>

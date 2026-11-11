@@ -139,6 +139,19 @@ const rpc = {
     cancelled.push(runId);
     return {};
   },
+  setup: async () => ({
+    route: {
+      provider: 'openai',
+      model: 'gpt-test',
+      reasoningEffort: 'high',
+      daybreak: false,
+      auth: 'Codex Security sign-in',
+    },
+    configFile: '/synthetic/codex-security.json',
+    codexConfigFile: '/synthetic/config.toml',
+    profiles: [],
+    runtime: { node: 'v24.0.0', python: '3.12.0' },
+  }),
   capabilities: async () => {
     calls.push('capabilities');
     return { policy: true, validation: true, questionAnswers: true };
