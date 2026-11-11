@@ -1,0 +1,304 @@
+/** @jsxImportSource @opentui/solid */
+import type { Plugin } from '@opencode/plugin/tui';
+import { createEffect, createSignal, on, onCleanup, onMount } from 'solid-js';
+import { asState } from '../types';
+import type { ScanInputs } from '../core/scan-plan';
+import { isAbsoluteLocalDirectory } from '../plan-view';
+import { createTuiOperations } from '../security-tui-operations';
+import { reviewScan, validTarget } from './review';
+import { createStore } from './store';
+import { colors } from './theme';
+import { cancellable, type SetupInfo } from './text';
+import { SecurityView, type Key } from './view';
+
+export const ROUTE = 'security';
+type Route = ReturnType<Plugin.Context['ui']['router']['current']>;
+
+/** Terminal Security view: state, actions and the key table behind the footer. */
+export function createApp(ctx: Plugin.Context) {
+  const store = createStore(ctx);
+  const color = colors(ctx);
+  const [tab, setTab] = createSignal<'scans' | 'operations'>('scans');
+  const [focus, setFocus] = createSignal<'runs' | 'findings'>('runs');
+  const [detail, setDetail] = createSignal<'finding' | 'operation'>();
+  const [runId, setRunId] = createSignal<string>();
+  const [findingIndex, setFindingIndex] = createSignal(0);
+  const [operationId, setOperationId] = createSignal<string>();
+  const [details, setDetails] = createSignal(false);
+  // Filled by the planned `setup` RPC; see setupLine in ./text.
+  const [setup] = createSignal<SetupInfo>();
+  let origin: Route | undefined;
+
+  const workspace = isAbsoluteLocalDirectory(ctx.location?.directory)
+    ? ctx.location!.directory
+    : undefined;
+  const onRoute = () => {
+    const route = ctx.ui.router.current();
+    return route.type === 'plugin' && route.name === ROUTE;
+  };
+  const runs = store.runs;
+  const run = () => runs().find((item) => item.runId === runId()) ?? runs()[0];
+  const findings = () => run()?.findings ?? [];
+  const finding = () => findings()[Math.min(findingIndex(), findings().length - 1)];
+  const operation = () =>
+    store.operations().find((op) => op.operationId === operationId()) ?? store.operations()[0];
+  const waiting = () => store.operations().filter((op) => op.question);
+  createEffect(on(runId, () => setFindingIndex(0), { defer: true }));
+
+  const open = () => {
+    if (!onRoute()) origin = ctx.ui.router.current();
+    ctx.ui.router.navigate({ type: 'plugin', name: ROUTE });
+  };
+  const leave = () => ctx.ui.router.navigate(origin ?? { type: 'home' });
+  const chooseTarget = async () => {
+    if (workspace) return workspace;
+    const value = await ctx.ui.dialog.prompt({
+      title: 'Target repository',
+      description: 'Absolute path to a local repository.',
+      placeholder: '/path/to/project',
+    });
+    return value?.trim() ? validTarget(value.trim()) : undefined;
+  };
+  const operations = createTuiOperations(ctx, store, chooseTarget, (id) => {
+    setOperationId(id);
+    setTab('operations');
+    setDetail(undefined);
+  });
+
+  const newScan = () =>
+    store.perform(async () => {
+      await store.refreshScans();
+      const list = store.catalog();
+      const max = list?.maxConcurrent ?? 2;
+      if (runs().filter((item) => item.status === 'running').length >= max)
+        throw new Error(`All ${max} scan slots are in use. Start another when one finishes.`);
+      const repository = await chooseTarget();
+      if (!repository) return;
+      const prepare = async (inputs: ScanInputs) => {
+        const plan = asState(await store.client.prepare(inputs, { location: store.location })).plan;
+        if (!plan) throw new Error('The server returned no preview.');
+        return plan;
+      };
+      const plan = await reviewScan(ctx, color, prepare, await prepare({ repository }));
+      if (!plan) return;
+      const started = asState(
+        await store.client.start({ planId: plan.id }, { location: store.location }),
+      );
+      setTab('scans');
+      setDetail(undefined);
+      setFocus('runs');
+      setRunId(started.runId);
+      await store.refreshScans();
+    });
+
+  const cancelScan = () =>
+    store.perform(async () => {
+      const target = run();
+      if (target?.status !== 'running') return;
+      const confirmed = await ctx.ui.dialog.confirm({
+        title: 'Cancel scan',
+        message: `Stop the scan of ${target.repository}? A cancelled scan has no results.`,
+        label: { confirm: 'Cancel scan', cancel: 'Keep running' },
+      });
+      if (!confirmed) return;
+      await store.client.cancel({ runId: target.runId }, { location: store.location });
+      await store.refreshScans();
+    });
+
+  /** Validate the selected finding, else pick one from the selected scan, else describe one. */
+  const validate = async () => {
+    const source = run();
+    if (!source?.findings.length) return operations.validateText();
+    let selected = detail() === 'finding' || focus() === 'findings' ? finding() : undefined;
+    if (!selected) {
+      const id = await ctx.ui.dialog.select({
+        title: `Validate a finding · ${source.repository}`,
+        options: source.findings.map((f) => ({
+          title: `${f.severity.toUpperCase()} ${f.title}`,
+          description: `${f.path}:${f.line}`,
+          value: f.id,
+        })),
+      });
+      selected = source.findings.find((f) => f.id === id);
+    }
+    if (selected) await operations.validate(source.repository, selected);
+  };
+
+  let scroller:
+    { scrollBy(delta: number): void; scrollChildIntoView(id: string): void } | undefined;
+  const move = (delta: number) => {
+    if (detail()) return scroller?.scrollBy(delta);
+    if (tab() === 'operations') {
+      const list = store.operations();
+      const index = list.indexOf(operation()!);
+      const next = list[Math.max(0, Math.min(list.length - 1, index + delta))];
+      if (next) setOperationId(next.operationId);
+      return;
+    }
+    if (focus() === 'findings') {
+      const next = Math.max(0, Math.min(findings().length - 1, findingIndex() + delta));
+      setFindingIndex(next);
+      return scroller?.scrollChildIntoView(`finding-${next}`);
+    }
+    const list = runs();
+    const index = list.indexOf(run()!);
+    const next = list[Math.max(0, Math.min(list.length - 1, index + delta))];
+    if (next) setRunId(next.runId);
+  };
+  const enter = () => {
+    if (tab() === 'operations') return void (operation() && setDetail('operation'));
+    if (focus() === 'runs') {
+      if (!findings().length) return;
+      setFocus('findings');
+      return scroller?.scrollChildIntoView(`finding-${findingIndex()}`);
+    }
+    setDetail('finding');
+  };
+  const back = () => {
+    if (detail()) return void setDetail(undefined);
+    if (tab() === 'scans' && focus() === 'findings') return void setFocus('runs');
+    leave();
+  };
+  const switchTab = () => {
+    setDetail(undefined);
+    setFocus('runs');
+    setTab((value) => (value === 'scans' ? 'operations' : 'scans'));
+    void store.refreshOperations();
+  };
+  const answerTarget = () => (operation()?.question ? operation() : waiting()[0]);
+
+  const scans = () => tab() === 'scans';
+  const listing = () => !detail();
+  const findingSelected = () =>
+    scans() && !!finding() && (detail() === 'finding' || focus() === 'findings');
+  const opsAvailable = () => store.capabilities().policy || store.capabilities().validation;
+  const movable = () =>
+    !!detail() ||
+    (scans() ? runs().length > 1 || focus() === 'findings' : store.operations().length > 1);
+  const keys: Key[] = [
+    { bind: 'up,k', run: () => move(-1), when: () => movable() },
+    {
+      bind: 'down,j',
+      key: '↑↓',
+      label: () => (detail() ? 'scroll' : 'move'),
+      run: () => move(1),
+      when: () => movable(),
+    },
+    {
+      bind: 'return',
+      key: 'enter',
+      label: () => (scans() && focus() === 'runs' ? 'findings' : 'open'),
+      run: enter,
+      when: () => listing() && (scans() ? !!findings().length : !!operation()),
+    },
+    {
+      bind: 'v',
+      key: 'v',
+      label: () => 'validate',
+      run: validate,
+      when: () => store.capabilities().validation && findingSelected(),
+    },
+    {
+      bind: 's',
+      key: 's',
+      label: () => 'start',
+      run: () => operations.start(operation()!),
+      when: () => !scans() && operation()?.status === 'prepared',
+    },
+    {
+      bind: 'a',
+      key: 'a',
+      label: () => 'answer',
+      run: () => operations.answer(answerTarget()!),
+      when: () => !!answerTarget(),
+    },
+    {
+      bind: 'c',
+      key: 'c',
+      label: () => 'cancel',
+      run: () => (scans() ? cancelScan() : operations.cancel(operation()!)),
+      when: () => (scans() ? listing() && run()?.status === 'running' : cancellable(operation())),
+    },
+    {
+      bind: 'd',
+      key: 'd',
+      label: () => (details() ? 'hide details' : 'details'),
+      run: () => setDetails((value) => !value),
+      when: () => scans() && listing() && !!run(),
+    },
+    { bind: 'n', key: 'n', label: () => 'new scan', run: newScan, when: () => true },
+    {
+      bind: 'p',
+      key: 'p',
+      label: () => 'draft policy',
+      run: operations.draftPolicy,
+      when: () => !scans() && listing() && store.capabilities().policy,
+    },
+    {
+      bind: 'tab',
+      key: 'tab',
+      label: () => (scans() ? 'operations' : 'scans'),
+      run: switchTab,
+      when: () => true,
+    },
+    { bind: 'escape', key: 'esc', label: () => 'back', run: back, when: () => true },
+  ];
+
+  const View = () => {
+    const [now, setNow] = createSignal(Date.now());
+    onMount(() => {
+      void store.loadCapabilities();
+      onCleanup(store.watch());
+    });
+    createEffect(() => {
+      if (!runs().some((item) => item.status === 'running')) return;
+      const timer = setInterval(() => setNow(Date.now()), 1000);
+      onCleanup(() => clearInterval(timer));
+    });
+    ctx.keymap.layer(() => ({
+      priority: 10,
+      enabled: onRoute,
+      commands: keys.map((key) => ({
+        bind: key.bind,
+        title: key.label ? `Security: ${key.label()}` : undefined,
+        group: 'Security',
+        enabled: key.when,
+        run: () => void key.run(),
+      })),
+    }));
+    return (
+      <SecurityView
+        ctx={ctx}
+        color={color}
+        store={store}
+        keys={keys}
+        now={now()}
+        tab={tab()}
+        focus={focus()}
+        detail={detail()}
+        run={run()}
+        findingIndex={findingIndex()}
+        operation={operation()}
+        details={details()}
+        waiting={waiting().length}
+        opsAvailable={opsAvailable()}
+        setup={setup()}
+        ref={(value) => (scroller = value)}
+      />
+    );
+  };
+
+  return {
+    store,
+    open,
+    onRoute,
+    View,
+    newScan,
+    draftPolicy: operations.draftPolicy,
+    validate,
+    showOperations: () => {
+      setTab('operations');
+      setDetail(undefined);
+    },
+  };
+}

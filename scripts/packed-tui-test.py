@@ -138,20 +138,37 @@ def main():
         end = time.monotonic() + 2
         while time.monotonic() < end:
             pump()
+        squashed = lambda text: re.sub(r'\s+', '', text)
+
+        def settle(seconds):
+            end = time.monotonic() + seconds
+            while time.monotonic() < end:
+                pump()
+
+        def mark():
+            return len(plain())
+
+        def since(start, needle, description, timeout=None):
+            wait_for(lambda text: needle in squashed(text[start:]), description, timeout)
+
         send(b'/security')
-        wait_for(lambda text: 'Security: open scans' in text, 'registered /security command')
+        wait_for(lambda text: 'Security: open' in text, 'registered /security command')
         send(b'\r')
-        wait_for(lambda text: 'History workspace:' in text and 'Reviewcode,thenfolloweachscanhere.' in re.sub(r'\s+', '', text),
-                 'rendered Security route')
-        # Return to the home prompt, then open a scan preview.
+        wait_for(lambda text: 'Noscansyet.Pressntostartone.' in squashed(text)
+                 and 'nnewscan' in squashed(text), 'rendered Security route')
+        # View keys: tab switches to Operations and back.
+        start = mark()
+        send(b'\t')
+        since(start, 'tabscans', 'tab switches to Operations')
+        start = mark()
+        send(b'\t')
+        since(start, 'taboperations', 'tab switches back to Scans')
+        # Escape returns to the home prompt, then open a scan preview.
         send(b'\x1b')
-        end = time.monotonic() + 0.5
-        while time.monotonic() < end:
-            pump()
+        settle(0.5)
         send(b'/security-scan')
         wait_for(lambda text: 'Security: new scan' in text, 'registered scan command')
         send(b'\r')
-        squashed = lambda text: re.sub(r'\s+', '', text)
         if args.openai_key:
             wait_for(lambda text: 'OPENAI_API_KEYorCODEX_API_KEY' in squashed(text), 'missing API-key setup error')
         else:
@@ -164,10 +181,15 @@ def main():
             if args.bedrock_config:
                 wait_for(lambda text: 'amazon-bedrock' in text and 'openai.gpt-daybreak-blue-5.6-sol' in text
                          and 'AWScredentials' in squashed(text), 'Bedrock route in the preview')
-            send(b'\x1b')  # Cancel the preview. Never send Ctrl+Y.
-            end = time.monotonic() + 1
-            while time.monotonic() < end:
-                pump()
+            # Depth re-prepares the preview in place: default -> standard -> deep.
+            settle(0.5)
+            send(b'd')
+            settle(1)
+            start = mark()
+            send(b'd')
+            since(start, 'deep', 'depth changed to deep in the review')
+            send(b'\x1b')  # Back out of the review. Never send y.
+            settle(1)
         assert not list((isolated / 'home').rglob('auth.json')), 'Unexpected credential file'
         # Native exit binding, rather than a forced kill, is part of the smoke test.
         send(b'\x03')
@@ -187,7 +209,7 @@ def main():
                   'gateway preview from the Codex config, cancelled without scan' if args.gateway_config else
                   'native Bedrock preview, cancelled without scan' if args.bedrock_config else
                   'default repository/scope preview, cancelled without scan')
-        print(f'PACKED NATIVE TUI PASSED: /security rendered, {result}, clean exit; no Node/npm/Bun on PATH.')
+        print(f'PACKED NATIVE TUI PASSED: /security rendered, tab keys work, {result}, clean exit; no Node/npm/Bun on PATH.')
     finally:
         if child.poll() is None:
             os.killpg(child.pid, signal.SIGTERM)
