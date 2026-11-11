@@ -5,3 +5,4 @@ evidence
 coverage
 package-lock.json
 *.tgz
+.claude

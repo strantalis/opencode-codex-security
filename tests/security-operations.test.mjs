@@ -110,12 +110,14 @@ test('a draft that replaces an existing SECURITY.md carries the SDK diff', async
   assert.match(done.result.diff, /^\+Report issues through the private advisory form\.$/m);
 
   // The SDK refuses a diff against a file that changed after the draft read it.
+  // The draft is still returned, without the diff.
   await writeFile(join(root, 'SECURITY.md'), '# Edited meanwhile\n');
   const second = await operations.prepare({ kind: 'policy' });
   await operations.start({ operationId: second.operationId });
   const stale = await operations.wait(second.operationId);
-  assert.equal(stale.status, 'error');
-  assert.match(stale.error, /SECURITY\.md changed/);
+  assert.equal(stale.status, 'completed', stale.error);
+  assert.equal(stale.result.replacesExisting, true);
+  assert.equal(stale.result.diff, undefined);
 });
 
 test('owner questions pause a policy until the exact batch is answered', async (t) => {

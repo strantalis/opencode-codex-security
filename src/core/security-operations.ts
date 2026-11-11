@@ -305,11 +305,12 @@ export class SecurityOperationsService {
         const result = await client.generatePolicy(plan.repository, options);
         signal.throwIfAborted();
         const replacesExisting = typeof result.previousContent === 'string';
-        // Computed in Node with no model call. It also rechecks that SECURITY.md is unchanged.
+        // Computed in Node with no model call. The SDK refuses if SECURITY.md changed since the
+        // draft read it; the draft has been paid for, so return it without a diff instead.
         const diff = replacesExisting
-          ? await (
-              await import('@openai/codex-security')
-            ).securityPolicyDiff(result, undefined, signal)
+          ? await import('@openai/codex-security')
+              .then((sdk) => sdk.securityPolicyDiff(result, undefined, signal))
+              .catch(() => undefined)
           : undefined;
         signal.throwIfAborted();
         entry.state.result = {
