@@ -33,6 +33,33 @@ export function createApp(ctx: Plugin.Context) {
       .setup({}, { location: store.location })
       .then((value) => setSetup(value as unknown as SetupInfo))
       .catch((error) => store.setError(userError(error)));
+  // While a sign-in is open in the browser, watch for it to finish.
+  createEffect(() => {
+    if (!setup()?.signIn?.pending) return;
+    const timer = setInterval(() => void loadSetup(), 2000);
+    onCleanup(() => clearInterval(timer));
+  });
+  const signIn = () =>
+    store.perform(async () => {
+      const call = { location: store.location };
+      if (setup()?.signIn?.pending) await store.client.signInCancel({}, call);
+      else {
+        const device = await ctx.ui.dialog.select<boolean>({
+          title: 'Sign in to Codex Security with ChatGPT',
+          options: [
+            { title: 'In my browser', description: 'Opens the sign-in page.', value: false },
+            {
+              title: 'With a device code',
+              description: 'For a remote machine: shows a code to enter on another device.',
+              value: true,
+            },
+          ],
+        });
+        if (device === undefined) return;
+        await store.client.signIn({ device }, call);
+      }
+      await loadSetup();
+    });
   const chooseProfile = () =>
     store.perform(async () => {
       const current = setup();
@@ -274,6 +301,13 @@ export function createApp(ctx: Plugin.Context) {
       when: () => scans() && listing() && !!run(),
     },
     { bind: 'n', key: 'n', label: () => 'new scan', run: newScan, when: () => true },
+    {
+      bind: 'i',
+      key: 'i',
+      label: () => (setup()?.signIn?.pending ? 'cancel sign-in' : 'sign in'),
+      run: signIn,
+      when: () => listing() && !!setup()?.signIn && setup()?.signIn?.state !== 'signed-in',
+    },
     {
       bind: 'o',
       key: 'o',

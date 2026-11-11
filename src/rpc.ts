@@ -110,6 +110,16 @@ export const Security = Rpc.define({
       errors,
     },
     setup: { input: empty, output, errors },
+    signIn: {
+      input: {
+        type: 'object',
+        properties: { device: { type: 'boolean' } },
+        additionalProperties: false,
+      },
+      output,
+      errors,
+    },
+    signInCancel: { input: empty, output, errors },
     setProfile: {
       input: {
         type: 'object',

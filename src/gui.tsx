@@ -91,6 +91,8 @@ export default Plugin.define({
                   setup={{
                     load: () => rpc().setup({}, { location }),
                     setProfile: (input) => rpc().setProfile(input, { location }),
+                    signIn: (input) => rpc().signIn(input, { location }),
+                    signInCancel: () => rpc().signInCancel({}, { location }),
                   }}
                   operations={
                     capabilities()

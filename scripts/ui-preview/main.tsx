@@ -512,6 +512,10 @@ const setupState = {
   profile: 'default',
   profiles: params.get('setup') === 'single' ? ['default'] : ['default', 'work', 'bedrock'],
   runtime: { node: 'v22.20.0', python: params.get('setup') === 'missing' ? null : '3.12.4' },
+  // ?signin=needed|shared shows the ChatGPT sign-in; gateway routes never have it.
+  ...(params.get('signin') && params.get('setup') !== 'gateway'
+    ? { signIn: { state: params.get('signin') } }
+    : {}),
 };
 const setup = params.has('no-setup')
   ? undefined
@@ -521,6 +525,22 @@ const setup = params.has('no-setup')
         setupState.profile = input.profile;
         log('Profile ' + input.profile);
         return structuredClone(setupState);
+      },
+      signIn: async (input) => {
+        setupState.signIn = {
+          state: setupState.signIn.state,
+          pending: input.device
+            ? { url: 'https://auth.openai.com/codex/device', code: 'ABCD-12345' }
+            : { url: 'https://auth.openai.com/oauth/authorize?client_id=synthetic' },
+        };
+        log('Sign-in started; mock only');
+        // The harness "finishes" the sign-in on its own after a moment.
+        setTimeout(() => (setupState.signIn = { state: 'signed-in' }), 2500);
+        return structuredClone(setupState.signIn);
+      },
+      signInCancel: async () => {
+        setupState.signIn = { state: setupState.signIn.state };
+        return structuredClone(setupState.signIn);
       },
     };
 

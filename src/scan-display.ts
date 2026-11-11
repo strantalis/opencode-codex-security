@@ -327,3 +327,23 @@ export function fixStatusLabel(status: string) {
     }[status] ?? 'Fix'
   );
 }
+
+export interface SignInInfo {
+  state: 'signed-in' | 'shared' | 'needed';
+  pending?: { url: string; code?: string };
+  error?: string;
+}
+/** What to say about the ChatGPT sign-in, or '' when there is nothing to do. */
+export function signInLabel(signIn: SignInInfo | undefined) {
+  if (!signIn) return '';
+  if (signIn.pending)
+    return signIn.pending.code
+      ? `Enter code ${signIn.pending.code} at ${signIn.pending.url}`
+      : `Finish signing in in your browser: ${signIn.pending.url}`;
+  const state = {
+    'signed-in': '',
+    shared: 'Using your Codex CLI sign-in; sign in here to keep the two separate',
+    needed: 'Not signed in to Codex Security',
+  }[signIn.state];
+  return [signIn.error, state].filter(Boolean).join(' · ');
+}

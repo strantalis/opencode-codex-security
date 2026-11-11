@@ -14,6 +14,7 @@ import type { SecurityFactory } from './core/codex-adapter.ts';
 import { userMessage } from './core/errors.ts';
 import { saveProfile } from './core/settings.ts';
 import { setupStatus } from './core/status.ts';
+import { SignIn, type LoginFactory } from './core/sign-in.ts';
 import { registerTools, sessionNotices } from './tools.ts';
 import { skill } from './skill.ts';
 
@@ -42,6 +43,7 @@ export function createSecurityPlugin(
   testOptions: {
     createClient?: SecurityFactory;
     createOperationsClient?: SecurityOperationsFactory;
+    createLoginClient?: LoginFactory;
   } = {},
 ) {
   return Plugin.define({
@@ -50,6 +52,7 @@ export function createSecurityPlugin(
       if (ctx.options.engine !== undefined && ctx.options.engine !== 'codex')
         throw new Error('The fixture engine was removed. Delete the "engine" plugin option.');
       const directory = ctx.location.directory;
+      const signIn = new SignIn(testOptions.createLoginClient);
       const scans = new PlannedScanService(directory, {
         ...testOptions,
         mock: !!testOptions.createClient,
@@ -112,12 +115,16 @@ export function createSecurityPlugin(
         operationResolve: rpc((input: { operationId: string; action: 'apply' | 'discard' }) =>
           requireOperations().resolve(input),
         ),
-        setup: rpc(() => setupStatus(directory)),
+        setup: rpc(() => setupStatus(directory, signIn)),
+        signIn: rpc((input: { device?: boolean }) => signIn.start(input)),
+        signInCancel: rpc(() => signIn.cancel()),
         setProfile: rpc((input: { profile: string }) => saveProfile(input.profile)),
       });
       const notices = sessionNotices(ctx, scans, operations);
       const tools = await ctx.tool.transform((editor) =>
-        registerTools(editor, ctx, scans, operations, notices, () => setupStatus(directory)),
+        registerTools(editor, ctx, scans, operations, notices, () =>
+          setupStatus(directory, signIn),
+        ),
       );
       const skills = await ctx.skill.transform((editor) => editor.add(skill as SkillInfo));
       let pending = Promise.resolve();
@@ -137,6 +144,7 @@ export function createSecurityPlugin(
         // Before disposal cancels running work: shutdown must not wake sessions.
         await notices.dispose();
         await operations?.dispose();
+        signIn.dispose();
         await scans.dispose();
         await pending;
         await skills.dispose();

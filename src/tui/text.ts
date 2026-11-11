@@ -1,6 +1,14 @@
 import type { ScanState } from '../types';
 import type { SecurityOperationState } from '../core/security-operations';
-import { runtimeProblems, elapsedLabel, phaseLabel, projectName, scanScope } from '../scan-display';
+import {
+  runtimeProblems,
+  elapsedLabel,
+  phaseLabel,
+  projectName,
+  scanScope,
+  signInLabel,
+  type SignInInfo,
+} from '../scan-display';
 
 /**
  * Shape of the planned `setup` RPC result. Not called yet: wire it up by fetching
@@ -20,6 +28,7 @@ export interface SetupInfo {
   profile?: string;
   profiles: string[];
   runtime: { node: string | null; python: string | null };
+  signIn?: SignInInfo;
 }
 
 /** SETUP LINE: "provider · model · credential source", plus a warning when a runtime is missing. */
@@ -32,7 +41,11 @@ export function setupLine(setup: SetupInfo): { text: string; warning?: string } 
     ...(profile ? [`profile ${profile}`] : []),
   ].join(' · ');
   const problems = runtimeProblems(runtime);
-  return problems.length ? { text, warning: `Scans need ${problems.join(' and ')}.` } : { text };
+  const warning = [
+    ...(problems.length ? [`Scans need ${problems.join(' and ')}.`] : []),
+    ...(signInLabel(setup.signIn) ? [signInLabel(setup.signIn)] : []),
+  ].join(' ');
+  return warning ? { text, warning } : { text };
 }
 
 export function costLine(limit?: number) {

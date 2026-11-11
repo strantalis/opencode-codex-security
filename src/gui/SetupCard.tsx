@@ -1,5 +1,5 @@
-import { createSignal, For, onCleanup, Show } from 'solid-js';
-import { runtimeProblems, userError } from '../scan-display';
+import { createEffect, createSignal, For, onCleanup, Show } from 'solid-js';
+import { runtimeProblems, signInLabel, userError, type SignInInfo } from '../scan-display';
 
 /** What the server's `setup` RPC returns. */
 export interface SetupInfo {
@@ -16,10 +16,13 @@ export interface SetupInfo {
   profile?: string;
   profiles: string[];
   runtime: { node: string | null; python: string | null };
+  signIn?: SignInInfo;
 }
 export interface SetupPort {
   load(): Promise<unknown>;
   setProfile(input: { profile: string }): Promise<unknown>;
+  signIn?(input: { device?: boolean }): Promise<unknown>;
+  signInCancel?(): Promise<unknown>;
 }
 
 function readSetup(value: unknown): SetupInfo {
@@ -51,6 +54,25 @@ export function SetupCard(props: { setup: SetupPort; onChange?: () => void }) {
       if (!stopped) setError(userError(e));
     }
   };
+  const act = async (action: (() => Promise<unknown>) | undefined) => {
+    if (busy() || !action) return;
+    setBusy(true);
+    setError('');
+    try {
+      await action();
+      await load();
+    } catch (e) {
+      if (!stopped) setError(userError(e));
+    } finally {
+      if (!stopped) setBusy(false);
+    }
+  };
+  // While a sign-in is open in the browser, watch for it to finish.
+  createEffect(() => {
+    if (!info()?.signIn?.pending) return;
+    const timer = setInterval(() => void load(), 2000);
+    onCleanup(() => clearInterval(timer));
+  });
   const choose = async (profile: string) => {
     if (busy()) return;
     setBusy(true);
@@ -126,6 +148,63 @@ export function SetupCard(props: { setup: SetupPort; onChange?: () => void }) {
                 </dd>
               </Show>
             </dl>
+            <Show when={setup().signIn && props.setup.signIn ? setup().signIn : undefined}>
+              {(signIn) => (
+                <Show when={signIn().state !== 'signed-in' || signIn().pending}>
+                  <div class="gs-signin">
+                    <Show
+                      when={signIn().pending}
+                      fallback={
+                        <>
+                          <p class={signIn().state === 'needed' ? 'gs-note' : 'gs-muted'}>
+                            {signInLabel(signIn())}
+                          </p>
+                          <div class="gs-actions">
+                            <button
+                              class="gs-button"
+                              disabled={busy()}
+                              onClick={() => void act(() => props.setup.signIn!({}))}
+                            >
+                              Sign in with ChatGPT
+                            </button>
+                            <button
+                              class="gs-link"
+                              disabled={busy()}
+                              onClick={() => void act(() => props.setup.signIn!({ device: true }))}
+                            >
+                              Use a device code
+                            </button>
+                          </div>
+                        </>
+                      }
+                    >
+                      {(pending) => (
+                        <>
+                          <p>
+                            <Show
+                              when={pending().code}
+                              fallback="Finish signing in in your browser. If it did not open:"
+                            >
+                              Enter code <strong class="gs-code">{pending().code}</strong> at:
+                            </Show>{' '}
+                            <a href={pending().url} target="_blank" rel="noreferrer">
+                              {pending().url}
+                            </a>
+                          </p>
+                          <button
+                            class="gs-link"
+                            disabled={busy()}
+                            onClick={() => void act(props.setup.signInCancel)}
+                          >
+                            Cancel sign-in
+                          </button>
+                        </>
+                      )}
+                    </Show>
+                  </div>
+                </Show>
+              )}
+            </Show>
             <details class="gs-disclosure">
               <summary>Configuration files</summary>
               <p class="gs-mono">{setup().configFile}</p>

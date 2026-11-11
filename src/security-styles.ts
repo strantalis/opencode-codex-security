@@ -836,4 +836,24 @@ export const securityStyles = `
     gap: 16px;
   }
 }
+
+/* Sign-in */
+.gs-signin {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--gs-line);
+}
+.gs-signin p {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+.gs-signin a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.gs-code {
+  font-family: var(--gs-mono, ui-monospace, monospace);
+  letter-spacing: 0.08em;
+}
 `;
