@@ -24,6 +24,8 @@ import {
   coverageLabel,
   coverageDetails,
   repositoryMatchingLabel,
+  trustedAccessLabel,
+  targetChangedLabel,
 } from '../src/scan-display.ts';
 import { emptyState } from '../src/types.ts';
 test('unknown totals never become a false zero percent or a 0/0 claim', () => {
@@ -202,4 +204,28 @@ test('SDK failure or cancellation while cleanup is pending hides ordinary progre
 
 test('single legacy finding uses singular copy', () => {
   assert.equal(resultCountsLabel({ ...emptyState(), findings: [{}] }), '1 finding shown');
+});
+
+test('trusted access is shown only when missing or unverified', () => {
+  const state = emptyState();
+  assert.equal(trustedAccessLabel(state), '');
+  state.telemetry = { activity: [], observedWorkers: [], trustedAccess: 'granted' };
+  assert.equal(trustedAccessLabel(state), '');
+  state.telemetry.trustedAccess = 'not_granted';
+  assert.equal(trustedAccessLabel(state), 'Trusted Access for Cyber: not granted');
+  state.telemetry.trustedAccess = 'unknown';
+  assert.equal(trustedAccessLabel(state), 'Trusted Access for Cyber: not verified');
+});
+
+test('a target change is called out; other warnings are not', () => {
+  const state = emptyState();
+  assert.equal(targetChangedLabel(state), '');
+  state.telemetry = {
+    activity: [],
+    observedWorkers: [],
+    warnings: { count: 1, targetChanged: false },
+  };
+  assert.equal(targetChangedLabel(state), '');
+  state.telemetry.warnings.targetChanged = true;
+  assert.equal(targetChangedLabel(state), 'The repository changed during the scan');
 });

@@ -1,4 +1,5 @@
 import {
+  authenticationSummary,
   costSummary,
   count,
   emptyTelemetry,
@@ -6,6 +7,7 @@ import {
   measurementSummary,
   phaseSummary,
   recordActivity,
+  recordWarning,
 } from './run-telemetry.ts';
 import { summarizeScanResult } from './result-summary.ts';
 import { safeFinding } from './report-safety.ts';
@@ -286,11 +288,26 @@ export class CodexScanService {
             this.#emit();
           }
         },
-        onWarning: () => {
-          if (observing && !signal.aborted)
-            this.#emit(
-              'SDK reported a warning; inspect local SDK artifacts before relying on results.',
-            );
+        onAuthentication: (authentication) => {
+          if (!observing || signal.aborted) return;
+          telemetry.authentication = authenticationSummary(authentication);
+          this.#emit();
+        },
+        onTrustedAccessStatus: (status) => {
+          if (!observing || signal.aborted) return;
+          telemetry.trustedAccess = status;
+          this.#emit();
+        },
+        // Warning text can quote raw error output (SDK api.js formats caught errors into it), so
+        // only the structured kind is kept.
+        onWarning: (_warning, details) => {
+          if (!observing || signal.aborted) return;
+          recordWarning(telemetry, details);
+          this.#emit(
+            details?.kind === 'target_changed'
+              ? 'The repository changed while the scan was running.'
+              : 'SDK reported a warning; inspect local SDK artifacts before relying on results.',
+          );
         },
       };
       const result: ScanResult = await client.run(this.root, options);

@@ -217,6 +217,31 @@ test('multiple evidence snippets survive mapping; primary location is displayed'
   assert.equal(mapped.evidence, 'first snippet\n\nsecond snippet');
 });
 
+test('authentication, trusted access and warning kinds are recorded; warning text is not', async () => {
+  const service = new CodexScanService('/tmp/fixture', {
+    createClient: () => ({
+      async run(_root, options) {
+        options.onAuthentication({ method: 'api_key', source: 'GATEWAY_KEY', verified: false });
+        options.onTrustedAccessStatus('not_granted');
+        options.onWarning('Could not track scan activity: SECRET /private/path');
+        options.onWarning('Target moved from SECRET-rev', { kind: 'target_changed' });
+        return result;
+      },
+      async close() {},
+    }),
+  });
+  service.start(plan(service.root));
+  const state = await service.wait();
+  assert.equal(state.status, 'completed');
+  assert.equal(state.telemetry.authentication, 'API key from GATEWAY_KEY');
+  assert.equal(state.telemetry.trustedAccess, 'not_granted');
+  assert.deepEqual(state.telemetry.warnings, { count: 2, targetChanged: true });
+  assert.ok(
+    state.events.some((e) => e.message === 'The repository changed while the scan was running.'),
+  );
+  assert.doesNotMatch(JSON.stringify(state), /SECRET/);
+});
+
 test('budget-stop failure displays numeric estimates without raw diagnostic paths', async () => {
   const error = Object.assign(new Error('SECRET RAW DIAGNOSTIC'), {
     name: 'ScanCostLimitExceededError',

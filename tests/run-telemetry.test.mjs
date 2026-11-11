@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyTelemetry, recordActivity, measurementSummary } from '../src/core/run-telemetry.ts';
+import {
+  authenticationSummary,
+  emptyTelemetry,
+  recordActivity,
+  recordWarning,
+  measurementSummary,
+} from '../src/core/run-telemetry.ts';
 import { CodexScanService } from '../src/core/codex-adapter.ts';
 import { plan } from './helpers/plan.mjs';
 const now = '2026-11-10T10:00:00.000Z';
@@ -131,4 +137,34 @@ test('SDK lifecycle completion waits for final result, with review-zero fallback
   assert.equal(result.status, 'completed');
   assert.equal(result.assessment.returnedFindings.total, 0);
   assert.equal(result.telemetry.measurement.coverage, 'partial');
+});
+test('authentication is described the way the preview describes it, without secrets', () => {
+  assert.equal(
+    authenticationSummary({ method: 'api_key', source: 'OPENAI_API_KEY', verified: false }),
+    'API key from OPENAI_API_KEY',
+  );
+  assert.equal(
+    authenticationSummary({ method: 'aws_credentials', source: 'AWS_PROFILE', verified: false }),
+    'AWS credentials (AWS PROFILE)',
+  );
+  assert.equal(
+    authenticationSummary({
+      method: 'stored_credentials',
+      credentialType: 'chatgpt',
+      verified: false,
+    }),
+    'Codex Security sign-in',
+  );
+  assert.equal(
+    authenticationSummary({ method: 'command', verified: false }),
+    'provider command authentication',
+  );
+});
+test('warnings count every report and remember a target change', () => {
+  const telemetry = emptyTelemetry();
+  recordWarning(telemetry, undefined);
+  assert.deepEqual(telemetry.warnings, { count: 1, targetChanged: false });
+  recordWarning(telemetry, { kind: 'target_changed' });
+  recordWarning(telemetry, undefined);
+  assert.deepEqual(telemetry.warnings, { count: 3, targetChanged: true });
 });

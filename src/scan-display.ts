@@ -170,6 +170,18 @@ export function reconnectLabel(run: ScanState) {
   const reason = retry.reason ? ` · ${retry.reason.replaceAll('_', ' ')}` : '';
   return `Last connection retry: ${retry.attempt} of ${retry.maxAttempts}${reason}`;
 }
+/** Empty unless access is missing or unverified; a granted status is not worth a line. */
+export function trustedAccessLabel(run: ScanState) {
+  const status = run.telemetry?.trustedAccess;
+  return status === 'not_granted'
+    ? 'Trusted Access for Cyber: not granted'
+    : status === 'unknown'
+      ? 'Trusted Access for Cyber: not verified'
+      : '';
+}
+export function targetChangedLabel(run: ScanState) {
+  return run.telemetry?.warnings?.targetChanged ? 'The repository changed during the scan' : '';
+}
 export function resultCountsLabel(run: ScanState) {
   const counts = run.assessment?.returnedFindings;
   if (!counts)
