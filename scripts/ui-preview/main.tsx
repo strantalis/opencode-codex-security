@@ -1,8 +1,18 @@
 import { render } from 'solid-js/web';
 import { SecurityPanel } from '../../src/security-panel';
+import { findingText } from '../../src/scan-display';
 import { emptyState } from '../../src/types';
 const repository = '/Projects/atlas';
 const params = new URLSearchParams(location.search);
+document.documentElement.dataset.theme = params.get('theme') === 'light' ? 'light' : 'dark';
+
+// Events: the fake ports notify subscribers after each change, as the server's RPC events do.
+const listeners = new Set();
+const emit = (event) => queueMicrotask(() => listeners.forEach((listener) => listener(event)));
+const subscribe = (listener) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+};
 const list = (items = []) => ({ total: items.length, items, omitted: 0 });
 const unavailable = () => ({ total: null, items: [], omitted: 0 });
 const settings = {
@@ -221,6 +231,13 @@ if (scenario && runs[0]) {
     selected.mode = 'deep';
     selected.deepProgress = { completed: 3, active: 0, maximum: 8, consolidating: true };
   }
+  if (scenario === 'failed') {
+    selected.status = 'error';
+    selected.phase = 'Scan stopped';
+    selected.finishedAt = new Date(t - 20000).toISOString();
+    selected.error =
+      'The model provider rejected the request: the account has no access to gpt-5.6-sol.';
+  }
   if (scenario === 'informational' || scenario === 'missing-coverage') {
     const completed = run(selected.runId, 'completed', 'Review webhook request validation');
     Object.assign(selected, completed);
@@ -281,6 +298,7 @@ const port = {
     const s = { ...emptyState(), engine: 'codex-security-sdk', plan: p };
     drafts.unshift(s);
     log('Prepared ' + p.id + '; 0 model calls');
+    emit('changed');
     return structuredClone(s);
   },
   start: async (input) => {
@@ -299,6 +317,7 @@ const port = {
     runs.unshift(r);
     revision++;
     log('Started ' + r.runId + '; mock only');
+    emit('changed');
     return structuredClone(r);
   },
   cancel: async (input) => {
@@ -309,9 +328,21 @@ const port = {
     r.events.push({ time: r.finishedAt, message: 'Cancellation completed for this run.' });
     revision++;
     log('Cancelled ' + input.runId + ' only');
+    emit('changed');
     return structuredClone(r);
   },
+  subscribe,
 };
+/** Advances the first running scan by one review, as a server progress event would. */
+const advance = () => {
+  const r = runs.find((r) => r.status === 'running' && r.telemetry?.phaseProgress);
+  if (!r) return;
+  const reviews = r.telemetry.phaseProgress.reviews;
+  reviews.done = Math.min(reviews.total, reviews.done + 1);
+  revision++;
+  emit('changed');
+};
+if (params.has('live')) setInterval(advance, 2000);
 let operationSequence = 1;
 const operation = (kind, id) => ({
   operationId: id,
@@ -325,8 +356,8 @@ const operation = (kind, id) => ({
     costLimitEnforced: kind === 'policy',
     costNotice:
       kind === 'policy'
-        ? 'Estimated stop USD 1, not a hard cap.'
-        : 'Validation has no cost ceiling.',
+        ? 'Stops at an estimated USD 1. This is an estimate, not a billing cap.'
+        : 'Validation has no cost limit in the SDK; scan.maxCostUsd does not apply.',
     finding: kind === 'validation' ? 'Missing tenant membership check.' : undefined,
   },
   question: null,
@@ -339,6 +370,48 @@ const operation = (kind, id) => ({
   revision: 1,
 });
 const operationStates = [];
+const askQuestions = (op) => {
+  op.startedAt ??= new Date(Date.now() - 41000).toISOString();
+  op.status = 'awaiting_answers';
+  op.phase = 'Waiting for project context';
+  op.estimatedCostUsd = 0.08;
+  op.question = {
+    id: 'question-' + op.operationId,
+    questions: [
+      'Which users may invite teammates into a workspace?',
+      'Are uploaded files ever accessible without signing in?',
+    ],
+    createdAt: new Date().toISOString(),
+  };
+};
+const completeValidation = (op) => {
+  op.startedAt ??= new Date(Date.now() - 64000).toISOString();
+  op.finishedAt = new Date().toISOString();
+  op.status = 'completed';
+  op.phase = 'Source assessment complete';
+  op.result = {
+    kind: 'validation',
+    disposition: 'reportable',
+    report:
+      'The handler reads the project by ID and returns it without checking that the signed-in user belongs to the project tenant. A user in tenant A can read tenant B projects by changing the ID.',
+    truncated: false,
+  };
+};
+// Seeded operation scenarios.
+if (scenario === 'policy-waiting') {
+  const op = operation('policy', 'op-policy');
+  op.plan.path = 'src/api';
+  op.plan.finding = undefined;
+  askQuestions(op);
+  operationStates.unshift(op);
+}
+if (scenario === 'validation') {
+  const finding = runs[2].findings[0];
+  const op = operation('validation', 'op-validation');
+  op.plan.finding = findingText(finding);
+  completeValidation(op);
+  operationStates.unshift(op);
+}
 const operationPort = {
   capabilities: { policy: true, validation: true, questionAnswers: true },
   list: async () => structuredClone({ operations: operationStates, maxConcurrent: 2 }),
@@ -353,31 +426,16 @@ const operationPort = {
     op.plan.path = input.path;
     operationStates.unshift(op);
     log('Prepared ' + op.kind + '; 0 model calls');
+    emit('operationChanged');
     return structuredClone(op);
   },
   start: async (input) => {
     const op = operationStates.find((op) => op.operationId === input.operationId);
     op.startedAt = new Date().toISOString();
-    op.status = op.kind === 'policy' ? 'awaiting_answers' : 'completed';
-    op.phase = op.kind === 'policy' ? 'Waiting for project context' : 'Source assessment complete';
-    if (op.kind === 'policy')
-      op.question = {
-        id: 'question-' + op.operationId,
-        questions: [
-          'Which users may invite teammates into a workspace?',
-          'Are uploaded files ever accessible without signing in?',
-        ],
-        createdAt: new Date().toISOString(),
-      };
-    else
-      op.result = {
-        kind: 'validation',
-        disposition: 'reportable',
-        report:
-          'The membership check is absent before returning the requested project. This static assessment supports the reported access-control issue; no runtime exploit was executed.',
-        truncated: false,
-      };
+    if (op.kind === 'policy') askQuestions(op);
+    else completeValidation(op);
     log('Started ' + op.kind + '; mock only');
+    emit('operationChanged');
     return structuredClone(op);
   },
   answer: async (input) => {
@@ -397,6 +455,7 @@ const operationPort = {
       truncated: false,
     };
     log('Answered ' + input.questionId + '; mock only');
+    emit('operationChanged');
     return structuredClone(op);
   },
   cancel: async (input) => {
@@ -404,12 +463,44 @@ const operationPort = {
     op.status = 'cancelled';
     op.question = null;
     op.phase = 'Cancelled';
+    emit('operationChanged');
     return structuredClone(op);
   },
 };
+
+// The `setup` RPC is not in this branch yet; this matches its planned shape.
+const setupState = {
+  route: {
+    provider: params.get('setup') === 'gateway' ? 'acme-gateway' : 'openai',
+    ...(params.get('setup') === 'gateway' ? { baseUrl: 'https://llm.acme.internal/v1' } : {}),
+    model: settings.codex.model,
+    reasoningEffort: settings.codex.reasoningEffort,
+    daybreak: false,
+    auth:
+      params.get('setup') === 'gateway' ? 'API key from ACME_API_KEY' : 'Codex Security sign-in',
+  },
+  configFile: '~/.config/opencode/codex-security.json',
+  codexConfigFile: '~/.codex/config.toml',
+  profile: 'default',
+  profiles: params.get('setup') === 'single' ? ['default'] : ['default', 'work', 'bedrock'],
+  runtime: { node: 'v22.20.0', python: params.get('setup') === 'missing' ? null : '3.12.4' },
+};
+const setup = params.has('no-setup')
+  ? undefined
+  : {
+      load: async () => structuredClone(setupState),
+      setProfile: async (input) => {
+        setupState.profile = input.profile;
+        log('Profile ' + input.profile);
+        return structuredClone(setupState);
+      },
+    };
+
+// Lets the Python tests drive server events directly.
+Object.assign(window, { securityHarness: { emit, advance } });
 render(
   () => (
-    <SecurityPanel directory={repository} port={port} operations={operationPort} pollMs={1000} />
+    <SecurityPanel directory={repository} port={port} operations={operationPort} setup={setup} />
   ),
   document.querySelector('#root'),
 );
