@@ -76,7 +76,7 @@ test('a policy run passes the previewed inputs and returns an unapplied draft', 
   assert.equal(received.options.path, 'services/api');
   assert.equal(received.options.maxCostUsd, 3);
   assert.equal(received.options.auth, 'auto');
-  assert.equal(received.config.codexOverrides.model, prepared.plan.settings.codex.model);
+  assert.deepEqual(received.config, { codexOverrides: {} });
   await assert.rejects(operations.start({ operationId: prepared.operationId }), /already used/);
 });
 

@@ -7,7 +7,6 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OpenCode } from '@opencode/client';
 import { Rpc } from '@opencode/plugin/rpc';
-import { mergedCodexConfig } from '@openai/codex-security';
 import { Security } from '../src/rpc.ts';
 const root = fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/, '');
 // Synthetic projects outside this checkout, so nothing resolves to the plugin's own repository.
@@ -131,11 +130,10 @@ try {
   assert.equal(state.status, 'completed');
   assert.equal(state.findings.length, 1);
   const inspected = await test.inspect({}, { location });
-  const expectedConfig = await mergedCodexConfig({
-    codexOverrides: { model_reasoning_effort: 'high', daybreak: true },
+  assert.deepEqual(inspected.constructorConfig.codexOverrides, {
+    model_reasoning_effort: 'high',
+    daybreak: true,
   });
-  delete expectedConfig.features.plugins;
-  assert.deepEqual(inspected.constructorConfig.codexOverrides, expectedConfig);
   assert.equal('sdk' in state.plan, false);
   const calls = inspected.calls;
   assert.equal(calls[0].mode, 'deep');

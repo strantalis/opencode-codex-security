@@ -19,7 +19,7 @@ The plugin runs in the local OpenCode server and wraps three SDK calls: `run`, `
 
 1. **Prepare.** `prepareScan` resolves the repository (the session workspace, or an explicit path), loads settings and calls `preflight`. Nothing is sent anywhere. The result is an immutable plan holding the exact `codexOverrides`, auth mode and scan options.
 2. **Approve.** The UI shows the plan and the user confirms. For the model, `security_scan` prepares the plan and passes it to OpenCode's permission check.
-3. **Run.** The plan is handed to the SDK as prepared. Settings edited after the preview do not affect it. Progress, activity and cost arrive through SDK callbacks; findings arrive with the final result.
+3. **Run.** The plan is handed to the SDK as prepared. Settings edited after the preview do not affect it, except a Codex file profile, which the SDK reads itself at this point. Progress, activity and cost arrive through SDK callbacks; findings arrive with the final result.
 
 Policy and validation follow the same prepare, approve, run shape.
 

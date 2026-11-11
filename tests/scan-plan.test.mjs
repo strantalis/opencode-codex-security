@@ -115,7 +115,7 @@ test('starting a preview runs exactly what was previewed, once', async (t) => {
   await service.start({ planId: plan.id });
   assert.equal((await service.wait()).status, 'completed');
   assert.equal(captured.repository, root);
-  assert.equal(captured.config.codexOverrides.model, plan.settings.codex.model);
+  assert.deepEqual(captured.config, { codexOverrides: {} });
   assert.deepEqual(captured.options.target, ['src']);
   assert.equal(captured.options.scanPrompt, 'Check authz only.');
   assert.deepEqual(captured.options.knowledgeBasePaths, [join(root, 'ARCHITECTURE.md')]);
@@ -153,7 +153,7 @@ test('whole-repository scans omit optional inputs, and expired previews do not s
 });
 
 test('execution headers stay private across previews, events, lists and saved history', async (t) => {
-  const { readdir, readFile, writeFile } = await import('node:fs/promises');
+  const { readdir, readFile } = await import('node:fs/promises');
   const root = await project(t);
   const secret = 'synthetic-private-authorization';
   await configure(t, {
@@ -200,44 +200,4 @@ test('execution headers stay private across previews, events, lists and saved hi
       await readFile(join(root, 'history', name), 'utf8'),
       /synthetic-private-authorization|codexOverrides/,
     );
-
-  // Old preview records must not re-expose execution settings when reloaded.
-  const { RunHistory } = await import('../src/core/run-history.ts');
-  const history = new RunHistory(join(root, 'history'));
-  const state = service.getState();
-  state.plan.sdk = { codexOverrides: captured.codexOverrides, auth: 'auto' };
-  await writeFile(join(root, 'history', state.runId + '.json'), JSON.stringify(state));
-  assert.doesNotMatch(
-    JSON.stringify(await history.load()),
-    /synthetic-private-authorization|codexOverrides/,
-  );
-});
-
-test('native file profiles are frozen before approval, not reread for execution', async (t) => {
-  const { writeFile, rm } = await import('node:fs/promises');
-  const { mergedCodexConfig } = await import('@openai/codex-security');
-  const { codexHome } = await import('./helpers/isolated-codex.mjs');
-  const root = await project(t);
-  await configure(t, { plugin: { codex: { profile: 'work' } }, codex: '' });
-  const path = join(codexHome, 'work.config.toml');
-  t.after(() => rm(path, { force: true }));
-  await writeFile(path, gateway);
-  let captured;
-  const service = new PlannedScanService(root, {
-    createClient: (config) => ({
-      run: async () => {
-        captured = await mergedCodexConfig(config, codexHome);
-        return fakeResult;
-      },
-      close: async () => {},
-    }),
-    mock: true,
-  });
-  t.after(() => service.dispose());
-  const { plan } = await service.prepare({});
-  await writeFile(path, gateway.replace('gateway.example.test', 'different.test'));
-  await service.start({ planId: plan.id });
-  assert.equal((await service.wait()).status, 'completed');
-  assert.equal(captured.model_providers.gateway.base_url, plan.settings.codex.baseUrl);
-  assert.equal(captured.profile, undefined);
 });

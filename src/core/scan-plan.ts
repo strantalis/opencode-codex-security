@@ -129,21 +129,15 @@ export async function prepareScan(
   const contextFiles = [...new Set(input.contextFiles ?? [])];
   const scanSettings = { ...settings.scan };
   if (purpose === 'validation') delete scanSettings.maxCostUsd;
-  const sdk = await import('@openai/codex-security');
-  // Resolve file profiles once, before preflight; execution must not reread a changed file.
-  const config = await sdk.mergedCodexConfig({ codexOverrides: settings.codex }, codexHome());
-  const profiles = config.profiles as Record<string, unknown> | undefined;
-  if (typeof config.profile === 'string' && !profiles?.[config.profile]) delete config.profile;
-  // SDK defaults include its own plugin-loading flag, which cannot be supplied as an override.
-  if (config.features && typeof config.features === 'object')
-    delete (config.features as JsonObject).plugins;
-  return withSdk(config, async (client) => {
+  return withSdk(settings.codex, async (client, sdk) => {
     const preflight = await client.preflight(repository, {
       ...scanSettings,
       auth: settings.auth,
       target: input.scopePaths?.length ? input.scopePaths : 'repository',
       knowledgeBasePaths: contextFiles.map((path) => resolve(repository, path)),
     });
+    // The same merge the SDK runs, including a `<profile>.config.toml` file profile.
+    const config = await sdk.mergedCodexConfig({ codexOverrides: settings.codex }, codexHome());
     const provider = preflight.modelProvider ?? 'openai';
     const providers = config.model_providers as Record<string, { base_url?: string }> | undefined;
     const baseUrl =
@@ -167,7 +161,7 @@ export async function prepareScan(
         scan: { ...scanSettings, mode: preflight.mode },
       },
       globalConfigFile: settings.path,
-      sdk: { codexOverrides: config, auth: settings.auth },
+      sdk: { codexOverrides: settings.codex, auth: settings.auth },
       expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
       mock,
       inputs: { ...input, repository: preflight.repository, scopePaths, contextFiles },

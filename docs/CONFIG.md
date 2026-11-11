@@ -7,7 +7,7 @@ The plugin passes your settings to the Codex Security SDK and lets the SDK valid
 1. **Your Codex config**, `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`). The plugin reads only the routing keys: `model`, `model_reasoning_effort`, `model_provider`, `model_providers`, `openai_base_url` and `daybreak`. If the file selects a profile with `profile = "name"`, that `[profiles.name]` table applies on top. MCP servers, hooks and everything else are ignored.
 2. **`codex-security.json`**, in `$XDG_CONFIG_HOME/opencode/` (default `~/.config/opencode/`). Anything here overrides the Codex config. The file is optional.
 
-There are no per-project settings. Each preview is a snapshot: a scan runs with the settings you approved, even if the files change afterwards.
+There are no per-project settings. Each preview is a snapshot: a scan runs with the settings you approved, even if these two files change afterwards. The exception is a `name.config.toml` file profile, which the SDK reads when the scan starts.
 
 ## `codex-security.json`
 
