@@ -189,36 +189,39 @@ function T(e) {
 }
 // src/plan-view.ts
 function E(e) {
+	return e === void 0 ? "No dollar-based stop limit is configured. Provider charges still apply." : `USD ${e} estimated stop threshold, not a hard cap; in-flight usage may exceed it.`;
+}
+function D(e) {
 	let { provider: t, bedrock: n, auth: r, source: i, model: a } = e.codex, o = n ? `Amazon Bedrock (${T(n)}, region ${n.region})` : t ? `${t.id} (${t.baseUrl})` : r === "api-key" ? "OpenAI (https://api.openai.com/v1)" : "OpenAI", s = n ? `existing AWS ${n.profile ? `profile ${n.profile}` : "credential chain"} (access unverified; may use existing AWS credential helpers and identity services); no OpenAI sign-in or key` : r === "api-key" ? t ? `API key from environment variable ${t.envKey} (name only)` : "OpenAI API key from OPENAI_API_KEY, otherwise CODEX_API_KEY (names only; no sign-in or credential import)" : "dedicated ChatGPT sign-in", c = t?.envHttpHeaders && Object.keys(t.envHttpHeaders).length ? `; additional request headers from environment (names only): ${Object.entries(t.envHttpHeaders).map(([e, t]) => `${e} ← ${t}`).join(", ")}` : "", l = c && e.scan.mode === "deep" ? "; Deep workers may use private temporary credential files; interrupted runs may leave them" : "";
 	return `${o}; auth: ${s}${c}; model: ${a}${i ? `; config ${i.path}${i.profile ? `, profile ${i.profile}` : ""}, SHA-256 ${i.digest}` : ""}${t ? "; gateway upstream routing is not verified" : ""}${l}`;
 }
-function D(e) {
-	return `${e.mock ? "MOCK SDK TEST: no model calls or uploads.\n" : ""}Repository: ${e.repository}\nScope: ${e.scopePaths.join(", ") || "whole repository"}\nScan prompt:\n${e.scanPrompt || "(none)"}\nContext files: ${e.contextFiles.map((e) => `${e.path} (${e.bytes} bytes, SHA-256 ${e.sha256})`).join("; ") || "(none)"}\nSDK settings: model ${e.settings.codex.model}, reasoning ${e.settings.codex.reasoningEffort}, Daybreak ${e.settings.codex.daybreak ? "on" : "off"}; mode ${e.settings.scan.mode} (${e.inputs.mode ? "per-scan choice" : "global default"}), access program ${e.settings.scan.cyberAccessProgram ?? "Codex default"}, estimated cost stop USD ${e.settings.scan.maxCostUsd}. Account/model/Daybreak access is not verified by these settings.\nGlobal config: ${e.globalConfigFile}${e.globalConfigDigest ? "" : " (not present)"}\nOnly this explicit prompt and these files are added as context; conversation history is not copied. Scoped paths guide the scan, not a filesystem sandbox.\n${e.mock ? "Synthetic SDK responses only." : `Repository source and listed context go to ${E(e.settings)}. Local results. USD ${e.settings.scan.maxCostUsd} estimated stop threshold, not a hard cap; in-flight usage may exceed it.`}`;
+function O(e) {
+	return `${e.mock ? "MOCK SDK TEST: no model calls or uploads.\n" : ""}Repository: ${e.repository}\nScope: ${e.scopePaths.join(", ") || "whole repository"}\nScan prompt:\n${e.scanPrompt || "(none)"}\nContext files: ${e.contextFiles.map((e) => `${e.path} (${e.bytes} bytes, SHA-256 ${e.sha256})`).join("; ") || "(none)"}\nSDK settings: model ${e.settings.codex.model}, reasoning ${e.settings.codex.reasoningEffort}, Daybreak ${e.settings.codex.daybreak ? "on" : "off"}; mode ${e.settings.scan.mode} (${e.inputs.mode ? "per-scan choice" : "global default"}), access program ${e.settings.scan.cyberAccessProgram ?? "Codex default"}, ${E(e.settings.scan.maxCostUsd)} Account/model/Daybreak access is not verified by these settings.\nGlobal config: ${e.globalConfigFile}${e.globalConfigDigest ? "" : " (not present)"}\nOnly this explicit prompt and these files are added as context; conversation history is not copied. Scoped paths guide the scan, not a filesystem sandbox.\n${e.mock ? "Synthetic SDK responses only." : `Repository source and listed context go to ${D(e.settings)}. Local results. ${E(e.settings.scan.maxCostUsd)}`}`;
 }
-function O(e, t) {
+function k(e, t) {
 	let { mode: n, ...r } = e;
 	return t === "default" ? r : {
 		...r,
 		mode: t
 	};
 }
-function k(e) {
+function A(e) {
 	return !!e && (e.startsWith("/") || /^[A-Za-z]:[\\/]/.test(e));
 }
-function A(e, t = Date.now(), n) {
+function j(e, t = Date.now(), n) {
 	let r = (e) => !!e?.plan && !e.planConsumed && Date.parse(e.plan.expiresAt) > t;
 	if (n) return e?.drafts.find((e) => e.plan?.id === n && r(e));
 	if (r(e?.preview)) return e.preview;
 }
 // src/scan-display.ts
-var j = (e) => e.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1) || e || "Project";
-function M(e) {
-	return e.plan?.scanPrompt?.split("\n")[0].slice(0, 72) || (e.plan?.scopePaths.length ? e.plan.scopePaths.join(", ") : j(e.repository));
-}
+var M = (e) => e.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1) || e || "Project";
 function N(e) {
-	return e.plan?.scopePaths.join(", ") || "Whole repository";
+	return e.plan?.scanPrompt?.split("\n")[0].slice(0, 72) || (e.plan?.scopePaths.length ? e.plan.scopePaths.join(", ") : M(e.repository));
 }
 function P(e) {
+	return e.plan?.scopePaths.join(", ") || "Whole repository";
+}
+function F(e) {
 	let t = e.replace(/\s*\((files|reviews)\)$/, "").replaceAll("_", " "), n = {
 		preflight: "Preparing scan",
 		discovery: "Reviewing source",
@@ -230,7 +233,7 @@ function P(e) {
 	};
 	return n[t] ? n[t] : t ? t[0].toUpperCase() + t.slice(1) : "Starting scan";
 }
-function F(e) {
+function I(e) {
 	let t = e.telemetry?.phaseProgress, n = t ? t.reviews && t.reviews.total > 0 ? {
 		...t.reviews,
 		unit: "reviews"
@@ -247,21 +250,21 @@ function F(e) {
 		total: Number.isFinite(n.total) ? Math.max(0, n.total) : 0
 	};
 }
-function I(e) {
+function L(e) {
 	return e.status === "running" && e.telemetry?.lifecycle?.status === "completed";
 }
-function L(e) {
+function R(e) {
 	let t = e.telemetry?.lifecycle?.status;
 	return e.status === "running" && t !== void 0 && t !== "running";
 }
 function ee(e) {
-	return e.status === "cancelled" ? "Scan cancelled" : e.status === "error" ? "Scan stopped" : e.status === "completed" ? "Scan complete" : I(e) ? "Finalizing results" : L(e) ? e.telemetry?.lifecycle?.status === "failed" ? "Finishing failed scan" : "Finishing cancelled scan" : e.deepProgress?.consolidating ? "Consolidating deep review" : P(e.telemetry?.phaseProgress?.phase ?? e.phase);
+	return e.status === "cancelled" ? "Scan cancelled" : e.status === "error" ? "Scan stopped" : e.status === "completed" ? "Scan complete" : L(e) ? "Finalizing results" : R(e) ? e.telemetry?.lifecycle?.status === "failed" ? "Finishing failed scan" : "Finishing cancelled scan" : e.deepProgress?.consolidating ? "Consolidating deep review" : F(e.telemetry?.phaseProgress?.phase ?? e.phase);
 }
 function te(e) {
-	return e.status === "running" && !L(e) && !e.deepProgress?.consolidating;
+	return e.status === "running" && !R(e) && !e.deepProgress?.consolidating;
 }
 function ne(e) {
-	let { done: t, total: n, unit: r } = F(e);
+	let { done: t, total: n, unit: r } = I(e);
 	return n > 0 ? `${t} of ${n} ${r}` : t > 0 ? `${t} ${r} completed` : "Waiting for progress details";
 }
 function re(e) {
@@ -273,18 +276,18 @@ function ie(e) {
 	return t ? `${t.completed} deep ${t.completed === 1 ? "pass" : "passes"} complete · ${t.active} active · cap ${t.maximum}` : "";
 }
 function ae(e) {
-	return L(e) && !I(e) ? `The SDK reported ${e.telemetry?.lifecycle?.status === "failed" ? "a scan failure" : "cancellation"}. Waiting for the final result; this is not a completed assessment.` : I(e) ? "Analysis complete. Waiting for the SDK’s final result and findings." : "Findings will appear when the scan finishes.";
+	return R(e) && !L(e) ? `The SDK reported ${e.telemetry?.lifecycle?.status === "failed" ? "a scan failure" : "cancellation"}. Waiting for the final result; this is not a completed assessment.` : L(e) ? "Analysis complete. Waiting for the SDK’s final result and findings." : "Findings will appear when the scan finishes.";
 }
-var R = (e) => e > 0 && e < .01 ? "<0.01" : e.toFixed(2);
+var z = (e) => e > 0 && e < .01 ? "<0.01" : e.toFixed(2);
 function oe(e) {
 	let t = e.telemetry?.measurement;
 	if (t) {
 		let e = t.cost;
 		if (!e || !Number.isFinite(e.baselineUsd)) return "Cost estimate unavailable";
-		let n = `USD ${R(e.baselineUsd)}`;
+		let n = `USD ${z(e.baselineUsd)}`;
 		return t.coverage === "partial" ? `Partial estimate ${n}` : t.coverage === "unavailable" ? `Last estimate ${n} · coverage unavailable` : `Estimated usage ${n}`;
 	}
-	return e.estimatedCostUsd !== void 0 && Number.isFinite(e.estimatedCostUsd) ? `Estimated usage USD ${R(e.estimatedCostUsd)} · coverage unknown` : "Cost estimate unavailable";
+	return e.estimatedCostUsd !== void 0 && Number.isFinite(e.estimatedCostUsd) ? `Estimated usage USD ${z(e.estimatedCostUsd)} · coverage unknown` : "Cost estimate unavailable";
 }
 function se(e) {
 	let t = e.telemetry?.measurement;
@@ -292,12 +295,12 @@ function se(e) {
 	let n = t.missingThreadCount;
 	return t.coverage === "partial" ? `Measured subtotal only${n ? `; ${n} ${n === 1 ? "session is" : "sessions are"} missing` : ""}. The full estimate may be higher.` : t.coverage === "unavailable" ? "The SDK could not establish usage coverage." : "All reported sessions are included. This is a usage estimate, not an invoice.";
 }
-function z(e) {
+function B(e) {
 	return [...e.telemetry?.activity ?? []].sort((e, t) => t.updatedAt.localeCompare(e.updatedAt));
 }
 function ce(e) {
 	let t = /* @__PURE__ */ new Set();
-	return z(e).filter((e) => {
+	return B(e).filter((e) => {
 		let n = e.worker ?? "coordinator";
 		return !t.has(n) && (t.add(n), !0);
 	});
@@ -306,17 +309,17 @@ function le(e) {
 	return e === void 0 ? "Coordinator" : `Worker ${e}`;
 }
 function ue(e, t) {
-	return e === "running" && (t.status !== "running" || L(t) || t.deepProgress?.consolidating) ? "Last reported running" : e === "running" ? "Working" : e === "failed" ? "Failed" : "Done";
+	return e === "running" && (t.status !== "running" || R(t) || t.deepProgress?.consolidating) ? "Last reported running" : e === "running" ? "Working" : e === "failed" ? "Failed" : "Done";
 }
 function de(e) {
 	let t = e.telemetry?.observedWorkers.length;
 	return t ? `${t} worker ${t === 1 ? "session" : "sessions"} observed` : "";
 }
-function B(e) {
-	let t = e.workers;
-	return t ? `${P(t.phase)}: ${t.started} started · ${t.planned} planned` : "";
-}
 function fe(e) {
+	let t = e.workers;
+	return t ? `${F(t.phase)}: ${t.started} started · ${t.planned} planned` : "";
+}
+function pe(e) {
 	let t = e.assessment?.returnedFindings;
 	return t ? t.total === null ? "Returned finding counts unavailable" : [
 		`${t.reportable ?? "Unknown"} reportable`,
@@ -324,7 +327,7 @@ function fe(e) {
 		...t.unclassified ? [`${t.unclassified} unclassified`] : []
 	].join(" · ") : `${e.findings.length} ${e.findings.length === 1 ? "finding" : "findings"} shown${e.skipped ? ` · ${e.skipped} other items omitted` : ""}`;
 }
-function pe(e) {
+function me(e) {
 	let t = e.assessment?.coverage;
 	return !t || t.source === "unavailable" ? "Coverage details unavailable" : [
 		t.surfaces.total === null ? "Surfaces unavailable" : `${t.surfaces.total} review ${t.surfaces.total === 1 ? "surface" : "surfaces"}`,
@@ -332,11 +335,11 @@ function pe(e) {
 		t.openQuestions.total === null ? "Open questions unavailable" : `${t.openQuestions.total} open ${t.openQuestions.total === 1 ? "question" : "questions"}`
 	].join(" · ");
 }
-function me(e) {
+function he(e) {
 	let t = e.assessment?.repositoryFindings;
 	return t?.available ? `${t.open ?? "Unknown"} open · ${t.closed ?? "Unknown"} closed · ${t.confirmedInLatestScan ?? "Unknown"} confirmed in this scan` : "Repository matching unavailable";
 }
-function he(e, t, n = Date.now()) {
+function ge(e, t, n = Date.now()) {
 	if (!e) return "";
 	let r = Math.max(0, Math.floor(((t ? Date.parse(t) : n) - Date.parse(e)) / 1e3));
 	return Number.isFinite(r) ? r < 60 ? `${r}s` : r < 3600 ? `${Math.floor(r / 60)}m ${r % 60}s` : `${Math.floor(r / 3600)}h ${Math.floor(r % 3600 / 60)}m` : "";
@@ -348,13 +351,13 @@ function H(e) {
 	return `${e.title}\nSeverity: ${e.severity} · ${e.cwe}\nLocation: ${e.path}:${e.line}\n\n${e.summary}\n\nEvidence:\n${e.evidence}\n\nSuggested remediation:\n${e.remediation}`;
 }
 // src/security-tui-operations.tsx
-function ge(r, o, c, d, p) {
-	let m = r.client.rpc(b), [h, g] = f([]), [_, v] = f(), [y, x] = f(!1), [S, C] = f(!1), [w, T] = f(""), [D, O] = f({
+function _e(r, o, c, d, p) {
+	let m = r.client.rpc(b), [h, g] = f([]), [_, v] = f(), [y, x] = f(!1), [S, C] = f(!1), [w, T] = f(""), [E, O] = f({
 		policy: !1,
 		validation: !1,
 		questionAnswers: !1
 	}), k = !1, A = () => h().find((e) => e.operationId === _()) ?? h()[0], j = async () => {
-		if (!(k || !D().policy && !D().validation)) try {
+		if (!(k || !E().policy && !E().validation)) try {
 			let e = await m.operationList({}, { location: o });
 			k || g(e.operations);
 		} catch (e) {
@@ -377,10 +380,10 @@ function ge(r, o, c, d, p) {
 		}
 	}, N = () => {
 		x(!0), d();
-	}, F = async (e) => {
+	}, P = async (e) => {
 		await r.ui.dialog.confirm({
 			title: e.kind === "policy" ? "Review policy generation" : "Review source validation",
-			message: `Repository: ${e.repository}\n${e.plan.path ? "Component: " + e.plan.path + "\n" : ""}Context: ${e.plan.contextFiles.map((e) => e.path).join(", ") || "No additional documents"}\n\n${e.plan.mock ? "Mock operation: no model calls or uploads." : `Repository source, the selected finding if any, and listed context go to ${E(e.plan.settings)}.\n${e.plan.costNotice}`}\n\n${e.kind === "policy" ? "Returns a draft only. Existing files stay unchanged." : "Static source assessment only. No exploit execution or patch application."}\n\nModel: ${e.plan.settings.codex.model} · ${e.plan.settings.codex.reasoningEffort} reasoning`,
+			message: `Repository: ${e.repository}\n${e.plan.path ? "Component: " + e.plan.path + "\n" : ""}Context: ${e.plan.contextFiles.map((e) => e.path).join(", ") || "No additional documents"}\n\n${e.plan.mock ? "Mock operation: no model calls or uploads." : `Repository source, the selected finding if any, and listed context go to ${D(e.plan.settings)}.\n${e.plan.costNotice}`}\n\n${e.kind === "policy" ? "Returns a draft only. Existing files stay unchanged." : "Static source assessment only. No exploit execution or patch application."}\n\nModel: ${e.plan.settings.codex.model} · ${e.plan.settings.codex.reasoningEffort} reasoning`,
 			label: {
 				confirm: e.plan.mock ? "Start mock operation" : e.kind === "validation" ? "Approve without cost ceiling" : "Approve and start",
 				cancel: "Back"
@@ -398,7 +401,7 @@ function ge(r, o, c, d, p) {
 				title: "Security: draft a policy",
 				group: "Security",
 				palette: !0,
-				enabled: () => D().policy,
+				enabled: () => E().policy,
 				slash: { name: "security-policy" },
 				run: async () => {
 					N(), await M(async () => {
@@ -415,7 +418,7 @@ function ge(r, o, c, d, p) {
 							repository: e,
 							...t.trim() ? { path: t.trim() } : {}
 						}, { location: o });
-						v(n.operationId), await j(), await F(n);
+						v(n.operationId), await j(), await P(n);
 					});
 				}
 			},
@@ -424,7 +427,7 @@ function ge(r, o, c, d, p) {
 				title: "Security: validate a finding",
 				group: "Security",
 				palette: !0,
-				enabled: () => D().validation,
+				enabled: () => E().validation,
 				slash: { name: "security-validate" },
 				run: async () => {
 					N(), await M(async () => {
@@ -453,7 +456,7 @@ function ge(r, o, c, d, p) {
 							repository: n,
 							finding: t
 						}, { location: o });
-						v(i.operationId), await j(), await F(i);
+						v(i.operationId), await j(), await P(i);
 					});
 				}
 			},
@@ -462,7 +465,7 @@ function ge(r, o, c, d, p) {
 				title: "Security: choose policy or validation work",
 				group: "Security",
 				palette: !0,
-				enabled: () => D().policy || D().validation,
+				enabled: () => E().policy || E().validation,
 				slash: { name: "security-operations" },
 				run: async () => {
 					if (N(), await j(), !h().length) {
@@ -476,7 +479,7 @@ function ge(r, o, c, d, p) {
 						title: "Choose an operation",
 						current: A()?.operationId,
 						options: h().map((e) => ({
-							title: `${e.kind === "policy" ? "Policy" : "Validation"} · ${P(e.status)}`,
+							title: `${e.kind === "policy" ? "Policy" : "Validation"} · ${F(e.status)}`,
 							description: `${e.repository} · ${e.operationId.slice(0, 8)}`,
 							value: e.operationId
 						}))
@@ -493,7 +496,7 @@ function ge(r, o, c, d, p) {
 				slash: { name: "security-operation-start" },
 				run: async () => {
 					let e = A();
-					e && await M(() => F(e));
+					e && await M(() => P(e));
 				}
 			},
 			{
@@ -508,7 +511,7 @@ function ge(r, o, c, d, p) {
 					e && t && (N(), await M(async () => {
 						let n = await r.ui.dialog.prompt({
 							title: "Answer security questions",
-							description: t.questions.map((e, t) => `${t + 1}. ${e}`).join("\n") + `\n\nAnswer each question or state what is unknown. Your answer will be sent to the already-approved route: ${E(e.plan.settings)}. Do not include secrets.`
+							description: t.questions.map((e, t) => `${t + 1}. ${e}`).join("\n") + `\n\nAnswer each question or state what is unknown. Your answer will be sent to the already-approved route: ${D(e.plan.settings)}. Do not include secrets.`
 						});
 						n?.trim() && !k && await m.operationAnswer({
 							operationId: e.operationId,
@@ -544,7 +547,7 @@ function ge(r, o, c, d, p) {
 				run: async () => {
 					let e = A()?.result;
 					e && await r.ui.dialog.alert({
-						title: e.kind === "policy" ? "Policy draft · not applied" : `Source assessment · ${P(e.disposition)}`,
+						title: e.kind === "policy" ? "Policy draft · not applied" : `Source assessment · ${F(e.disposition)}`,
 						message: (e.kind === "policy" ? e.content + "\n\nReview notes:\n" + e.reviewNotes.join("\n") : e.report) + "\n\n" + (e.truncated ? "Preview truncated. Read full local SDK artifacts." : e.kind === "policy" ? "No repository files changed." : "Static assessment, not runtime reproduction.")
 					});
 				}
@@ -572,7 +575,7 @@ function ge(r, o, c, d, p) {
 				},
 				children: (r) => (() => {
 					var o = t("box"), c = t("text"), d = n(" · "), f = t("text"), p = n("Target: "), m = t("text");
-					return a(o, c), a(o, f), a(o, m), s(o, "flexDirection", "column"), s(o, "gap", 1), a(c, d), s(c, "fg", "#9be4c6"), i(c, () => r().kind === "policy" ? "Policy draft" : "Finding validation", d), i(c, () => P(r().status), null), a(f, p), i(f, () => r().repository, null), i(m, () => r().phase), i(o, e(u, {
+					return a(o, c), a(o, f), a(o, m), s(o, "flexDirection", "column"), s(o, "gap", 1), a(c, d), s(c, "fg", "#9be4c6"), i(c, () => r().kind === "policy" ? "Policy draft" : "Finding validation", d), i(c, () => F(r().status), null), a(f, p), i(f, () => r().repository, null), i(m, () => r().phase), i(o, e(u, {
 						get when() {
 							return r().status === "prepared";
 						},
@@ -645,12 +648,12 @@ function ge(r, o, c, d, p) {
 var U = c.define({
 	id: "gill.security.tui",
 	setup(c) {
-		let [m, h] = f(), [g, _] = f(), [v, y] = f(!1), [S, C] = f(""), [w, T] = f(!1), [j, P] = f(Date.now()), [F, I] = f({}), [L, R] = f(), H = !1, U = !1, W = c.location ?? c.data.location.default(), G = c.client.rpc(b), K = () => m()?.runs ?? [], q = () => K().find((e) => e.runId === g()) ?? K()[0];
+		let [m, h] = f(), [g, _] = f(), [v, y] = f(!1), [S, C] = f(""), [w, T] = f(!1), [M, F] = f(Date.now()), [I, L] = f({}), [R, z] = f(), H = !1, U = !1, W = c.location ?? c.data.location.default(), G = c.client.rpc(b), K = () => m()?.runs ?? [], q = () => K().find((e) => e.runId === g()) ?? K()[0];
 		d(p(() => q()?.runId, () => y(!1)));
 		let J = () => c.ui.router.navigate({
 			type: "plugin",
 			name: "security"
-		}), Y = k(c.location?.directory) ? c.location.directory : void 0, X = async (e = Y) => {
+		}), Y = A(c.location?.directory) ? c.location.directory : void 0, X = async (e = Y) => {
 			let t = await c.ui.dialog.prompt({
 				title: "Target repository",
 				description: "Choose an absolute local path. This changes only the next task, not the history workspace or global settings.",
@@ -658,10 +661,10 @@ var U = c.define({
 				placeholder: "/path/to/project"
 			});
 			if (!(t === void 0 || H)) {
-				if (!k(t.trim())) throw Error("Choose an absolute local repository path before preparing a task.");
+				if (!A(t.trim())) throw Error("Choose an absolute local repository path before preparing a task.");
 				return t.trim();
 			}
-		}, Z = ge(c, W, q, J, async () => Y ?? X()), Q = () => K().filter((e) => e.status === "running").length, $ = async () => {
+		}, Z = _e(c, W, q, J, async () => Y ?? X()), Q = () => K().filter((e) => e.status === "running").length, $ = async () => {
 			if (!(H || U)) {
 				U = !0;
 				try {
@@ -673,7 +676,7 @@ var U = c.define({
 					U = !1;
 				}
 			}
-		}, _e = (o) => new Promise((l) => {
+		}, ve = (o) => new Promise((l) => {
 			let d = !1, p = (e) => {
 				d || (d = !0, l(e), c.ui.dialog.clear());
 			}, m = () => {
@@ -730,11 +733,11 @@ var U = c.define({
 							return [
 								(() => {
 									var e = t("text"), r = n("Repository source and listed context will be sent to"), s = n(". Results stay local.");
-									return a(e, r), a(e, s), i(e, () => E(o.settings), s), e;
+									return a(e, r), a(e, s), i(e, () => D(o.settings), s), e;
 								})(),
 								(() => {
-									var e = t("text"), r = n("Estimated stop: USD "), s = n(" for this scan. Not a hard cap; in-flight usage may exceed it.");
-									return a(e, r), a(e, s), i(e, () => o.settings.scan.maxCostUsd, s), e;
+									var e = t("text");
+									return i(e, () => E(o.settings.scan.maxCostUsd)), e;
 								})(),
 								(() => {
 									var e = t("text");
@@ -748,7 +751,7 @@ var U = c.define({
 						},
 						get children() {
 							var e = t("text");
-							return i(e, () => D(o)), e;
+							return i(e, () => O(o)), e;
 						}
 					}), null), a(b, x), a(b, S), a(b, C), i(b, () => o.mock ? "start mock scan" : "approve and start", S), i(b, () => l() ? "hide" : "show", C), r((e) => s(p, "height", Math.max(6, Math.min(22, c.renderer.height - 12)), e)), d;
 				})();
@@ -759,39 +762,39 @@ var U = c.define({
 				size: "xlarge",
 				centered: !0
 			});
-		}), ve = async () => {
+		}), ye = async () => {
 			if (!(w() || H)) {
 				T(!0), C("");
 				try {
 					if (await $(), Q() >= (m()?.maxConcurrent ?? 2)) throw Error("All scan slots are in use. Start another scan after one finishes.");
 					let e = {};
 					if (!m()?.engine?.startsWith("local-patterns")) {
-						let t = A(m(), Date.now(), L());
+						let t = j(m(), Date.now(), R());
 						if (!t) {
-							let e = F().repository || Y || await X();
+							let e = I().repository || Y || await X();
 							if (!e || H) return;
 							t = x(await G.prepare({
-								...F(),
+								...I(),
 								repository: e
 							}, { location: W }));
 						}
 						let n = t.plan;
 						if (!n) throw Error("No scan preview returned. Nothing was started.");
-						if (!await _e(n) || H) return;
+						if (!await ve(n) || H) return;
 						e = {
 							planId: n.id,
 							approveOpenAIInference: !0
 						};
 					}
 					let t = x(await G.start(e, { location: W }));
-					H || (_(t.runId), I({}), R(void 0), await $());
+					H || (_(t.runId), L({}), z(void 0), await $());
 				} catch (e) {
 					H || C(V(e));
 				} finally {
 					H || T(!1);
 				}
 			}
-		}, ye = async () => {
+		}, be = async () => {
 			if (await $(), !K().length) {
 				await c.ui.dialog.alert({
 					title: "Scans",
@@ -803,13 +806,13 @@ var U = c.define({
 				title: "Scans recorded in this workspace",
 				current: q()?.runId,
 				options: K().map((e) => ({
-					title: `${e.status.toUpperCase()} · ${M(e)}`,
-					description: `${e.repository} · ${N(e)} · ${e.mode ?? "fixture"} · ${e.runId?.slice(0, 8)}`,
+					title: `${e.status.toUpperCase()} · ${N(e)}`,
+					description: `${e.repository} · ${P(e)} · ${e.mode ?? "fixture"} · ${e.runId?.slice(0, 8)}`,
 					value: e.runId
 				}))
 			});
 			e && !H && _(e);
-		}, be = async () => {
+		}, xe = async () => {
 			let e = q();
 			if (!e?.runId || e.status !== "running") await c.ui.dialog.alert({
 				title: "Cancel scan",
@@ -827,9 +830,9 @@ var U = c.define({
 			}
 		};
 		$();
-		let xe = setInterval(() => {
-			P(Date.now()), $(), Z.refresh();
-		}, 1500), Se = c.ui.router.register({
+		let Se = setInterval(() => {
+			F(Date.now()), $(), Z.refresh();
+		}, 1500), Ce = c.ui.router.register({
 			name: "security",
 			render: () => (() => {
 				var c = t("scrollbox"), d = t("box"), f = t("text"), p = t("text"), h = n("History workspace: "), g = t("text"), _ = t("text");
@@ -894,7 +897,7 @@ var U = c.define({
 										},
 										children: (e) => (() => {
 											var o = t("text"), c = n(" · "), l = n(" · "), u = n(" · "), d = n(" · ");
-											return a(o, c), a(o, l), a(o, u), a(o, d), i(o, () => e.runId === q()?.runId ? "> " : "  ", c), i(o, () => e.status.toUpperCase(), c), i(o, () => M(e), l), i(o, () => e.mode ?? "fixture", u), i(o, () => e.runId?.slice(0, 8), d), i(o, () => e.repository, null), r((t) => s(o, "fg", e.runId === q()?.runId ? "#9be4c6" : void 0, t)), o;
+											return a(o, c), a(o, l), a(o, u), a(o, d), i(o, () => e.runId === q()?.runId ? "> " : "  ", c), i(o, () => e.status.toUpperCase(), c), i(o, () => N(e), l), i(o, () => e.mode ?? "fixture", u), i(o, () => e.runId?.slice(0, 8), d), i(o, () => e.repository, null), r((t) => s(o, "fg", e.runId === q()?.runId ? "#9be4c6" : void 0, t)), o;
 										})()
 									}), null), o;
 								}
@@ -911,9 +914,9 @@ var U = c.define({
 								},
 								children: (c) => (() => {
 									var d = t("box"), f = t("text"), p = t("text"), m = n("Target: "), h = t("text"), g = n(" · "), _ = t("text"), y = t("b"), b = t("text"), x = t("text"), S = n("Ctrl+D: "), C = n(" activity, coverage and scan details");
-									return a(d, f), a(d, p), a(d, h), a(d, _), a(d, b), a(d, x), s(d, "flexDirection", "column"), s(d, "gap", 1), s(f, "fg", "#9be4c6"), i(f, () => M(c())), a(p, m), s(p, "fg", "#b5b5b5"), i(p, () => c().repository, null), a(h, g), s(h, "fg", "#b5b5b5"), i(h, () => N(c()), g), i(h, () => c().mode ?? "Fixture pattern checks", null), a(_, y), i(y, () => ee(c())), i(_, e(u, {
+									return a(d, f), a(d, p), a(d, h), a(d, _), a(d, b), a(d, x), s(d, "flexDirection", "column"), s(d, "gap", 1), s(f, "fg", "#9be4c6"), i(f, () => N(c())), a(p, m), s(p, "fg", "#b5b5b5"), i(p, () => c().repository, null), a(h, g), s(h, "fg", "#b5b5b5"), i(h, () => P(c()), g), i(h, () => c().mode ?? "Fixture pattern checks", null), a(_, y), i(y, () => ee(c())), i(_, e(u, {
 										get when() {
-											return he(c().startedAt, c().finishedAt, j());
+											return ge(c().startedAt, c().finishedAt, M());
 										},
 										children: (e) => [" · ", o(e)]
 									}), null), i(d, e(u, {
@@ -959,7 +962,7 @@ var U = c.define({
 										},
 										get children() {
 											var e = t("text"), r = t("b"), o = n(" · /security-findings: evidence");
-											return a(e, r), a(e, o), i(r, () => fe(c())), e;
+											return a(e, r), a(e, o), i(r, () => pe(c())), e;
 										}
 									}), x), i(d, e(l, {
 										get each() {
@@ -1015,11 +1018,11 @@ var U = c.define({
 												}),
 												e(u, {
 													get when() {
-														return B(c());
+														return fe(c());
 													},
 													get children() {
 														var e = t("text");
-														return i(e, () => B(c())), e;
+														return i(e, () => fe(c())), e;
 													}
 												}),
 												e(u, {
@@ -1039,11 +1042,11 @@ var U = c.define({
 														return [
 															(() => {
 																var e = t("text");
-																return i(e, () => pe(c())), e;
+																return i(e, () => me(c())), e;
 															})(),
 															(() => {
 																var e = t("text"), r = n("Repository matching: ");
-																return a(e, r), i(e, () => me(c()), null), e;
+																return a(e, r), i(e, () => he(c()), null), e;
 															})(),
 															(() => {
 																var e = t("text");
@@ -1058,7 +1061,7 @@ var U = c.define({
 												})(),
 												e(u, {
 													get when() {
-														return z(c()).length;
+														return B(c()).length;
 													},
 													get fallback() {
 														return (() => {
@@ -1153,7 +1156,7 @@ var U = c.define({
 					palette: !0,
 					slash: { name: "security-scan" },
 					run: async () => {
-						Z.close(), J(), await ve();
+						Z.close(), J(), await ye();
 					}
 				},
 				{
@@ -1163,7 +1166,7 @@ var U = c.define({
 					palette: !0,
 					slash: { name: "security-scans" },
 					run: async () => {
-						Z.close(), J(), await ye();
+						Z.close(), J(), await be();
 					}
 				},
 				{
@@ -1172,7 +1175,7 @@ var U = c.define({
 					group: "Security",
 					palette: !0,
 					slash: { name: "security-cancel" },
-					run: be
+					run: xe
 				},
 				{
 					id: "security.target",
@@ -1187,10 +1190,10 @@ var U = c.define({
 								let e = await X(Y);
 								if (!e || H) return;
 								let t = { repository: e };
-								I(t), R("pending");
+								L(t), z("pending");
 								let n = x(await G.prepare(t, { location: W }));
 								if (!n.plan) throw Error("No scan preview returned. Nothing was started.");
-								R(n.plan.id), await $(), Z.close(), J();
+								z(n.plan.id), await $(), Z.close(), J();
 							} catch (e) {
 								H || C(V(e));
 							} finally {
@@ -1211,7 +1214,7 @@ var U = c.define({
 							try {
 								let e = await c.ui.dialog.select({
 									title: "Depth for the next scan",
-									current: F().mode ?? "default",
+									current: I().mode ?? "default",
 									options: [
 										{
 											title: "Global default",
@@ -1231,12 +1234,12 @@ var U = c.define({
 									]
 								});
 								if (!e || H) return;
-								let t = A(m(), Date.now(), L())?.plan, n = O(t?.inputs ?? F(), e);
+								let t = j(m(), Date.now(), R())?.plan, n = k(t?.inputs ?? I(), e);
 								if (n.repository ||= t?.repository || Y || await X(), !n.repository || H) return;
-								I(n), R("pending");
+								L(n), z("pending");
 								let r = x(await G.prepare(n, { location: W }));
 								if (!r.plan) throw Error("No scan preview returned. Nothing was started.");
-								R(r.plan.id), await $(), J();
+								z(r.plan.id), await $(), J();
 							} catch (e) {
 								H || C(V(e));
 							} finally {
@@ -1276,7 +1279,7 @@ var U = c.define({
 				}
 			]
 		})), () => {
-			H = !0, clearInterval(xe), Z.dispose(), Se();
+			H = !0, clearInterval(Se), Z.dispose(), Ce();
 		};
 	}
 });

@@ -32,7 +32,7 @@ export interface CodexScanApproval {
   approved: true;
   repository: string;
   allowNetworkModelInference: true;
-  maxCostUsd: number;
+  maxCostUsd?: number;
   auth?: 'chatgpt' | 'api-key' | 'aws';
   settings?: ResolvedSdkSettings;
   scopePaths?: string[];
@@ -129,7 +129,7 @@ export function unsupportedPricingMessage(error: unknown): string | undefined {
     error instanceof Error &&
     error.message.startsWith('A scan cost limit is not available for the configured model:')
   )
-    return 'The SDK cannot estimate costs for this model or gateway alias, so the operation stopped without removing its cost limit. Use a gateway model with SDK-supported pricing, or ask the gateway administrator about a compatible route. Estimates are not gateway billing totals or hard caps.';
+    return 'The SDK cannot estimate costs for this model or gateway alias, so the operation stopped without removing its cost limit. This is a missing price entry, not evidence that the model is unavailable or retired. The configured model and provider were not changed. Verify which backend the alias routes to and its pricing before choosing a supported route; do not substitute a different model ID or remove the guard automatically. Estimates are not gateway billing totals or hard caps.';
 }
 
 /** Local coordinator; SDK inference is network-backed, not an offline scanner. */
@@ -179,11 +179,11 @@ export class CodexScanService {
       approval.approved !== true ||
       approval.allowNetworkModelInference !== true ||
       approval.repository !== this.root ||
-      !Number.isFinite(approval.maxCostUsd) ||
-      approval.maxCostUsd <= 0
+      (approval.maxCostUsd !== undefined &&
+        (!Number.isFinite(approval.maxCostUsd) || approval.maxCostUsd <= 0))
     ) {
       throw new Error(
-        'Per-scan approval required for this exact repository, network model inference, and positive estimated USD cost limit.',
+        'Per-scan approval required for this exact repository, network model inference, and a positive estimated USD cost limit if supplied.',
       );
     }
     this.#state = {
@@ -196,7 +196,7 @@ export class CodexScanService {
     this.#busy = true;
     this.#controller = new AbortController();
     this.#emit(
-      'Approved SDK scan started. Local runner and artifacts; network model inference. Cost limit is estimated, not a guaranteed billing cap.',
+      'Approved SDK scan started. Local runner and artifacts; network model inference. Any configured cost limit is estimated, not a guaranteed billing cap. No dollar limit applies when omitted.',
     );
     this.#task = this.#run(structuredClone(approval), this.#controller.signal);
     return this.getState();
@@ -226,7 +226,7 @@ export class CodexScanService {
         ...approval.settings?.scan,
         mode: approval.settings?.scan.mode ?? 'standard',
         auth: sdkAuthentication(approval.settings?.codex.auth ?? approval.auth ?? 'chatgpt'),
-        maxCostUsd: approval.maxCostUsd,
+        ...(approval.maxCostUsd !== undefined ? { maxCostUsd: approval.maxCostUsd } : {}),
         ownerSuggestions: false,
         signal,
         onProgress: (progress) => {

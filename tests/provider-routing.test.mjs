@@ -362,7 +362,7 @@ test('scan, policy, and validation pass the same resolved provider snapshot and 
     if (name.endsWith('config')) assert.deepEqual(value, sdkConfiguration(preview.plan.settings));
     else {
       assert.equal(value.auth, 'api-key');
-      assert.equal(value.maxCostUsd, name === 'validation-options' ? undefined : 1);
+      assert.equal(value.maxCostUsd, undefined);
     }
   }
   assert.equal(captured.length, 6);
@@ -427,7 +427,10 @@ for (const mutation of ['route', 'model', 'key-name', 'source', 'auth'])
   });
 
 test('unknown model pricing fails closed with a useful redacted message and retained budget', async (t) => {
-  const { root } = await fixture(t, { codex: { provider, model: 'gateway-alias' } });
+  const { root } = await fixture(t, {
+    codex: { provider, model: 'gateway-alias' },
+    scan: { maxCostUsd: 1 },
+  });
   const createClient = () => ({
     ...mockOperations(),
     run: async (_root, options) => {
@@ -454,6 +457,8 @@ test('unknown model pricing fails closed with a useful redacted message and reta
   const state = await scan.wait();
   assert.equal(state.status, 'error');
   assert.match(state.error, /cannot estimate costs/);
+  assert.match(state.error, /not evidence that the model is unavailable or retired/);
+  assert.match(state.error, /model and provider were not changed/);
   assert.doesNotMatch(state.error, /SYNTHETIC_HIDDEN/);
   const operations = new SecurityOperationsService(root, { createClient });
   t.after(() => Promise.all([scan.dispose(), operations.dispose()]));
@@ -1051,3 +1056,43 @@ test('native RPC declares and returns safe setup errors while withholding unknow
     }
   }
 });
+
+for (const mode of ['standard', 'deep']) {
+  test(`unpriced gateway model runs ${mode} and policy without an implicit cost limit`, async (t) => {
+    const { root } = await fixture(t, {
+      codex: { provider, model: 'gpt-daybreak-blue-latest' },
+      scan: { mode },
+    });
+    const settings = await resolveSettings({
+      codex: { provider, model: 'gpt-daybreak-blue-latest' },
+      scan: { mode },
+    });
+    assert.equal(Object.hasOwn(settings.scan, 'maxCostUsd'), false);
+    const checked = [];
+    const createClient = () => ({
+      ...mockOperations(),
+      run: async (_root, options) => {
+        assert.equal(Object.hasOwn(options, 'maxCostUsd'), false);
+        assert.equal(options.mode, mode);
+        checked.push('scan');
+        return { findings: { scanId: 'unpriced', findings: [] } };
+      },
+      generatePolicy: async (_root, options) => {
+        assert.equal(Object.hasOwn(options, 'maxCostUsd'), false);
+        checked.push('policy');
+        return mockOperations().generatePolicy(_root);
+      },
+    });
+    const scan = new CodexScanService(root, { createClient });
+    const operations = new SecurityOperationsService(root, { createClient });
+    t.after(() => Promise.all([scan.dispose(), operations.dispose()]));
+    scan.start({ approved: true, repository: root, allowNetworkModelInference: true, settings });
+    assert.equal((await scan.wait()).status, 'completed');
+    const op = await operations.prepare({ kind: 'policy' });
+    assert.equal(op.plan.costLimitEnforced, false);
+    assert.match(op.plan.costNotice, /No dollar-based stop limit/);
+    await operations.start({ operationId: op.operationId, approveOpenAIInference: true });
+    assert.equal((await operations.wait(op.operationId)).status, 'completed');
+    assert.deepEqual(checked, ['scan', 'policy']);
+  });
+}

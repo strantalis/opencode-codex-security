@@ -58,11 +58,11 @@ export interface ResolvedSdkSettings {
     bedrock?: BedrockSettings;
     source?: ProviderSource;
   };
-  scan: ScanSettings & { mode: 'standard' | 'deep'; maxCostUsd: number };
+  scan: ScanSettings & { mode: 'standard' | 'deep' };
 }
 export const defaultSettings: ResolvedSdkSettings = {
   codex: { model: 'gpt-5.6-sol', reasoningEffort: 'xhigh', daybreak: false, auth: 'chatgpt' },
-  scan: { mode: 'standard', maxCostUsd: 1 },
+  scan: { mode: 'standard' },
 };
 export function validateSettings(raw: unknown): SdkSettings {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw))
