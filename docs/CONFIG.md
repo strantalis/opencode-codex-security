@@ -1,6 +1,6 @@
 # Configuration
 
-The plugin passes your settings to the Codex Security SDK and lets the SDK validate them. Every preview shows the provider, endpoint, model and credential source the SDK resolved, so you can check a change by preparing a scan.
+The plugin passes your settings to the Codex Security SDK and lets the SDK validate them. Every preview shows the provider, endpoint, model and credential source the SDK resolved. To check a change without preparing a scan, ask the session model to call `security_status`; it also lists your Codex profiles and the Node and Python versions it found.
 
 ## Where settings come from
 

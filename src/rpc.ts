@@ -11,7 +11,8 @@ export const scanInputSchema = {
     },
     repository: {
       type: 'string',
-      description: 'Repository path. Defaults to the current workspace.',
+      description:
+        'Repository path. Defaults to the current workspace. May be a folder holding several checkouts.',
     },
     scopePaths: {
       type: 'array',
@@ -27,7 +28,7 @@ export const scanInputSchema = {
       type: 'array',
       items: { type: 'string' },
       description:
-        'Supporting documents (text, PDF, DOCX) or directories, relative to the repository.',
+        'Context files or directories, relative to the repository or absolute (other checkouts are fine). A file may be any UTF-8 text (Markdown, Terraform, YAML, JSON), PDF or DOCX. A directory contributes all its text, PDF and DOCX files. No symlinks.',
     },
   },
   additionalProperties: false,
@@ -93,6 +94,17 @@ export const Security = Rpc.define({
       errors,
     },
     operationCancel: { input: operationID, output, errors },
+    setup: { input: empty, output, errors },
+    setProfile: {
+      input: {
+        type: 'object',
+        properties: { profile: text },
+        required: ['profile'],
+        additionalProperties: false,
+      },
+      output,
+      errors,
+    },
   },
   events: {
     changed: { schema: { type: 'object' } },

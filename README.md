@@ -41,23 +41,37 @@ In the terminal, `/security` opens the scan view and `/security-scan` starts a n
 
 Your session's model can do the same through these tools:
 
-| Tool                                                | Purpose                                                    |
-| --------------------------------------------------- | ---------------------------------------------------------- |
-| `security_scan`                                     | Start a scan. Asks for your approval with the preview.     |
-| `security_scans`, `security_scan_status`            | List scans and follow one.                                 |
-| `security_scan_results`                             | Findings of a completed scan, or one finding in detail.    |
-| `security_policy`, `security_validate`              | Start a policy draft or a validation. Each asks first.     |
-| `security_operations`                               | Status, pending questions and results of those operations. |
-| `security_answer_questions`                         | Answer a policy's owner questions. Asks first.             |
-| `security_cancel_scan`, `security_cancel_operation` | Cancel one run.                                            |
+| Tool                                                | Purpose                                                                  |
+| --------------------------------------------------- | ------------------------------------------------------------------------ |
+| `security_status`                                   | The resolved route, config files, Codex profiles, and Node/Python found. |
+| `security_scan`                                     | Start a scan. Asks for your approval with the preview.                   |
+| `security_scans`, `security_scan_status`            | List scans and follow one.                                               |
+| `security_scan_results`                             | Findings of a completed scan, or one finding in detail.                  |
+| `security_policy`, `security_validate`              | Start a policy draft or a validation. Each asks first.                   |
+| `security_operations`                               | Status, pending questions and results of those operations.               |
+| `security_answer_questions`                         | Answer a policy's owner questions. Asks first.                           |
+| `security_cancel_scan`, `security_cancel_operation` | Cancel one run.                                                          |
 
 Approvals use OpenCode's permission rules, under the actions `codex_security_scan`, `codex_security_policy`, `codex_security_validation` and `codex_security_answer`.
+
+When a scan, policy draft or validation started by the session's model ends, or a policy draft has questions for you, the plugin posts a short notice into that session and the model picks it up from there.
+
+### Scanning with context from other repositories
+
+Tell the session what matters, for example: "scan repo X; it depends on Y and Z, and our GitOps and Terraform repos describe how it is deployed". The plugin ships a `codex-security` skill that has the model:
+
+1. Clone what is not checked out locally into `~/.cache/opencode/codex-security/workspaces/<name>/` (`app/` for the code, `context/` for infrastructure).
+2. Write a short deployment summary from the infrastructure repositories.
+3. Scan the target with that summary and the relevant infrastructure files as context. Context paths may be absolute and point anywhere; any UTF-8 text file (Terraform, YAML, JSON, Markdown), PDF or DOCX works.
+4. Or, if you want data flow followed across repositories, scan the `app/` folder as one system with scope paths into each checkout. This costs more.
+
+The workspace stays until you ask the model to delete it, so validation can reuse the same files.
 
 ## Limits
 
 - Cost figures are the SDK's estimates, and `scan.maxCostUsd` stops a scan on that estimate. Neither is a billing cap, and validation has no cost limit at all.
 - Findings arrive when a scan completes, not while it runs.
-- Policy and validation operations live in memory and are lost when OpenCode restarts. A scan interrupted by a restart is marked as interrupted, not resumed.
+- Policy and validation operations live in memory and are lost when OpenCode restarts. A scan interrupted by a restart is marked as interrupted, not resumed. Session notices are not sent for work that outlives a restart.
 - Patching and fix verification are not exposed.
 - Tested on macOS and Linux. The Desktop panel is experimental.
 

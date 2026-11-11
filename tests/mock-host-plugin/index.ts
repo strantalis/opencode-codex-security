@@ -9,7 +9,11 @@ export const TestRpc = Rpc.define({
     toolCall: {
       input: {
         type: 'object',
-        properties: { name: { type: 'string' }, args: { type: 'object' } },
+        properties: {
+          name: { type: 'string' },
+          args: { type: 'object' },
+          context: { type: 'object' },
+        },
         required: ['name', 'args'],
       },
       output: { type: 'object' },
@@ -180,7 +184,7 @@ export default {
       toolCall: async (input: any) => {
         const tool = (await ctx.tool.list()).find((t: any) => t.name === input.name);
         if (!tool) throw new Error('Missing tool');
-        return { result: await tool.execute(input.args, {}) };
+        return { result: await tool.execute(input.args, input.context ?? {}) };
       },
     });
     return async () => {

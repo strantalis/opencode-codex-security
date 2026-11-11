@@ -1,8 +1,11 @@
 import './helpers/isolated-codex.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { codexHome } from './helpers/isolated-codex.mjs';
 import { configure } from './helpers/project.mjs';
-import { loadSettings } from '../src/core/settings.ts';
+import { codexProfiles, loadSettings, saveProfile, settingsPath } from '../src/core/settings.ts';
 
 test('with no files, the SDK defaults apply', async () => {
   const settings = await loadSettings();
@@ -83,4 +86,44 @@ test('shape errors and renamed keys are explained', async (t) => {
   await assert.rejects(loadSettings(), /auto, chatgpt or api-key/);
   await configure(t, { plugin: {}, codex: 'model = [unterminated' });
   await assert.rejects(loadSettings(), /Could not read .*config\.toml/);
+});
+
+test('profiles come from config.toml tables and file profiles in the Codex home', async (t) => {
+  await configure(t, {
+    codex: 'profile = "work"\n[profiles.work]\nmodel = "w"\n[profiles.deep]\n',
+  });
+  for (const name of ['bedrock.config.toml', 'not a profile.config.toml']) {
+    await writeFile(join(codexHome, name), '');
+    t.after(() => rm(join(codexHome, name)));
+  }
+  assert.deepEqual(await codexProfiles(), ['bedrock', 'deep', 'work']);
+  assert.equal((await loadSettings()).profile, 'work');
+});
+
+test('saveProfile sets and removes codex.profile, keeping every other key', async (t) => {
+  t.after(() => rm(settingsPath(), { force: true }));
+  const read = async () => JSON.parse(await readFile(settingsPath(), 'utf8'));
+  assert.deepEqual(await saveProfile('bedrock'), {
+    configFile: settingsPath(),
+    profile: 'bedrock',
+  });
+  assert.deepEqual(await read(), { codex: { profile: 'bedrock' } });
+  await writeFile(
+    settingsPath(),
+    JSON.stringify({ auth: 'chatgpt', codex: { model: 'm', profile: 'old' }, scan: {} }),
+  );
+  await saveProfile('work');
+  assert.deepEqual(await read(), {
+    auth: 'chatgpt',
+    codex: { model: 'm', profile: 'work' },
+    scan: {},
+  });
+  assert.equal((await loadSettings()).profile, 'work');
+  assert.deepEqual(await saveProfile(''), { configFile: settingsPath() });
+  assert.deepEqual((await read()).codex, { model: 'm' });
+  await writeFile(settingsPath(), JSON.stringify({ codex: { profile: 'x' } }));
+  await saveProfile('');
+  assert.deepEqual(await read(), {});
+  await writeFile(settingsPath(), '[1]');
+  await assert.rejects(saveProfile('x'), /must hold a JSON object/);
 });

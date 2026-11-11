@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +27,8 @@ await writeFile(
   configPath,
   JSON.stringify({
     plugins: [{ package: `${root}/tests/mock-host-plugin` }],
+    // A session woken by a scan notice must never reach a model.
+    policies: [{ action: 'provider.use', resource: '*', effect: 'deny' }],
   }),
 );
 await writeFile(
@@ -44,7 +46,11 @@ const TestRpc = Rpc.define({
     toolCall: {
       input: {
         type: 'object',
-        properties: { name: { type: 'string' }, args: { type: 'object' } },
+        properties: {
+          name: { type: 'string' },
+          args: { type: 'object' },
+          context: { type: 'object' },
+        },
         required: ['name', 'args'],
       },
       output: { type: 'object' },
@@ -309,6 +315,71 @@ try {
   assert.equal(reset.plan.inputs.mode, undefined);
   console.log(
     'Actual host: previews start nothing, reuse is rejected, and exact inputs reached the mock SDK once.',
+  );
+  const skill = (await client.skill.list({ location })).data.find((s) => s.id === 'codex-security');
+  assert.equal(skill?.path, 'skill://codex-security/SKILL.md');
+  const settingsFile = `${root}/.runtime/plan/config/opencode/codex-security.json`;
+  const setup = await rpc.setup({}, { location });
+  assert.equal(setup.configFile, settingsFile);
+  assert.equal(setup.route.reasoningEffort, 'high');
+  assert.equal(setup.route.daybreak, true);
+  assert.equal(setup.codexConfigFile, `${root}/.runtime/plan/home/.codex/config.toml`);
+  assert.equal(typeof setup.runtime.node, 'string');
+  const before = JSON.parse(await readFile(settingsFile, 'utf8'));
+  assert.equal((await rpc.setProfile({ profile: 'work' }, { location })).profile, 'work');
+  assert.deepEqual(JSON.parse(await readFile(settingsFile, 'utf8')), {
+    ...before,
+    codex: { ...before.codex, profile: 'work' },
+  });
+  assert.equal((await rpc.setup({}, { location })).profile, 'work');
+  await rpc.setProfile({ profile: '' }, { location });
+  assert.deepEqual(JSON.parse(await readFile(settingsFile, 'utf8')), before);
+  console.log('Actual host: the bundled skill is listed; setup and setProfile RPC passed.');
+  const session = await client.session.create({
+    location,
+    permissions: ['codex_security_scan', 'codex_security_policy'].map((action) => ({
+      action,
+      resource: '*',
+      effect: 'allow',
+    })),
+  });
+  const toolContext = { sessionID: session.id, agent: 'build', messageID: 'msg_t', id: 'call_t' };
+  const started = await test.toolCall(
+    { name: 'security_scan', args: { scopePaths: ['src'] }, context: toolContext },
+    { location },
+  );
+  const noticeRun = /Run ID: (\S+)/.exec(started.result.content)[1];
+  let messages = [];
+  for (let i = 0; i < 100; i++) {
+    messages = await client.session.context({ sessionID: session.id });
+    if (messages.some((m) => m.type === 'idle')) break;
+    await sleep(100);
+  }
+  const notice = messages.find((m) => m.type === 'synthetic');
+  assert.deepEqual(notice?.metadata, {
+    source: 'codex-security',
+    runId: noticeRun,
+    status: 'completed',
+  });
+  assert.match(notice.text, /completed with 1 finding \(1 medium\)\. Call security_scan_results/);
+  // The notice resumed the session, which stopped for want of a model: no inference ran.
+  const idle = messages.find((m) => m.type === 'idle');
+  assert.equal(idle.error?.type, 'provider.no-route');
+  const asked = JSON.parse(
+    (await test.toolCall({ name: 'security_policy', args: {}, context: toolContext }, { location }))
+      .result.content,
+  );
+  let question;
+  for (let i = 0; i < 100 && !question; i++) {
+    messages = await client.session.context({ sessionID: session.id });
+    question = messages.find((m) => m.metadata?.operationId === asked.operationId);
+    if (!question) await sleep(100);
+  }
+  assert.equal(question?.metadata.status, 'awaiting_answers');
+  assert.match(question.text, /waiting for owner answers/);
+  await rpc.operationCancel({ operationId: asked.operationId }, { location });
+  console.log(
+    'Actual host: finished scans and pending owner questions post a notice into the session that started them, which resumes (no model allowed).',
   );
   const secondLocation = { directory: secondFixture };
   await client.location.get({ location: secondLocation });

@@ -4,10 +4,12 @@ The plugin runs in the local OpenCode server and wraps three SDK calls: `run`, `
 
 | File                                                                 | Role                                                                                                                 |
 | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `src/plugin.ts`                                                      | Registers the RPC and tools, wires events, cleans up.                                                                |
-| `src/tools.ts`                                                       | The model-facing tools. Anything that starts inference asks OpenCode for permission first.                           |
-| `src/core/settings.ts`                                               | Merges the user's Codex routing with `codex-security.json`.                                                          |
+| `src/plugin.ts`                                                      | Registers the RPC, tools and skill, wires events, cleans up.                                                         |
+| `src/tools.ts`                                                       | The model-facing tools, and the notices posted into the session that started a scan or operation.                    |
+| `src/skill.ts`                                                       | The bundled `codex-security` skill: the multi-repository scan workflow.                                              |
+| `src/core/settings.ts`                                               | Merges the user's Codex routing with `codex-security.json`; lists and selects Codex profiles.                        |
 | `src/core/scan-plan.ts`                                              | Builds a preview by calling the SDK's `preflight`, which validates scope, context, mode, cost limit and credentials. |
+| `src/core/status.ts`                                                 | The resolved setup (route, config files, profiles, Node and Python) for `security_status` and the `setup` RPC.       |
 | `src/core/planned-scan.ts`                                           | Previews, runs, the two-run limit, and history.                                                                      |
 | `src/core/codex-adapter.ts`                                          | Runs one scan and projects SDK callbacks into UI state.                                                              |
 | `src/core/security-operations.ts`                                    | Policy drafts (with owner questions) and validation.                                                                 |
@@ -21,7 +23,11 @@ The plugin runs in the local OpenCode server and wraps three SDK calls: `run`, `
 2. **Approve.** The UI shows the plan and the user confirms. For the model, `security_scan` prepares the plan and passes it to OpenCode's permission check.
 3. **Run.** The plan is handed to the SDK as prepared. Settings edited after the preview do not affect it, except a Codex file profile, which the SDK reads itself at this point. Progress, activity and cost arrive through SDK callbacks; findings arrive with the final result.
 
-Policy and validation follow the same prepare, approve, run shape.
+4. **Notify.** When the run was started by `security_scan` from a session, its end is posted into that session with `ctx.session.synthetic` (queued delivery). OpenCode resumes the session, and the model reads the results through the tools. The notice carries only IDs, status and severity counts, never report text.
+
+Policy and validation follow the same prepare, approve, run shape, and also notify when a policy draft is waiting for owner answers. Notices stop before the plugin shuts down, so cancelling work at shutdown wakes no session.
+
+Context files and the repository are plain paths handed to the SDK. Context may be anywhere on disk; a repository may be a plain folder holding several checkouts, scoped with `scopePaths` (the SDK's "one system across repositories" layout).
 
 ## Design choices
 

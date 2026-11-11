@@ -26,10 +26,12 @@ export async function configure(t, { plugin, codex } = {}) {
   }
   t.after(() => Promise.all(files.map(([d, n]) => rm(join(d, n), { force: true }))));
 }
-/** A fake plugin host: collects tools, RPC handlers and permission requests. */
+/** A fake plugin host: collects tools, skills, RPC handlers, permission requests and session input. */
 export function host(directory, { allow = () => true } = {}) {
   const tools = [],
-    permissions = [];
+    skills = [],
+    permissions = [],
+    synthetic = [];
   const context = {
     signal: new AbortController().signal,
     sessionID: 'session',
@@ -58,6 +60,23 @@ export function host(directory, { allow = () => true } = {}) {
         return { dispose: async () => {} };
       },
     },
+    skill: {
+      transform: async (register) => {
+        const added = [];
+        register({ add: (skill) => added.push(skill) && skills.push(skill) });
+        return {
+          dispose: async () => {
+            for (const skill of added) skills.splice(skills.indexOf(skill), 1);
+          },
+        };
+      },
+    },
+    session: {
+      synthetic: async (input) => {
+        synthetic.push(input);
+        return { id: `msg_${synthetic.length}`, type: 'synthetic' };
+      },
+    },
   };
   const call = async (name, input = {}) => {
     const { content } = await tools.find((tool) => tool.name === name).execute(input, context);
@@ -67,6 +86,6 @@ export function host(directory, { allow = () => true } = {}) {
       return content;
     }
   };
-  return { ctx, tools, permissions, call };
+  return { ctx, tools, skills, permissions, synthetic, call };
 }
 export const tick = () => new Promise((resolve) => setImmediate(resolve));

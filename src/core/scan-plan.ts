@@ -116,6 +116,27 @@ export async function withSdk<T>(
   }
 }
 
+/** The route a preflight resolved, with the endpoint from the same config merge the SDK runs. */
+export async function routeFrom(
+  sdk: typeof import('@openai/codex-security'),
+  codexOverrides: JsonObject,
+  preflight: Awaited<ReturnType<CodexSecurity['preflight']>>,
+): Promise<Route> {
+  // Includes a `<profile>.config.toml` file profile.
+  const config = await sdk.mergedCodexConfig({ codexOverrides }, codexHome());
+  const provider = preflight.modelProvider ?? 'openai';
+  const providers = config.model_providers as Record<string, { base_url?: string }> | undefined;
+  const baseUrl = provider === 'openai' ? config.openai_base_url : providers?.[provider]?.base_url;
+  return {
+    provider,
+    ...(typeof baseUrl === 'string' ? { baseUrl } : {}),
+    model: preflight.model,
+    reasoningEffort: preflight.reasoningEffort,
+    daybreak: config.daybreak === true,
+    auth: describeAuthentication(preflight.authentication),
+  };
+}
+
 /** Resolve inputs and settings through the SDK's own preflight. No inference, no network. */
 export async function prepareScan(
   workspace: string,
@@ -134,14 +155,9 @@ export async function prepareScan(
       ...scanSettings,
       auth: settings.auth,
       target: input.scopePaths?.length ? input.scopePaths : 'repository',
+      // Relative to the repository; absolute paths may name files in other checkouts.
       knowledgeBasePaths: contextFiles.map((path) => resolve(repository, path)),
     });
-    // The same merge the SDK runs, including a `<profile>.config.toml` file profile.
-    const config = await sdk.mergedCodexConfig({ codexOverrides: settings.codex }, codexHome());
-    const provider = preflight.modelProvider ?? 'openai';
-    const providers = config.model_providers as Record<string, { base_url?: string }> | undefined;
-    const baseUrl =
-      provider === 'openai' ? config.openai_base_url : providers?.[provider]?.base_url;
     const scopePaths = preflight.target.kind === 'paths' ? [...preflight.target.paths] : [];
     return {
       id: randomUUID(),
@@ -150,14 +166,7 @@ export async function prepareScan(
       scanPrompt: input.scanPrompt ?? '',
       contextFiles: contextFiles.map((path) => ({ path })),
       settings: {
-        codex: {
-          provider,
-          ...(typeof baseUrl === 'string' ? { baseUrl } : {}),
-          model: preflight.model,
-          reasoningEffort: preflight.reasoningEffort,
-          daybreak: config.daybreak === true,
-          auth: describeAuthentication(preflight.authentication),
-        },
+        codex: await routeFrom(sdk, settings.codex, preflight),
         scan: { ...scanSettings, mode: preflight.mode },
       },
       globalConfigFile: settings.path,
