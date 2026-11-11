@@ -8,7 +8,7 @@ Current global configuration is documented in [GLOBAL-CONFIG.md](GLOBAL-CONFIG.m
 
 Packaged OpenCode installs npm plugins in-process and runs them with its bundled runtime. A separate system Node/npm installation is not required to load this plugin or run its fixture mode. Installing OpenCode through npm or developing the plugin is a different workflow.
 
-Real SDK operations have additional requirements: SDK 0.9.1's workbench helpers and deep-scan engine explicitly resolve external Node from a trusted `PATH` when hosted by Bun. Missing Node fails those paths; bundled Bun is not a substitute. The plugin currently supports Node 24.x or 26.x, and real scans require Python 3.10+ (`tomli` for Python 3.10). Ensure the OpenCode service can see existing compatible runtimes before proposing installation or changes. npm is not required to run the helpers. Fixture/consent-gate tests do not establish successful real inference.
+Real SDK operations have additional requirements: SDK 0.9.1's workbench helpers and deep-scan engine explicitly resolve external Node from a trusted `PATH` when hosted by Bun. Missing Node fails those paths; bundled Bun is not a substitute. The plugin currently supports Node 22.20+ within 22.x, 24.x or 26.x, and real scans require Python 3.10+ (`tomli` for Python 3.10). Ensure the OpenCode service can see existing compatible runtimes before proposing installation or changes. npm is not required to run the helpers. Fixture/consent-gate tests do not establish successful real inference.
 
 ## Pipeline
 

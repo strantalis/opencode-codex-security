@@ -13,12 +13,12 @@ The setup is provider-neutral. Discover an existing supported Codex configuratio
 ## What you need
 
 - **Install and check loading:** an existing packaged OpenCode V2 host and access to the public npm registry. Add the npm package entry below; OpenCode downloads dependencies and runs the plugin using its bundled runtime. You do **not** need to install Node, npm, Bun or a separate Codex CLI just to load the plugin or use its bundled fixture. Do not make terminal `node --version` a gate for this step.
-- **Run real SDK operations:** a supported Node runtime must be on the OpenCode process's trusted `PATH`; SDK 0.9.1 calls external Node helpers when hosted by Bun. Use Node 24.x or 26.x for the plugin's current supported range. Real scans also require Python 3.10+ (`tomli` for Python 3.10), supported provider/model access, and permission for source transfer and usage. Reuse existing compatible runtimes; install or change them only when actually needed and approved. npm is not needed to run those helpers.
+- **Run real SDK operations:** a supported Node runtime must be on the OpenCode process's trusted `PATH`; SDK 0.9.1 calls external Node helpers when hosted by Bun. Use Node 22.20+ within 22.x, 24.x or 26.x for the plugin's current supported range. Real scans also require Python 3.10+ (`tomli` for Python 3.10), supported provider/model access, and permission for source transfer and usage. Reuse existing compatible runtimes; install or change them only when actually needed and approved. npm is not needed to run those helpers.
 - **Host compatibility:** use OpenCode V2. Version 2.2.6 is the original test baseline, not an exact-patch requirement; verify the installed host before recommending an update. macOS/Linux are the tested host platforms. The ChatGPT credential guard rejects Windows; custom-provider key checks are platform-neutral, but a complete Windows SDK operation has not been verified.
 
 The plugin package includes its Desktop bundle and depends on the pinned Codex Security SDK, its bundled Codex runtime, OpenCode plugin API and Solid. OpenTUI is an optional peer supplied by terminal integration. Repository development/TUI tests use Node 26.4+ and Bun; those are **contributor tools**, not prerequisites for the normal plugin installation above. Installing OpenCode itself through npm is a separate workflow with its own prerequisites.
 
-**Node 22.14 check:** this is not a supported runtime for executing the full dependency tree directly. SDK 0.9.1 itself permits 22.13+, but dependencies require 22.19+ and importing `undici@8.12.4` fails on 22.14.0. That does not prevent a working packaged OpenCode host from installing and loading the plugin with its own runtime. The package's declared Node `>=24` range is unchanged.
+**Node 22:** use 22.20 or later within the 22.x line. The older 22.14 release fails an SDK dependency import; that is not a reason to reject all Node 22 installations. Runtime checks cover SDK loading, local scope inventory, and the SQLite findings helpers without model calls. OpenCode loads the plugin using its own runtime; external Node is needed by SDK helpers, not by the plugin UI itself.
 
 ## Installation reference
 
@@ -36,7 +36,7 @@ Check for active scans, approvals or policy forms **before editing watched setti
 
 ### Optional: manage npm installation yourself
 
-Skip this for the ordinary OpenCode-managed install above. This alternative needs Node 24.x or 26.x and npm. For explicit installation/audit control, use a dedicated consumer outside source repositories and active installations:
+Skip this for the ordinary OpenCode-managed install above. This alternative needs Node 22.20+ within 22.x, 24.x or 26.x and npm. For explicit installation/audit control, use a dedicated consumer outside source repositories and active installations:
 
 ```sh
 mkdir security-plugin && cd security-plugin

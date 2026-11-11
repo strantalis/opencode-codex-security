@@ -129,7 +129,7 @@ export function unsupportedPricingMessage(error: unknown): string | undefined {
     error instanceof Error &&
     error.message.startsWith('A scan cost limit is not available for the configured model:')
   )
-    return 'The SDK cannot estimate costs for this model or gateway alias, so the operation stopped without removing its cost limit. Use a gateway model with SDK-supported pricing, or ask the gateway administrator about a compatible route. Estimates are not gateway billing totals or hard caps.';
+    return 'The SDK cannot estimate costs for this model or gateway alias, so the operation stopped without removing its cost limit. This is a missing price entry, not evidence that the model is unavailable or retired. The configured model and provider were not changed. Verify which backend the alias routes to and its pricing before choosing a supported route; do not substitute a different model ID or remove the guard automatically. Estimates are not gateway billing totals or hard caps.';
 }
 
 /** Local coordinator; SDK inference is network-backed, not an offline scanner. */

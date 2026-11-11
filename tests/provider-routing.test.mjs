@@ -454,6 +454,8 @@ test('unknown model pricing fails closed with a useful redacted message and reta
   const state = await scan.wait();
   assert.equal(state.status, 'error');
   assert.match(state.error, /cannot estimate costs/);
+  assert.match(state.error, /not evidence that the model is unavailable or retired/);
+  assert.match(state.error, /model and provider were not changed/);
   assert.doesNotMatch(state.error, /SYNTHETIC_HIDDEN/);
   const operations = new SecurityOperationsService(root, { createClient });
   t.after(() => Promise.all([scan.dispose(), operations.dispose()]));
