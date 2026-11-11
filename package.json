@@ -26,7 +26,8 @@
     "test:package": "npm run build && node scripts/packed-host-test.mjs",
     "test:tui": "bun --preload @opentui/solid/preload scripts/tui-preview-smoke.tsx",
     "audit:runtime": "npm audit --omit=dev --audit-level=high",
-    "release:artifact": "npm run build && node scripts/release-artifact.mjs"
+    "release:artifact": "npm run build && node scripts/release-artifact.mjs",
+    "test:runtime": "node --test tests/sdk-runtime.test.mjs"
   },
   "dependencies": {
     "@openai/codex-security": "0.9.1",
@@ -49,7 +50,7 @@
     "vite-plugin-solid": "^2.11.15"
   },
   "engines": {
-    "node": ">=24"
+    "node": "^22.20.0 || ^24.0.0 || ^26.0.0"
   },
   "description": "Codex Security scans, policy drafts and finding validation inside OpenCode V2.",
   "license": "Apache-2.0",
