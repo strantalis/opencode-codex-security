@@ -1,16 +1,54 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Security panel component test</title>
     <style>
+      /* A subset of the OpenCode Desktop v2 tokens (values from Desktop 2.2.7), so the panel is
+         previewed against host-like colours in both schemes. */
+      :root[data-theme='dark'] {
+        --v2-background-bg-base: #161616;
+        --v2-background-bg-layer-01: #242424;
+        --v2-text-text-base: #fafafa;
+        --v2-text-text-muted: #aeaeae;
+        --v2-text-text-accent: #a2bcff;
+        --v2-text-text-contrast: #ffffff;
+        --v2-border-border-base: rgba(255, 255, 255, 0.1);
+        --v2-border-border-strong: rgba(255, 255, 255, 0.2);
+        --v2-border-border-focus: #7698fd;
+        --v2-overlay-simple-overlay-hover: rgba(255, 255, 255, 0.06);
+        --v2-background-bg-accent: #3b5cf6;
+        --v2-state-fg-success: #6bd586;
+        --v2-state-fg-warning: #f2cf76;
+        --v2-state-fg-danger: #f17471;
+        --v2-state-bg-danger: #461516;
+        --v2-state-border-danger: #97252b;
+      }
+      :root[data-theme='light'] {
+        --v2-background-bg-base: #ffffff;
+        --v2-background-bg-layer-01: #fafafa;
+        --v2-text-text-base: #161616;
+        --v2-text-text-muted: #5c5c5c;
+        --v2-text-text-accent: #3b5cf6;
+        --v2-text-text-contrast: #ffffff;
+        --v2-border-border-base: rgba(0, 0, 0, 0.1);
+        --v2-border-border-strong: rgba(0, 0, 0, 0.2);
+        --v2-border-border-focus: #7698fd;
+        --v2-overlay-simple-overlay-hover: rgba(0, 0, 0, 0.04);
+        --v2-background-bg-accent: #3b5cf6;
+        --v2-state-fg-success: #198b43;
+        --v2-state-fg-warning: #cb9f34;
+        --v2-state-fg-danger: #b82d35;
+        --v2-state-bg-danger: #fceceb;
+        --v2-state-border-danger: #f2bbb7;
+      }
       html,
       body {
         margin: 0;
         min-height: 100%;
-        background: #151515;
-        color: #eee;
+        background: var(--v2-background-bg-base);
+        color: var(--v2-text-text-base);
         font:
           13px/1.5 -apple-system,
           BlinkMacSystemFont,
@@ -20,14 +58,15 @@
       #label {
         padding: 10px 18px;
         font-size: 11px;
-        color: #b5b5b5;
-        border-bottom: 1px solid #454545;
+        color: var(--v2-text-text-muted);
+        border-bottom: 1px solid var(--v2-border-border-base);
       }
       #root {
         width: min(100%, 580px);
         height: calc(100vh - 40px);
         margin: auto;
-        border-inline: 1px solid #454545;
+        box-sizing: border-box;
+        border-inline: 1px solid var(--v2-border-border-base);
       }
       body.narrow #root {
         width: min(100%, 360px);
@@ -37,10 +76,10 @@
         bottom: 0;
         right: 0;
         max-width: 240px;
-        background: #222;
         font-size: 10px;
         padding: 4px;
         z-index: 10;
+        color: var(--v2-text-text-muted);
       }
     </style>
   </head>
