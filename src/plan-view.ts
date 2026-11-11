@@ -67,3 +67,9 @@ export function latestAvailableDraft(
   if (valid(catalog?.preview)) return catalog.preview;
   return undefined;
 }
+
+/** Short destination for approval copy, e.g. "openai" or "acme (https://llm.acme/v1)". */
+export function inferenceDestination(settings: ScanPlan['settings']): string {
+  const { provider, baseUrl } = settings.codex;
+  return `${provider}${baseUrl ? ` (${baseUrl})` : ''}`;
+}
