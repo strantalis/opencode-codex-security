@@ -47,6 +47,11 @@ async function setup(t, clients = {}) {
         calls.validation.push(options);
         return { disposition: 'reportable', report: 'Confirmed.' };
       },
+      patch: async (options) => {
+        const { writeFile } = await import('node:fs/promises');
+        await writeFile(join(options.repositoryPath, 'src', 'app.js'), 'export const ok = 1;\n');
+        return { status: 'verified', verificationReport: 'Guard added.', changedFiles: [] };
+      },
       close: async () => {},
     }),
   });
@@ -54,20 +59,23 @@ async function setup(t, clients = {}) {
   return { ...fake, root, calls, deny: (value = true) => (allowed = !value) };
 }
 const settled = async (read) => {
-  for (let i = 0; i < 200; i++) {
+  // Fixes shell out to git, so allow real time as well as event-loop turns.
+  for (let i = 0; i < 500; i++) {
     const state = await read();
     if (!['running', 'prepared'].includes(state.status)) return state;
-    await tick();
+    await new Promise((resolve) => setTimeout(resolve, i < 200 ? 0 : 10));
   }
   assert.fail('did not settle');
 };
 
-test('eleven tools are registered, with short descriptions', async (t) => {
+test('thirteen tools are registered, with short descriptions', async (t) => {
   const { tools } = await setup(t);
   assert.deepEqual(tools.map((tool) => tool.name).sort(), [
     'security_answer_questions',
+    'security_apply_fix',
     'security_cancel_operation',
     'security_cancel_scan',
+    'security_fix',
     'security_operations',
     'security_policy',
     'security_scan',
@@ -331,4 +339,40 @@ test('policy approval identifies the context files sent to inference', async (t)
   deny();
   await assert.rejects(call('security_policy', { contextFiles: ['ARCHITECTURE.md'] }), /Denied/);
   assert.deepEqual(permissions.at(-1).metadata.contextFiles, ['ARCHITECTURE.md']);
+});
+
+test('a fix is proposed in the background and applied only with permission', async (t) => {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const { readFile } = await import('node:fs/promises');
+  const { call, permissions, deny, root, synthetic } = await setup(t);
+  const git = (...args) =>
+    promisify(execFile)('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.test', ...args], {
+      cwd: root,
+    });
+  await git('init', '--quiet', '--initial-branch=main');
+  await git('add', '-A');
+  await git('commit', '--quiet', '-m', 'base');
+  const runId = /Run ID: (\S+)/.exec(await call('security_scan'))[1];
+  await settled(() => call('security_scan_status', { runId }));
+  const fix = await call('security_fix', { runId, findingId: 'o1' });
+  assert.equal(permissions.at(-1).action, 'codex_security_fix');
+  const done = await settled(() => call('security_operations', { operationId: fix.operationId }));
+  assert.equal(done.result.resolution, 'pending');
+  assert.match(done.result.diff, /^\+export const ok = 1;$/m);
+  await tick();
+  assert.match(
+    synthetic.at(-1).text,
+    /fix .* completed\. .*security_apply_fix only if they accept/,
+  );
+  const app = join(root, 'src', 'app.js');
+  deny();
+  await assert.rejects(call('security_apply_fix', { operationId: fix.operationId }), /Denied/);
+  assert.equal(permissions.at(-1).action, 'codex_security_apply_fix');
+  assert.match(permissions.at(-1).metadata.diff, /export const ok = 1/);
+  assert.equal(await readFile(app, 'utf8'), 'export const ok = true;\n');
+  deny(false);
+  const applied = await call('security_apply_fix', { operationId: fix.operationId });
+  assert.equal(applied.result.resolution, 'applied');
+  assert.equal(await readFile(app, 'utf8'), 'export const ok = 1;\n');
 });

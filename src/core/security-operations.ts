@@ -6,6 +6,7 @@ import type {
   SecurityPolicyOptions,
   ValidationOptions,
   ValidationResult,
+  PatchResult,
 } from '@openai/codex-security';
 import {
   prepareScan,
@@ -16,8 +17,14 @@ import {
 } from './scan-plan.ts';
 import { safeReportText } from './report-safety.ts';
 import { SecurityInputError, userMessage } from './errors.ts';
+import {
+  createPatchWorkspace,
+  gitRoot,
+  type PatchWorkspace,
+  type PatchWorkspaceFactory,
+} from './patch-workspace.ts';
 
-export type SecurityOperationKind = 'policy' | 'validation';
+export type SecurityOperationKind = 'policy' | 'validation' | 'fix';
 export type SecurityOperationStatus =
   'prepared' | 'running' | 'awaiting_answers' | 'completed' | 'cancelled' | 'error';
 export interface SecurityOperationInputs {
@@ -26,7 +33,7 @@ export interface SecurityOperationInputs {
   /** Existing repository-relative directory. Policy generation only. */
   path?: string;
   contextFiles?: string[];
-  /** Literal finding text or a JSON object, never a filename. Validation only. */
+  /** Literal finding text or a JSON object, never a filename. Validation and fix. */
   finding?: string | Record<string, unknown>;
 }
 export interface SecurityOperationPlan extends ScanPlan {
@@ -61,6 +68,18 @@ export type SecurityOperationResult =
       disposition: ValidationResult['disposition'];
       report: string;
       truncated: boolean;
+    }
+  | {
+      kind: 'fix';
+      /** The SDK's verdict on its own change. */
+      status: PatchResult['status'];
+      /** Verification report, or the reason the fix was blocked or failed. */
+      report: string;
+      /** The proposed change against the last commit. Empty when nothing changed. */
+      diff: string;
+      /** `pending` until the user applies or discards the diff. */
+      resolution: 'pending' | 'applied' | 'discarded' | 'none';
+      truncated: boolean;
     };
 export interface SecurityOperationState {
   operationId: string;
@@ -79,17 +98,23 @@ export interface SecurityOperationState {
   finishedAt: string | null;
   revision: number;
 }
-export type SecurityOperationsClient = Pick<CodexSecurity, 'generatePolicy' | 'validate' | 'close'>;
+export type SecurityOperationsClient = Pick<
+  CodexSecurity,
+  'generatePolicy' | 'validate' | 'patch' | 'close'
+>;
 export type SecurityOperationsFactory = (
   config: CodexSecurityConfig,
 ) => SecurityOperationsClient | Promise<SecurityOperationsClient>;
 export interface SecurityOperationsOptions {
   createClient?: SecurityOperationsFactory;
+  createWorkspace?: PatchWorkspaceFactory;
   mock?: boolean;
 }
 
 type Entry = {
   execution: PreparedScanPlan['sdk'];
+  /** The worktree holding a proposed fix, until it is applied or discarded. */
+  workspace?: PatchWorkspace;
   state: SecurityOperationState;
   controller: AbortController;
   task?: Promise<void>;
@@ -110,10 +135,10 @@ const diffLimit = 2 * textLimit;
 
 function parseInputs(raw: unknown): SecurityOperationInputs {
   const value = (raw ?? {}) as Record<string, unknown>;
-  if (value.kind !== 'policy' && value.kind !== 'validation')
-    throw new SecurityInputError('Choose policy or validation.');
+  if (value.kind !== 'policy' && value.kind !== 'validation' && value.kind !== 'fix')
+    throw new SecurityInputError('Choose policy, validation or fix.');
   if (value.kind === 'policy' ? value.finding !== undefined : value.path !== undefined)
-    throw new SecurityInputError('Policy takes a path; validation takes a finding.');
+    throw new SecurityInputError('Policy takes a path; validation and fix take a finding.');
   if (value.path !== undefined && typeof value.path !== 'string')
     throw new SecurityInputError('Policy path must be a directory inside the repository.');
   // Callers may reuse their input object while preparation awaits I/O.
@@ -122,7 +147,7 @@ function parseInputs(raw: unknown): SecurityOperationInputs {
 function findingText(value: SecurityOperationInputs['finding']): string {
   const text = typeof value === 'string' ? value : value ? JSON.stringify(value) : '';
   if (!text.trim() || Buffer.byteLength(text) > 32 * 1024)
-    throw new SecurityInputError('Validation needs finding text or an object of at most 32 KiB.');
+    throw new SecurityInputError('A finding is needed, as text or an object of at most 32 KiB.');
   return text;
 }
 
@@ -134,6 +159,7 @@ export class SecurityOperationsService {
   readonly maxConcurrent = 2;
   #project: string;
   #factory: SecurityOperationsFactory;
+  #workspace: PatchWorkspaceFactory;
   #mock: boolean;
   #disposed = false;
   #entries = new Map<string, Entry>();
@@ -141,6 +167,7 @@ export class SecurityOperationsService {
   constructor(project: string, options: SecurityOperationsOptions = {}) {
     this.#project = project;
     this.#factory = options.createClient ?? realClient;
+    this.#workspace = options.createWorkspace ?? createPatchWorkspace;
     this.#mock = options.mock ?? false;
     if (this.#mock && !options.createClient)
       throw new Error('Mock operations require an injected mock SDK client.');
@@ -175,12 +202,13 @@ export class SecurityOperationsService {
   async prepare(raw: SecurityOperationInputs): Promise<SecurityOperationState> {
     if (this.#disposed) throw new Error('Security operations service is closed.');
     const input = parseInputs(raw);
-    const finding = input.kind === 'validation' ? findingText(input.finding) : undefined;
+    const finding = input.kind === 'policy' ? undefined : findingText(input.finding);
+    if (input.kind === 'fix') await gitRoot(resolve(this.#project, input.repository ?? '.'));
     const scan = await prepareScan(
       this.#project,
       { repository: input.repository, contextFiles: input.contextFiles },
       this.#mock,
-      input.kind === 'validation' ? 'validation' : 'scan',
+      input.kind === 'policy' ? 'scan' : 'validation',
     );
     const limit = scan.settings.scan.maxCostUsd;
     // The SDK decides which repository and SECURITY.md a policy path belongs to.
@@ -211,9 +239,11 @@ export class SecurityOperationsService {
       costNotice:
         input.kind === 'validation'
           ? 'Validation has no cost limit in the SDK; scan.maxCostUsd does not apply.'
-          : limit === undefined
-            ? 'No cost limit is configured.'
-            : `Stops at an estimated USD ${limit}. This is an estimate, not a billing cap.`,
+          : input.kind === 'fix'
+            ? 'Proposing a fix has no cost limit in the SDK; scan.maxCostUsd does not apply.'
+            : limit === undefined
+              ? 'No cost limit is configured.'
+              : `Stops at an estimated USD ${limit}. This is an estimate, not a billing cap.`,
     };
     const entry: Entry = {
       execution: structuredClone(scan.sdk),
@@ -254,8 +284,11 @@ export class SecurityOperationsService {
     )
       throw new SecurityInputError('Two operations are already active. Wait or cancel one.');
     entry.state.status = 'running';
-    entry.state.phase =
-      entry.state.kind === 'policy' ? 'Generating security policy draft' : 'Validating finding';
+    entry.state.phase = {
+      policy: 'Generating security policy draft',
+      validation: 'Validating finding',
+      fix: 'Writing and verifying a fix',
+    }[entry.state.kind];
     entry.state.startedAt = new Date().toISOString();
     this.#emit(entry);
     entry.task = this.#run(entry);
@@ -332,6 +365,39 @@ export class SecurityOperationsService {
           result.cost.estimatedUsd >= 0
         )
           entry.state.estimatedCostUsd = result.cost.estimatedUsd;
+      } else if (plan.kind === 'fix') {
+        // The SDK edits files, so it works on a copy of the last commit, never the checkout.
+        const workspace = (entry.workspace = await this.#workspace(
+          plan.repository,
+          entry.state.operationId,
+        ));
+        signal.throwIfAborted();
+        const result = await client.patch({
+          repositoryPath: workspace.directory,
+          finding: plan.finding!,
+          auth: entry.execution.auth,
+          signal,
+          onCost: (cost) => {
+            if (observing() && Number.isFinite(cost.estimatedUsd) && cost.estimatedUsd >= 0) {
+              entry.state.estimatedCostUsd = cost.estimatedUsd;
+              this.#emit(entry);
+            }
+          },
+        });
+        signal.throwIfAborted();
+        const diff = await workspace.diff();
+        const report = ('verificationReport' in result && result.verificationReport) || '';
+        const reason = ('reason' in result && result.reason) || '';
+        entry.state.result = {
+          kind: 'fix',
+          status: result.status,
+          report: safeReportText([reason, report].filter(Boolean).join('\n\n')),
+          diff: diff.slice(0, diffLimit),
+          resolution: diff ? 'pending' : 'none',
+          truncated: diff.length > diffLimit,
+        };
+        if (result.cost && Number.isFinite(result.cost.estimatedUsd))
+          entry.state.estimatedCostUsd = result.cost.estimatedUsd;
       } else {
         const options: ValidationOptions = {
           repositoryPath: plan.repository,
@@ -371,12 +437,21 @@ export class SecurityOperationsService {
         entry.state.error = null;
         entry.state.result = null;
       }
+      // Keep the worktree only while a diff is waiting for the user's decision.
+      const pending =
+        entry.state.result?.kind === 'fix' && entry.state.result.resolution === 'pending';
+      if (!pending && entry.workspace) {
+        await entry.workspace.remove().catch(() => {});
+        entry.workspace = undefined;
+      }
       entry.state.status = outcome;
       entry.state.phase =
         outcome === 'completed'
-          ? plan.kind === 'policy'
-            ? 'Security policy draft ready; not applied'
-            : 'Validation assessment ready'
+          ? {
+              policy: 'Security policy draft ready; not applied',
+              validation: 'Validation assessment ready',
+              fix: pending ? 'Fix ready to review' : 'No change proposed',
+            }[plan.kind]
           : outcome === 'cancelled'
             ? 'Cancelled; results incomplete'
             : 'Security operation failed';
@@ -480,10 +555,34 @@ export class SecurityOperationsService {
     await entry.task;
     return this.getState(operationId);
   }
+  /** Apply a proposed fix to the working tree, or throw it away. */
+  async resolve(input: {
+    operationId: string;
+    action: 'apply' | 'discard';
+  }): Promise<SecurityOperationState> {
+    const entry = this.#entry(input?.operationId);
+    const result = entry.state.result;
+    if (result?.kind !== 'fix' || result.resolution !== 'pending' || !entry.workspace)
+      throw new SecurityInputError('This operation has no fix waiting for a decision.');
+    if (input.action !== 'apply' && input.action !== 'discard')
+      throw new SecurityInputError('Choose apply or discard.');
+    // A failed apply leaves the fix pending, so the user can retry or discard it.
+    if (input.action === 'apply') await entry.workspace.apply();
+    await entry.workspace.remove();
+    entry.workspace = undefined;
+    result.resolution = input.action === 'apply' ? 'applied' : 'discarded';
+    entry.state.phase = input.action === 'apply' ? 'Fix applied' : 'Fix discarded';
+    this.#emit(entry);
+    return this.getState(input.operationId);
+  }
   async dispose() {
     this.#disposed = true;
     for (const id of this.#entries.keys()) this.cancel(id);
     await Promise.all([...this.#entries.values()].map((entry) => entry.task));
+    // Operations do not survive a restart, so neither do their worktrees.
+    await Promise.all(
+      [...this.#entries.values()].map((entry) => entry.workspace?.remove().catch(() => {})),
+    );
     this.#listeners.clear();
   }
 }

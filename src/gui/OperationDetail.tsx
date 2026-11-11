@@ -1,7 +1,7 @@
 import { createSignal, For, Show } from 'solid-js';
 import type { SecurityOperationState } from '../core/security-operations';
 import { describeInferenceRoute, inferenceDestination } from '../plan-view';
-import { elapsedLabel, phaseLabel, userError } from '../scan-display';
+import { fixStatusLabel, elapsedLabel, phaseLabel, userError } from '../scan-display';
 import { dispositionLabel, statusLabel } from './format';
 import type { OperationPort, SecurityStore } from './store';
 
@@ -22,6 +22,7 @@ export function OperationDetail(props: {
   const [error, setError] = createSignal('');
   const op = () => props.op;
   const validation = () => op().kind === 'validation';
+  const fix = () => op().kind === 'fix';
   const active = () => op().status === 'running' || op().status === 'awaiting_answers';
   const expired = () => Date.parse(op().plan.expiresAt) <= props.store.now();
   const perform = async (action: () => Promise<unknown>) => {
@@ -42,7 +43,9 @@ export function OperationDetail(props: {
   return (
     <div class="gs-operation" classList={{ 'gs-operation-compact': props.compact }}>
       <div class="gs-operation-head">
-        <strong>{validation() ? 'Validation' : 'Policy draft'}</strong>
+        <strong>
+          {{ policy: 'Policy draft', validation: 'Validation', fix: 'Fix' }[op().kind]}
+        </strong>
         <span class="gs-status" data-status={op().status}>
           {statusLabel(op().status)}
         </span>
@@ -66,14 +69,20 @@ export function OperationDetail(props: {
             fallback={<p>Mock operation: synthetic results, no model calls.</p>}
           >
             <p>
-              Approving sends repository source{validation() ? ', this finding' : ''} and any
-              context files to {inferenceDestination(op().plan.settings)}.
+              Approving sends repository source{validation() || fix() ? ', this finding' : ''} and
+              any context files to {inferenceDestination(op().plan.settings)}.
             </p>
             <p>
               <strong>{op().plan.costNotice}</strong>
             </p>
-            <Show when={!validation()}>
+            <Show when={op().kind === 'policy'}>
               <p>You get a draft to review. Nothing is written to the repository.</p>
+            </Show>
+            <Show when={fix()}>
+              <p>
+                The fix is written in a copy of the last commit. Your files change only if you apply
+                the diff.
+              </p>
             </Show>
           </Show>
           <details class="gs-disclosure">
@@ -139,6 +148,53 @@ export function OperationDetail(props: {
       <Show when={op().result}>
         {(result) => {
           const r = result();
+          if (r.kind === 'fix')
+            return (
+              <div class="gs-result">
+                <p class="gs-disposition" data-disposition={r.status}>
+                  {fixStatusLabel(r.status)}
+                  {r.resolution === 'applied' || r.resolution === 'discarded'
+                    ? ` · ${r.resolution}`
+                    : ''}
+                </p>
+                <Show when={r.report}>
+                  <p class="gs-report">{r.report}</p>
+                </Show>
+                <Show when={r.diff} fallback={<p class="gs-muted">No files were changed.</p>}>
+                  <pre aria-label="Proposed change">{r.diff}</pre>
+                </Show>
+                <Show when={r.truncated}>
+                  <p class="gs-note">Diff truncated here; applying uses the whole change.</p>
+                </Show>
+                <Show when={r.resolution === 'pending'}>
+                  <div class="gs-actions">
+                    <button
+                      class="gs-button gs-primary"
+                      disabled={busy()}
+                      onClick={() =>
+                        void perform(() =>
+                          props.port.resolve({ operationId: op().operationId, action: 'apply' }),
+                        )
+                      }
+                    >
+                      Apply to working tree
+                    </button>
+                    <button
+                      class="gs-button"
+                      disabled={busy()}
+                      onClick={() =>
+                        void perform(() =>
+                          props.port.resolve({ operationId: op().operationId, action: 'discard' }),
+                        )
+                      }
+                    >
+                      Discard
+                    </button>
+                    <span class="gs-muted">Applying does not commit.</span>
+                  </div>
+                </Show>
+              </div>
+            );
           return (
             <div class="gs-result">
               <Show

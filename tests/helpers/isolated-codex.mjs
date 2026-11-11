@@ -8,6 +8,7 @@ const isolated = {
   CODEX_HOME: join(directory, 'codex'),
   XDG_CONFIG_HOME: join(directory, 'config'),
   XDG_STATE_HOME: join(directory, 'state'),
+  XDG_CACHE_HOME: join(directory, 'cache'),
   OPENAI_API_KEY: undefined,
   CODEX_API_KEY: undefined,
   OPENAI_BASE_URL: undefined,

@@ -22,6 +22,7 @@ import {
   runTitle,
   scanScope,
   usageContext,
+  fixStatusLabel,
   trustedAccessLabel,
   targetChangedLabel,
   usageLabel,
@@ -427,6 +428,30 @@ export function SecurityView(props: Props) {
                 </Show>
                 <Show when={r.truncated}>
                   <Label>Truncated here; the full draft is in the local SDK artifacts.</Label>
+                </Show>
+              </box>
+            ) : r.kind === 'fix' ? (
+              <box flexDirection="column" gap={1}>
+                <text>
+                  <b>{fixStatusLabel(r.status)}</b>
+                  <Show when={r.resolution !== 'pending' && r.resolution !== 'none'}>
+                    {' '}
+                    · {r.resolution}
+                  </Show>
+                </text>
+                <Show when={r.report}>
+                  <text>{r.report}</text>
+                </Show>
+                <Show when={r.diff} fallback={<Label>No files were changed.</Label>}>
+                  <Label>
+                    {r.resolution === 'pending'
+                      ? 'Proposed change, not applied yet. y applies it to your working tree; r discards it.'
+                      : 'Change'}
+                  </Label>
+                  <text>{r.diff}</text>
+                </Show>
+                <Show when={r.truncated}>
+                  <Label>Diff truncated here; applying uses the whole change.</Label>
                 </Show>
               </box>
             ) : (

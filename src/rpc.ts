@@ -19,6 +19,11 @@ export const scanInputSchema = {
       items: { type: 'string' },
       description: 'Paths relative to the repository. Omit to scan the whole repository.',
     },
+    changes: {
+      type: 'string',
+      description:
+        'Scan only a diff: "uncommitted" for staged and unstaged changes, or a base ref such as "origin/main" to compare with HEAD. Standard mode only; not combined with scopePaths.',
+    },
     scanPrompt: {
       type: 'string',
       description:
@@ -36,7 +41,7 @@ export const scanInputSchema = {
 export const operationInputSchema = {
   type: 'object',
   properties: {
-    kind: { type: 'string', enum: ['policy', 'validation'] },
+    kind: { type: 'string', enum: ['policy', 'validation', 'fix'] },
     repository: { type: 'string' },
     path: { type: 'string' },
     contextFiles: { type: 'array', items: { type: 'string' } },
@@ -94,6 +99,16 @@ export const Security = Rpc.define({
       errors,
     },
     operationCancel: { input: operationID, output, errors },
+    operationResolve: {
+      input: {
+        type: 'object',
+        properties: { operationId: text, action: { type: 'string', enum: ['apply', 'discard'] } },
+        required: ['operationId', 'action'],
+        additionalProperties: false,
+      },
+      output,
+      errors,
+    },
     setup: { input: empty, output, errors },
     setProfile: {
       input: {

@@ -4,7 +4,7 @@ import { Security } from './rpc';
 import { localProjectDirectory } from './plan-view';
 import { SecurityPanel, type SecurityPort } from './security-panel';
 
-type Capabilities = { policy: boolean; validation: boolean; questionAnswers: boolean };
+type Capabilities = { policy: boolean; validation: boolean; fix?: boolean };
 type SecurityEvent = 'changed' | 'operationChanged';
 
 export default Plugin.define({
@@ -101,6 +101,7 @@ export default Plugin.define({
                           start: (input) => rpc().operationStart(input, { location }),
                           answer: (input) => rpc().operationAnswer(input, { location }),
                           cancel: (input) => rpc().operationCancel(input, { location }),
+                          resolve: (input) => rpc().operationResolve(input, { location }),
                         }
                       : undefined
                   }

@@ -20,7 +20,7 @@ import type {
   ScanResult,
   Finding as SdkFinding,
 } from '@openai/codex-security';
-import type { PreparedScanPlan } from './scan-plan.ts';
+import { scanTarget, type PreparedScanPlan } from './scan-plan.ts';
 import { userMessage } from './errors.ts';
 import type { Finding, ScanState } from '../types.js';
 
@@ -173,7 +173,7 @@ export class CodexScanService {
       const options: ScanOptions = {
         ...plan.settings.scan,
         auth: plan.sdk.auth,
-        target: plan.scopePaths.length ? [...plan.scopePaths] : 'repository',
+        target: await scanTarget(plan),
         ...(plan.scanPrompt ? { scanPrompt: plan.scanPrompt } : {}),
         knowledgeBasePaths: plan.contextFiles.map((file) => resolve(this.root, file.path)),
         signal,

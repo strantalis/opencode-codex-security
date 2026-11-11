@@ -12,7 +12,8 @@ The plugin runs in the local OpenCode server and wraps three SDK calls: `run`, `
 | `src/core/status.ts`                                                       | The resolved setup (route, config files, profiles, Node and Python) for `security_status` and the `setup` RPC.       |
 | `src/core/planned-scan.ts`                                                 | Previews, runs, the two-run limit, and history.                                                                      |
 | `src/core/codex-adapter.ts`                                                | Runs one scan and projects SDK callbacks into UI state.                                                              |
-| `src/core/security-operations.ts`                                          | Policy drafts (with owner questions) and validation.                                                                 |
+| `src/core/security-operations.ts`                                          | Policy drafts (with owner questions), validation and fixes.                                                          |
+| `src/core/patch-workspace.ts`                                              | The throwaway git worktree a fix is written in, and the diff, apply and discard steps.                               |
 | `src/core/run-history.ts`                                                  | One private JSON file per run under `$XDG_STATE_HOME/opencode/codex-security/runs/`.                                 |
 | `src/core/run-telemetry.ts`, `result-summary.ts`, `report-safety.ts`       | Projections of SDK activity, usage and results for display.                                                          |
 | `src/tui.tsx`, `src/tui/`, `src/gui.tsx`, `src/gui/`, `src/security-*.tsx` | Terminal and Desktop views. Both follow server events instead of polling.                                            |
@@ -38,4 +39,4 @@ Context files and the repository are plain paths handed to the SDK. Context may 
 
 ## Not implemented
 
-Patch generation, fix verification, diff scans, resuming interrupted scans, and persistence for policy and validation operations.
+Verifying an existing fix, resuming interrupted scans, and persistence for policy, validation and fix operations.

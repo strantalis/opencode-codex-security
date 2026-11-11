@@ -413,7 +413,7 @@ if (scenario === 'validation') {
   operationStates.unshift(op);
 }
 const operationPort = {
-  capabilities: { policy: true, validation: true, questionAnswers: true },
+  capabilities: { policy: true, validation: true, fix: true },
   list: async () => structuredClone({ operations: operationStates, maxConcurrent: 2 }),
   prepare: async (input) => {
     const op = operation(input.kind, 'op-' + ++operationSequence);
@@ -433,7 +433,27 @@ const operationPort = {
     const op = operationStates.find((op) => op.operationId === input.operationId);
     op.startedAt = new Date().toISOString();
     if (op.kind === 'policy') askQuestions(op);
-    else completeValidation(op);
+    else if (op.kind === 'fix') {
+      op.status = 'completed';
+      op.phase = 'Fix ready to review';
+      op.finishedAt = new Date().toISOString();
+      op.result = {
+        kind: 'fix',
+        status: 'verified',
+        report: 'The tenant check now runs before the lookup; the existing tests pass.',
+        diff: [
+          'diff --git a/src/api/projects.ts b/src/api/projects.ts',
+          '--- a/src/api/projects.ts',
+          '+++ b/src/api/projects.ts',
+          '@@ -44,6 +44,7 @@ export async function getProject(req) {',
+          '   const { id } = req.params;',
+          '+  await requireTenantMember(req.user, req.tenantId);',
+          '   const project = await db.project.findUnique({ where: { id } });',
+        ].join('\n'),
+        resolution: 'pending',
+        truncated: false,
+      };
+    } else completeValidation(op);
     log('Started ' + op.kind + '; mock only');
     emit('operationChanged');
     return structuredClone(op);
@@ -455,6 +475,14 @@ const operationPort = {
       truncated: false,
     };
     log('Answered ' + input.questionId + '; mock only');
+    emit('operationChanged');
+    return structuredClone(op);
+  },
+  resolve: async (input) => {
+    const op = operationStates.find((op) => op.operationId === input.operationId);
+    op.result.resolution = input.action === 'apply' ? 'applied' : 'discarded';
+    op.phase = input.action === 'apply' ? 'Fix applied' : 'Fix discarded';
+    log('Fix ' + op.result.resolution + '; mock only');
     emit('operationChanged');
     return structuredClone(op);
   },

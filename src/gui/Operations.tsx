@@ -6,8 +6,8 @@ import { OperationDetail } from './OperationDetail';
 import type { OperationPort, SecurityStore } from './store';
 
 const title = (op: SecurityOperationState) =>
-  op.kind === 'validation'
-    ? (op.plan.finding?.split('\n')[0] ?? 'Finding validation')
+  op.kind !== 'policy'
+    ? (op.plan.finding?.split('\n')[0] ?? 'Finding')
     : `Policy · ${projectName(op.repository)}${op.plan.path && op.plan.path !== '.' ? ` / ${op.plan.path}` : ''}`;
 
 /** Policy drafts and every validation in this session. Validations start from a finding. */
@@ -69,7 +69,7 @@ export function Operations(props: {
                     </span>
                   </span>
                   <span class="gs-list-meta">
-                    {op.kind === 'validation' ? 'Validation' : 'Policy draft'} ·{' '}
+                    {{ policy: 'Policy draft', validation: 'Validation', fix: 'Fix' }[op.kind]} ·{' '}
                     {shortTime(op.createdAt)}
                   </span>
                 </button>
@@ -83,7 +83,7 @@ export function Operations(props: {
           <Show when={current()?.operationId === id ? current() : undefined}>
             {(op) => (
               <article class="gs-detail" aria-label="Selected operation">
-                <Show when={op().kind === 'validation'}>
+                <Show when={op().kind !== 'policy'}>
                   <h3 class="gs-wrap">{title(op())}</h3>
                 </Show>
                 <OperationDetail op={op()} port={props.port} store={props.store} />

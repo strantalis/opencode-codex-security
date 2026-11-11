@@ -7,38 +7,18 @@ function y(e) {
 	if (!e || typeof e != "object" || !("status" in e) || !("findings" in e) || !Array.isArray(e.findings)) throw Error("Invalid security state");
 	return e;
 }
-// src/plan-view.ts
-function b(e) {
-	return e === void 0 ? "No cost limit is configured." : `Stops at an estimated USD ${e}. This is an estimate, not a billing cap.`;
-}
+// src/scan-display.ts
+var b = (e) => e.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1) || e || "Project";
 function x(e) {
-	let { provider: t, baseUrl: n, auth: r, model: i, reasoningEffort: a } = e.codex;
-	return `${t}${n ? ` (${n})` : ""} · ${i}, ${a} reasoning · ${r}`;
+	return e.plan?.scanPrompt?.split("\n")[0].slice(0, 72) || (e.plan?.scopePaths.length ? e.plan.scopePaths.join(", ") : b(e.repository));
 }
 function S(e) {
-	return [
-		...e.mock ? ["MOCK SDK TEST: no model calls or uploads."] : [],
-		`Repository: ${e.repository}`,
-		`Scope: ${e.scopePaths.join(", ") || "whole repository"}`,
-		`Mode: ${e.settings.scan.mode}`,
-		...e.scanPrompt ? [`Instructions: ${e.scanPrompt}`] : [],
-		...e.contextFiles.length ? [`Context: ${e.contextFiles.map((e) => e.path).join(", ")}`] : [],
-		`Sent to: ${x(e.settings)}`,
-		b(e.settings.scan.maxCostUsd)
-	].join("\n");
+	return e.changes ? e.changes === "uncommitted" ? "Uncommitted changes" : `Changes since ${e.changes}` : e.scopePaths.join(", ") || "Whole repository";
 }
 function C(e) {
-	return !!e && (e.startsWith("/") || /^[A-Za-z]:[\\/]/.test(e));
+	return e.plan ? S(e.plan) : "Whole repository";
 }
-// src/scan-display.ts
-var w = (e) => e.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1) || e || "Project";
-function T(e) {
-	return e.plan?.scanPrompt?.split("\n")[0].slice(0, 72) || (e.plan?.scopePaths.length ? e.plan.scopePaths.join(", ") : w(e.repository));
-}
-function ee(e) {
-	return e.plan?.scopePaths.join(", ") || "Whole repository";
-}
-function E(e) {
+function w(e) {
 	let t = e.replace(/\s*\((files|reviews)\)$/, "").replaceAll("_", " "), n = {
 		preflight: "Preparing scan",
 		discovery: "Reviewing source",
@@ -50,7 +30,7 @@ function E(e) {
 	};
 	return n[t] ? n[t] : t ? t[0].toUpperCase() + t.slice(1) : "Starting scan";
 }
-function te(e) {
+function ee(e) {
 	let t = e.telemetry?.phaseProgress, n = t ? t.reviews && t.reviews.total > 0 ? {
 		...t.reviews,
 		unit: "reviews"
@@ -67,79 +47,79 @@ function te(e) {
 		total: Number.isFinite(n.total) ? Math.max(0, n.total) : 0
 	};
 }
-function D(e) {
+function T(e) {
 	return e.status === "running" && e.telemetry?.lifecycle?.status === "completed";
 }
-function O(e) {
+function E(e) {
 	let t = e.telemetry?.lifecycle?.status;
 	return e.status === "running" && t !== void 0 && t !== "running";
 }
-function k(e) {
-	return e.status === "cancelled" ? "Scan cancelled" : e.status === "error" ? "Scan stopped" : e.status === "completed" ? "Scan complete" : D(e) ? "Finalizing results" : O(e) ? e.telemetry?.lifecycle?.status === "failed" ? "Finishing failed scan" : "Finishing cancelled scan" : e.deepProgress?.consolidating ? "Consolidating deep review" : E(e.telemetry?.phaseProgress?.phase ?? e.phase);
+function te(e) {
+	return e.status === "cancelled" ? "Scan cancelled" : e.status === "error" ? "Scan stopped" : e.status === "completed" ? "Scan complete" : T(e) ? "Finalizing results" : E(e) ? e.telemetry?.lifecycle?.status === "failed" ? "Finishing failed scan" : "Finishing cancelled scan" : e.deepProgress?.consolidating ? "Consolidating deep review" : w(e.telemetry?.phaseProgress?.phase ?? e.phase);
 }
-function A(e) {
-	return e.status === "running" && !O(e) && !e.deepProgress?.consolidating;
+function D(e) {
+	return e.status === "running" && !E(e) && !e.deepProgress?.consolidating;
 }
-function j(e) {
-	let { done: t, total: n, unit: r } = te(e);
+function O(e) {
+	let { done: t, total: n, unit: r } = ee(e);
 	return n > 0 ? `${t} of ${n} ${r}` : t > 0 ? `${t} ${r} completed` : "Waiting for progress details";
 }
-function M(e) {
+function k(e) {
 	let t = e.deepProgress;
 	return t ? `${t.completed} deep ${t.completed === 1 ? "pass" : "passes"} complete · ${t.active} active · cap ${t.maximum}` : "";
 }
-function N(e) {
-	return O(e) && !D(e) ? `The SDK reported ${e.telemetry?.lifecycle?.status === "failed" ? "a scan failure" : "cancellation"}. Waiting for the final result; this is not a completed assessment.` : D(e) ? "Analysis complete. Waiting for the SDK’s final result and findings." : "Findings will appear when the scan finishes.";
+function A(e) {
+	return E(e) && !T(e) ? `The SDK reported ${e.telemetry?.lifecycle?.status === "failed" ? "a scan failure" : "cancellation"}. Waiting for the final result; this is not a completed assessment.` : T(e) ? "Analysis complete. Waiting for the SDK’s final result and findings." : "Findings will appear when the scan finishes.";
 }
-var P = (e) => e > 0 && e < .01 ? "<0.01" : e.toFixed(2);
-function F(e) {
+var j = (e) => e > 0 && e < .01 ? "<0.01" : e.toFixed(2);
+function M(e) {
 	let t = e.telemetry?.measurement;
 	if (t) {
 		let e = t.cost;
 		if (!e || !Number.isFinite(e.baselineUsd)) return "Cost estimate unavailable";
-		let n = `USD ${P(e.baselineUsd)}`;
+		let n = `USD ${j(e.baselineUsd)}`;
 		return t.coverage === "partial" ? `Partial estimate ${n}` : t.coverage === "unavailable" ? `Last estimate ${n} · coverage unavailable` : `Estimated usage ${n}`;
 	}
-	return e.estimatedCostUsd !== void 0 && Number.isFinite(e.estimatedCostUsd) ? `Estimated usage USD ${P(e.estimatedCostUsd)} · coverage unknown` : "Cost estimate unavailable";
+	return e.estimatedCostUsd !== void 0 && Number.isFinite(e.estimatedCostUsd) ? `Estimated usage USD ${j(e.estimatedCostUsd)} · coverage unknown` : "Cost estimate unavailable";
 }
-function ne(e) {
+function N(e) {
 	let t = e.telemetry?.measurement;
 	if (!t) return "Usage coverage was not reported. Estimates are not invoices.";
 	let n = t.missingThreadCount;
 	return t.coverage === "partial" ? `Measured subtotal only${n ? `; ${n} ${n === 1 ? "session is" : "sessions are"} missing` : ""}. The full estimate may be higher.` : t.coverage === "unavailable" ? "The SDK could not establish usage coverage." : "All reported sessions are included. This is a usage estimate, not an invoice.";
 }
-function re(e) {
+function P(e) {
 	return [...e.telemetry?.activity ?? []].sort((e, t) => t.updatedAt.localeCompare(e.updatedAt));
 }
-function ie(e) {
+function ne(e) {
 	let t = /* @__PURE__ */ new Set();
-	return re(e).filter((e) => {
+	return P(e).filter((e) => {
 		let n = e.worker ?? "coordinator";
 		return !t.has(n) && (t.add(n), !0);
 	});
 }
-function I(e) {
+function re(e) {
 	return e === void 0 ? "Coordinator" : `Worker ${e}`;
 }
-function ae(e, t) {
-	return e === "running" && (t.status !== "running" || O(t) || t.deepProgress?.consolidating) ? "Last reported running" : e === "running" ? "Working" : e === "failed" ? "Failed" : "Done";
+function F(e, t) {
+	return e === "running" && (t.status !== "running" || E(t) || t.deepProgress?.consolidating) ? "Last reported running" : e === "running" ? "Working" : e === "failed" ? "Failed" : "Done";
 }
-function L(e) {
+function I(e) {
 	let t = e.telemetry?.observedWorkers.length;
 	return t ? `${t} worker ${t === 1 ? "session" : "sessions"} observed` : "";
 }
-function R(e) {
+function L(e) {
 	let t = e.workers;
-	return t ? `${E(t.phase)}: ${t.started} started · ${t.planned} planned` : "";
+	return t ? `${w(t.phase)}: ${t.started} started · ${t.planned} planned` : "";
 }
-function z(e) {
+function ie(e) {
 	let t = e.telemetry?.trustedAccess;
 	return t === "not_granted" ? "Trusted Access for Cyber: not granted" : t === "unknown" ? "Trusted Access for Cyber: not verified" : "";
 }
-function B(e) {
+function R(e) {
 	return e.telemetry?.warnings?.targetChanged ? "The repository changed during the scan" : "";
 }
-function oe(e) {
+function z(e) {
 	let t = e.assessment?.returnedFindings;
 	return t ? t.total === null ? "Returned finding counts unavailable" : [
 		`${t.reportable ?? "Unknown"} reportable`,
@@ -147,7 +127,7 @@ function oe(e) {
 		...t.unclassified ? [`${t.unclassified} unclassified`] : []
 	].join(" · ") : `${e.findings.length} ${e.findings.length === 1 ? "finding" : "findings"} shown${e.skipped ? ` · ${e.skipped} other items omitted` : ""}`;
 }
-function se(e) {
+function B(e) {
 	let t = e.assessment?.coverage;
 	return !t || t.source === "unavailable" ? "Coverage details unavailable" : [
 		t.surfaces.total === null ? "Surfaces unavailable" : `${t.surfaces.total} review ${t.surfaces.total === 1 ? "surface" : "surfaces"}`,
@@ -155,7 +135,7 @@ function se(e) {
 		t.openQuestions.total === null ? "Open questions unavailable" : `${t.openQuestions.total} open ${t.openQuestions.total === 1 ? "question" : "questions"}`
 	].join(" · ");
 }
-function ce(e) {
+function ae(e) {
 	let t = e.assessment?.repositoryFindings;
 	return t?.available ? `${t.open ?? "Unknown"} open · ${t.closed ?? "Unknown"} closed · ${t.confirmedInLatestScan ?? "Unknown"} confirmed in this scan` : "Repository matching unavailable";
 }
@@ -174,8 +154,39 @@ function W(e) {
 	let t = (e) => (e?.match(/\d+/g) ?? []).map(Number), [n = 0, r = 0] = t(e.node), [i = 0, a = 0] = t(e.python), o = (e) => e ? `found ${e}` : "not found";
 	return [...n === 24 || n === 26 || n === 22 && r >= 20 ? [] : [`Node 22.20+, 24 or 26 (${o(e.node)})`], ...i > 3 || i === 3 && a >= 10 ? [] : [`Python 3.10+ (${o(e.python)})`]];
 }
-// src/tui/text.ts
 function G(e) {
+	return {
+		verified: "Fix verified",
+		no_change: "No change needed",
+		blocked: "Fix blocked",
+		failed: "Fix failed verification"
+	}[e] ?? "Fix";
+}
+// src/plan-view.ts
+function K(e) {
+	return e === void 0 ? "No cost limit is configured." : `Stops at an estimated USD ${e}. This is an estimate, not a billing cap.`;
+}
+function q(e) {
+	let { provider: t, baseUrl: n, auth: r, model: i, reasoningEffort: a } = e.codex;
+	return `${t}${n ? ` (${n})` : ""} · ${i}, ${a} reasoning · ${r}`;
+}
+function oe(e) {
+	return [
+		...e.mock ? ["MOCK SDK TEST: no model calls or uploads."] : [],
+		`Repository: ${e.repository}`,
+		`Scope: ${S(e)}`,
+		`Mode: ${e.settings.scan.mode}`,
+		...e.scanPrompt ? [`Instructions: ${e.scanPrompt}`] : [],
+		...e.contextFiles.length ? [`Context: ${e.contextFiles.map((e) => e.path).join(", ")}`] : [],
+		`Sent to: ${q(e.settings)}`,
+		K(e.settings.scan.maxCostUsd)
+	].join("\n");
+}
+function se(e) {
+	return !!e && (e.startsWith("/") || /^[A-Za-z]:[\\/]/.test(e));
+}
+// src/tui/text.ts
+function ce(e) {
 	let { route: t, profile: n, runtime: r } = e, i = [
 		t.provider,
 		`${t.model} (${t.reasoningEffort})`,
@@ -187,57 +198,69 @@ function G(e) {
 		warning: `Scans need ${a.join(" and ")}.`
 	} : { text: i };
 }
-function K(e) {
+function J(e) {
 	return e === void 0 ? "No cost limit set. Usage shown is an estimate." : `Stops near USD ${e} (estimated; in-flight work can go over).`;
 }
-function q(e) {
+function le(e) {
 	return e.status === "running" ? "Running" : e.status === "completed" ? "Done" : e.status === "cancelled" ? "Cancelled" : e.status === "error" ? "Failed" : "Idle";
 }
-function J(e, t) {
+function ue(e, t) {
 	let n = [
-		q(e),
-		w(e.repository),
-		e.plan?.scopePaths.length ? e.plan.scopePaths.join(", ") : "Whole repository",
-		e.mode ?? "fixture"
+		le(e),
+		b(e.repository),
+		C(e),
+		e.mode ?? "standard"
 	];
 	return e.status === "running" ? n.push(V(e.startedAt, null, t)) : e.status === "completed" && n.push(`${e.findings.length} ${e.findings.length === 1 ? "finding" : "findings"}`), n.filter(Boolean).join(" · ");
 }
-function le(e) {
-	return e.kind === "policy" ? "Policy draft" : "Validation";
+function de(e) {
+	return {
+		policy: "Policy draft",
+		validation: "Validation",
+		fix: "Fix"
+	}[e.kind];
 }
-function ue(e) {
+function fe(e) {
 	return [
-		le(e),
-		E(e.status),
-		w(e.repository),
+		de(e),
+		w(e.status),
+		b(e.repository),
 		...e.kind === "policy" && e.plan.path ? [e.plan.path] : []
 	].join(" · ");
 }
-var de = (e) => !!e && [
+var pe = (e) => !!e && [
 	"prepared",
 	"running",
 	"awaiting_answers"
 ].includes(e.status);
-function fe(e, t) {
+function me(e, t) {
 	let n = e.replace(/\s+/g, " ");
 	return n.length <= t ? n : n.slice(0, Math.max(0, t - 1)) + "…";
 }
-function pe(e, t, n) {
+function he(e, t, n) {
 	let r = Math.max(0, Math.min(t - Math.floor(n / 2), e.length - n));
 	return {
 		start: r,
 		items: e.slice(r, r + n)
 	};
 }
-function me(e) {
+function ge(e) {
 	return e.split(/[,\n]/).map((e) => e.trim()).filter(Boolean);
 }
 // src/security-tui-operations.tsx
-function he(e, t, n, r) {
+function _e(e, t, n, r) {
 	let { client: i, location: a } = t, o = async (n) => {
-		let r = n.plan, o = n.kind === "policy" ? `Component: ${r.path ?? "."}` : `Finding: ${(r.finding ?? "").split("\n")[0]}`, s = r.mock ? "Mock SDK responses; no model calls." : `Sends source${n.kind === "validation" ? ", the finding" : ""} and context to ${x(r.settings)}.`, c = n.kind === "policy" ? K(r.settings.scan.maxCostUsd) : r.costNotice, l = n.kind === "policy" ? "Produces a draft for you to review; no files are written." : "Reads source only; nothing is executed or patched.";
+		let r = n.plan, o = n.kind === "policy" ? `Component: ${r.path ?? "."}` : `Finding: ${(r.finding ?? "").split("\n")[0]}`, s = r.mock ? "Mock SDK responses; no model calls." : `Sends source${n.kind === "policy" ? "" : ", the finding"} and context to ${q(r.settings)}.`, c = n.kind === "policy" ? J(r.settings.scan.maxCostUsd) : r.costNotice, l = {
+			policy: "Produces a draft for you to review; no files are written.",
+			validation: "Reads source only; nothing is executed or patched.",
+			fix: "Writes the fix in a copy of the last commit. Your files change only if you apply the diff."
+		}[n.kind];
 		await e.ui.dialog.confirm({
-			title: n.kind === "policy" ? "Draft a policy" : "Validate a finding",
+			title: {
+				policy: "Draft a policy",
+				validation: "Validate a finding",
+				fix: "Propose a fix"
+			}[n.kind],
 			message: [
 				`Repository: ${n.repository}`,
 				o,
@@ -288,6 +311,24 @@ function he(e, t, n, r) {
 				finding: r
 			});
 		}),
+		fix: (e, n) => t.perform(() => s({
+			kind: "fix",
+			repository: e,
+			finding: U(n)
+		})),
+		resolve: (n, r) => t.perform(async () => {
+			(r !== "apply" || await e.ui.dialog.confirm({
+				title: "Apply this fix",
+				message: `Applies the diff to ${n.repository}. Nothing is committed.`,
+				label: {
+					confirm: "Apply",
+					cancel: "Back"
+				}
+			}) && !t.isDisposed()) && (await i.operationResolve({
+				operationId: n.operationId,
+				action: r
+			}, { location: a }), await t.refreshOperations());
+		}),
 		start: (e) => t.perform(() => o(e)),
 		answer: (n) => t.perform(async () => {
 			let r = n.question;
@@ -308,22 +349,22 @@ function he(e, t, n, r) {
 	};
 }
 // src/tui/review.tsx
-var ge = {
+var ve = {
 	default: "standard",
 	standard: "deep",
 	deep: "default"
-}, _e = (e) => ({
+}, ye = (e) => ({
 	...e.inputs,
 	repository: e.repository
 });
-function ve(e, t) {
+function be(e, t) {
 	let { mode: n, ...r } = e;
 	return t === "default" ? r : {
 		...r,
 		mode: t
 	};
 }
-async function ye(t, n, r, i) {
+async function xe(t, n, r, i) {
 	let [a, o] = m(i), [s, c] = m(""), [l, u] = m(!1), [d, f] = m(!1), p = async (e) => {
 		u(!0), c("");
 		try {
@@ -335,12 +376,12 @@ async function ye(t, n, r, i) {
 		}
 	}, h = () => {
 		let e = a().inputs.mode ?? "default";
-		p(ve(_e(a()), ge[e]));
+		p(be(ye(a()), ve[e]));
 	}, g = () => new Promise((r) => {
 		let i = !1, o = (e) => {
 			i || (i = !0, r(e));
 		};
-		t.ui.dialog.show(() => e(Se, {
+		t.ui.dialog.show(() => e(we, {
 			ctx: t,
 			color: n,
 			get plan() {
@@ -365,15 +406,15 @@ async function ye(t, n, r, i) {
 		if (e === "back") return;
 		if (e === "start") return t.ui.dialog.clear(), a();
 		try {
-			let n = await be(t, e, a());
+			let n = await Se(t, e, a());
 			n && await p(n);
 		} catch (e) {
 			c(H(e));
 		}
 	}
 }
-async function be(e, t, n) {
-	let r = _e(n);
+async function Se(e, t, n) {
+	let r = ye(n);
 	if (t === "target") {
 		let t = await e.ui.dialog.prompt({
 			title: "Target repository",
@@ -382,7 +423,7 @@ async function be(e, t, n) {
 			placeholder: "/path/to/project"
 		});
 		return t === void 0 || t.trim() === n.repository ? void 0 : {
-			repository: xe(t.trim()),
+			repository: Ce(t.trim()),
 			...r.mode ? { mode: r.mode } : {},
 			...r.scanPrompt ? { scanPrompt: r.scanPrompt } : {}
 		};
@@ -390,13 +431,21 @@ async function be(e, t, n) {
 	if (t === "scope") {
 		let t = await e.ui.dialog.prompt({
 			title: "Scope",
-			description: "Repository-relative paths, separated by commas. Leave empty for everything.",
-			value: n.scopePaths.join(", "),
+			description: "Paths separated by commas, or leave empty for everything. For a diff scan, type \"uncommitted\" or \"since origin/main\".",
+			value: n.changes ? n.changes === "uncommitted" ? "uncommitted" : `since ${n.changes}` : n.scopePaths.join(", "),
 			placeholder: "src/api, src/auth"
 		});
-		return t === void 0 ? void 0 : {
-			...r,
-			scopePaths: me(t)
+		if (t === void 0) return;
+		let { scopePaths: i, changes: a, ...o } = r, s = t.trim();
+		return s === "uncommitted" ? {
+			...o,
+			changes: s
+		} : s.startsWith("since ") ? {
+			...o,
+			changes: s.slice(6).trim()
+		} : {
+			...o,
+			scopePaths: ge(t)
 		};
 	}
 	if (t === "focus") {
@@ -421,14 +470,14 @@ async function be(e, t, n) {
 	});
 	return i === void 0 ? void 0 : {
 		...r,
-		contextFiles: me(i)
+		contextFiles: ge(i)
 	};
 }
-function xe(e) {
-	if (!C(e)) throw Error("Use an absolute repository path.");
+function Ce(e) {
+	if (!se(e)) throw Error("Use an absolute repository path.");
 	return e;
 }
-function Se(o) {
+function we(o) {
 	let c = () => !o.preparing;
 	o.ctx.keymap.layer(() => ({
 		mode: "modal",
@@ -480,10 +529,10 @@ function Se(o) {
 	let l = () => `${o.plan.settings.scan.mode}${o.plan.inputs.mode ? "" : " (default)"}`, u = () => [
 		["Repository", o.plan.repository],
 		["Depth", l()],
-		["Scope", o.plan.scopePaths.join(", ") || "Whole repository"],
+		["Scope", S(o.plan)],
 		["Focus", o.plan.scanPrompt || "—"],
 		["Context", o.plan.contextFiles.map((e) => e.path).join(", ") || "—"],
-		["Route", x(o.plan.settings)]
+		["Route", q(o.plan.settings)]
 	];
 	return (() => {
 		var c = t("box"), l = t("text"), p = t("b"), m = t("box"), h = t("text");
@@ -507,7 +556,7 @@ function Se(o) {
 			},
 			get children() {
 				var e = t("box"), c = t("text"), l = t("text");
-				return a(e, c), a(e, l), s(e, "flexDirection", "column"), a(c, n("Starting sends the source in scope and the context files over this route.")), i(l, () => K(o.plan.settings.scan.maxCostUsd)), r((e) => s(l, "fg", o.color.muted(), e)), e;
+				return a(e, c), a(e, l), s(e, "flexDirection", "column"), a(c, n("Starting sends the source in scope and the context files over this route.")), i(l, () => J(o.plan.settings.scan.maxCostUsd)), r((e) => s(l, "fg", o.color.muted(), e)), e;
 			}
 		}), h), i(c, e(f, {
 			get when() {
@@ -531,7 +580,7 @@ function Se(o) {
 			},
 			get children() {
 				var e = t("text");
-				return i(e, () => S(o.plan)), r((t) => s(e, "fg", o.color.muted(), t)), e;
+				return i(e, () => oe(o.plan)), r((t) => s(e, "fg", o.color.muted(), t)), e;
 			}
 		}), h), a(h, n("y start · t target · d depth · s scope · f focus · c context · i settings · esc back")), r((e) => {
 			var t = o.color.accent(), n = o.color.muted();
@@ -546,7 +595,7 @@ function Se(o) {
 var Y = {
 	type: "object",
 	additionalProperties: !1
-}, Ce = { "security.setup": Y }, we = {
+}, Te = { "security.setup": Y }, Ee = {
 	type: "object",
 	properties: {
 		mode: {
@@ -563,6 +612,10 @@ var Y = {
 			items: { type: "string" },
 			description: "Paths relative to the repository. Omit to scan the whole repository."
 		},
+		changes: {
+			type: "string",
+			description: "Scan only a diff: \"uncommitted\" for staged and unstaged changes, or a base ref such as \"origin/main\" to compare with HEAD. Standard mode only; not combined with scopePaths."
+		},
 		scanPrompt: {
 			type: "string",
 			description: "What to focus on, plus architecture or threat assumptions the scan should know."
@@ -574,12 +627,16 @@ var Y = {
 		}
 	},
 	additionalProperties: !1
-}, Te = {
+}, De = {
 	type: "object",
 	properties: {
 		kind: {
 			type: "string",
-			enum: ["policy", "validation"]
+			enum: [
+				"policy",
+				"validation",
+				"fix"
+			]
 		},
 		repository: { type: "string" },
 		path: { type: "string" },
@@ -591,12 +648,12 @@ var Y = {
 	},
 	required: ["kind"],
 	additionalProperties: !1
-}, Ee = {
+}, Oe = {
 	type: "object",
 	properties: { operationId: { type: "string" } },
 	required: ["operationId"],
 	additionalProperties: !1
-}, X = { type: "string" }, Z = { type: "object" }, Q = Ce, De = v.define({
+}, X = { type: "string" }, Z = { type: "object" }, Q = Te, ke = v.define({
 	id: "gill.security",
 	methods: {
 		capabilities: {
@@ -605,7 +662,7 @@ var Y = {
 			errors: Q
 		},
 		prepare: {
-			input: we,
+			input: Ee,
 			output: Z,
 			errors: Q
 		},
@@ -645,17 +702,17 @@ var Y = {
 			errors: Q
 		},
 		operationPrepare: {
-			input: Te,
+			input: De,
 			output: Z,
 			errors: Q
 		},
 		operationStart: {
-			input: Ee,
+			input: Oe,
 			output: Z,
 			errors: Q
 		},
 		operationStatus: {
-			input: Ee,
+			input: Oe,
 			output: Z,
 			errors: Q
 		},
@@ -683,7 +740,23 @@ var Y = {
 			errors: Q
 		},
 		operationCancel: {
-			input: Ee,
+			input: Oe,
+			output: Z,
+			errors: Q
+		},
+		operationResolve: {
+			input: {
+				type: "object",
+				properties: {
+					operationId: X,
+					action: {
+						type: "string",
+						enum: ["apply", "discard"]
+					}
+				},
+				required: ["operationId", "action"],
+				additionalProperties: !1
+			},
 			output: Z,
 			errors: Q
 		},
@@ -707,16 +780,18 @@ var Y = {
 		changed: { schema: { type: "object" } },
 		operationChanged: { schema: { type: "object" } }
 	}
-}), Oe = 3e4;
-function ke(e) {
-	let t = e.client.rpc(De), n = e.location ?? e.data.location.default(), [r, i] = m(), [a, o] = m([]), [s, c] = m({
+}), Ae = 3e4;
+function je(e) {
+	let t = e.client.rpc(ke), n = e.location ?? e.data.location.default(), [r, i] = m(), [a, o] = m([]), [s, c] = m({
 		policy: !1,
-		validation: !1
+		validation: !1,
+		fix: !1
 	}), [l, u] = m(""), [d, f] = m(!1), p = !1, h, g = () => h ??= t.capabilities({}, { location: n }).then((e) => {
 		let t = e;
 		p || c({
 			policy: !!t.policy,
-			validation: !!t.validation
+			validation: !!t.validation,
+			fix: !!t.fix
 		});
 	}).catch(() => {
 		h = void 0;
@@ -797,7 +872,7 @@ function ke(e) {
 			v(), y();
 			let e = t.events.on("changed", (e) => b(e.data)), n = t.events.on("operationChanged", (e) => x(e.data)), r = setInterval(() => {
 				v(), y();
-			}, Oe);
+			}, Ae);
 			return () => {
 				e(), n(), clearInterval(r);
 			};
@@ -816,7 +891,7 @@ var $ = {
 	error: "#ffb3b3",
 	warning: "#ebc28c"
 };
-function Ae(e) {
+function Me(e) {
 	let t = () => e.theme ?? {}, n = (e) => t().text?.feedback?.[e]?.base;
 	return {
 		text: () => t().text?.base ?? $.text,
@@ -827,8 +902,8 @@ function Ae(e) {
 	};
 }
 // src/tui/view.tsx
-var je = 5, Me = 8;
-function Ne(u) {
+var Ne = 5, Pe = 8;
+function Fe(u) {
 	let p = l(), m = () => Math.max(20, p().width - 4), h = u.color, g = (e) => e.severity === "critical" || e.severity === "high" ? h.error() : h.warning(), _ = (e) => (() => {
 		var n = t("text");
 		return i(n, () => e.children), r((e) => s(n, "fg", h.muted(), e)), n;
@@ -870,9 +945,9 @@ function Ne(u) {
 				},
 				children: (o) => (() => {
 					var c = t("text");
-					return i(c, () => G(o()).text, null), i(c, e(f, {
+					return i(c, () => ce(o()).text, null), i(c, e(f, {
 						get when() {
-							return G(o()).warning;
+							return ce(o()).warning;
 						},
 						children: (e) => (() => {
 							var o = t("span"), c = n(" · ");
@@ -893,17 +968,17 @@ function Ne(u) {
 		let l = () => c.run;
 		return (() => {
 			var c = t("box"), d = t("text"), p = t("b"), m = t("text"), g = n(" · "), _ = n(" · "), v = t("text"), y = t("text");
-			return a(c, d), a(c, m), a(c, v), a(c, y), s(c, "flexDirection", "column"), a(d, p), i(p, () => T(l())), a(m, g), a(m, _), i(m, () => l().repository, g), i(m, () => ee(l()), _), i(m, () => l().mode ?? "fixture", null), i(v, () => k(l()), null), i(v, e(f, {
+			return a(c, d), a(c, m), a(c, v), a(c, y), s(c, "flexDirection", "column"), a(d, p), i(p, () => x(l())), a(m, g), a(m, _), i(m, () => l().repository, g), i(m, () => C(l()), _), i(m, () => l().mode ?? "fixture", null), i(v, () => te(l()), null), i(v, e(f, {
 				get when() {
 					return V(l().startedAt, l().finishedAt, u.now);
 				},
 				children: (e) => [" · ", o(e)]
 			}), null), i(v, e(f, {
 				get when() {
-					return A(l());
+					return D(l());
 				},
 				get children() {
-					return [" · ", o(() => j(l()))];
+					return [" · ", o(() => O(l()))];
 				}
 			}), null), i(c, e(f, {
 				get when() {
@@ -911,9 +986,9 @@ function Ne(u) {
 				},
 				get children() {
 					var e = t("text");
-					return i(e, () => N(l())), r((t) => s(e, "fg", h.muted(), t)), e;
+					return i(e, () => A(l())), r((t) => s(e, "fg", h.muted(), t)), e;
 				}
-			}), y), i(y, () => F(l())), i(c, e(f, {
+			}), y), i(y, () => M(l())), i(c, e(f, {
 				get when() {
 					return l().error;
 				},
@@ -935,7 +1010,7 @@ function Ne(u) {
 				},
 				get children() {
 					var e = t("text");
-					return i(e, () => oe(l())), e;
+					return i(e, () => z(l())), e;
 				}
 			}), null), i(c, e(f, {
 				get when() {
@@ -971,19 +1046,19 @@ function Ne(u) {
 				}
 			}), null), i(c, e(f, {
 				get when() {
-					return z(l());
+					return ie(l());
 				},
 				get children() {
 					var e = t("text");
-					return i(e, () => z(l())), r((t) => s(e, "fg", h.warning(), t)), e;
+					return i(e, () => ie(l())), r((t) => s(e, "fg", h.warning(), t)), e;
 				}
 			}), null), i(c, e(f, {
 				get when() {
-					return B(l());
+					return R(l());
 				},
 				get children() {
 					var e = t("text");
-					return i(e, () => B(l())), r((t) => s(e, "fg", h.warning(), t)), e;
+					return i(e, () => R(l())), r((t) => s(e, "fg", h.warning(), t)), e;
 				}
 			}), null), i(c, e(f, {
 				get when() {
@@ -991,7 +1066,16 @@ function Ne(u) {
 				},
 				get children() {
 					return e(_, { get children() {
-						return ne(l());
+						return N(l());
+					} });
+				}
+			}), null), i(c, e(f, {
+				get when() {
+					return I(l());
+				},
+				get children() {
+					return e(_, { get children() {
+						return I(l());
 					} });
 				}
 			}), null), i(c, e(f, {
@@ -1005,20 +1089,11 @@ function Ne(u) {
 				}
 			}), null), i(c, e(f, {
 				get when() {
-					return R(l());
-				},
-				get children() {
-					return e(_, { get children() {
-						return R(l());
-					} });
-				}
-			}), null), i(c, e(f, {
-				get when() {
 					return o(() => l().status === "running")() && l().deepProgress;
 				},
 				get children() {
 					return e(_, { get children() {
-						return M(l());
+						return k(l());
 					} });
 				}
 			}), null), i(c, e(f, {
@@ -1027,14 +1102,14 @@ function Ne(u) {
 				},
 				get children() {
 					return [e(_, { get children() {
-						return ["Coverage: ", o(() => se(l()))];
+						return ["Coverage: ", o(() => B(l()))];
 					} }), e(_, { get children() {
-						return ["Repository matching: ", o(() => ce(l()))];
+						return ["Repository matching: ", o(() => ae(l()))];
 					} })];
 				}
 			}), null), i(c, e(f, {
 				get when() {
-					return re(l()).length;
+					return P(l()).length;
 				},
 				get children() {
 					return [(() => {
@@ -1042,16 +1117,16 @@ function Ne(u) {
 						return a(e, n("Activity")), e;
 					})(), e(d, {
 						get each() {
-							return ie(l()).slice(0, 5);
+							return ne(l()).slice(0, 5);
 						},
 						children: (t) => e(_, { get children() {
 							return [
-								o(() => I(t.worker)),
+								o(() => re(t.worker)),
 								" · ",
 								o(() => t.label),
 								" ·",
 								" ",
-								o(() => ae(t.status, l()))
+								o(() => F(t.status, l()))
 							];
 						} })
 					})];
@@ -1079,8 +1154,8 @@ function Ne(u) {
 				}
 			}), null), c;
 		})();
-	}, x = () => {
-		let c = () => u.store.runs(), l = () => Math.max(0, c().indexOf(u.run)), p = () => pe(c(), l(), je), v = () => u.run?.findings ?? [], b = () => u.focus === "findings";
+	}, S = () => {
+		let c = () => u.store.runs(), l = () => Math.max(0, c().indexOf(u.run)), p = () => he(c(), l(), Ne), v = () => u.run?.findings ?? [], b = () => u.focus === "findings";
 		return e(f, {
 			get when() {
 				return u.run;
@@ -1101,12 +1176,12 @@ function Ne(u) {
 						let n = () => e.runId === l().runId;
 						return (() => {
 							var a = t("text");
-							return i(a, () => fe(`${n() ? "›" : " "} ${J(e, u.now)}`, m())), r((e) => s(a, "fg", n() ? b() ? void 0 : h.accent() : h.muted(), e)), a;
+							return i(a, () => me(`${n() ? "›" : " "} ${ue(e, u.now)}`, m())), r((e) => s(a, "fg", n() ? b() ? void 0 : h.accent() : h.muted(), e)), a;
 						})();
 					}
 				}), null), i(S, e(f, {
 					get when() {
-						return c().length > je;
+						return c().length > Ne;
 					},
 					get children() {
 						return e(_, { get children() {
@@ -1137,7 +1212,7 @@ function Ne(u) {
 								let c = () => b() && o() === u.findingIndex, l = `${e.path}:${e.line}`;
 								return (() => {
 									var u = t("box"), d = t("text"), f = t("text"), p = t("text"), _ = t("text"), v = n(" ");
-									return a(u, d), a(u, f), a(u, p), a(u, _), s(u, "flexDirection", "row"), s(d, "flexShrink", 0), i(d, () => c() ? "› " : "  "), s(f, "width", 9), s(f, "flexShrink", 0), i(f, () => e.severity.toUpperCase()), s(p, "flexGrow", 1), i(p, () => fe(e.title, Math.max(10, m() - l.length - 14))), a(_, v), s(_, "flexShrink", 0), i(_, l, null), r((t) => {
+									return a(u, d), a(u, f), a(u, p), a(u, _), s(u, "flexDirection", "row"), s(d, "flexShrink", 0), i(d, () => c() ? "› " : "  "), s(f, "width", 9), s(f, "flexShrink", 0), i(f, () => e.severity.toUpperCase()), s(p, "flexGrow", 1), i(p, () => me(e.title, Math.max(10, m() - l.length - 14))), a(_, v), s(_, "flexShrink", 0), i(_, l, null), r((t) => {
 										var n = `finding-${o()}`, r = c() ? h.accent() : void 0, i = g(e), a = c() ? h.accent() : void 0, l = h.muted();
 										return n !== t.e && (t.e = s(u, "id", n, t.e)), r !== t.t && (t.t = s(d, "fg", r, t.t)), i !== t.a && (t.a = s(f, "fg", i, t.a)), a !== t.o && (t.o = s(p, "fg", a, t.o)), l !== t.i && (t.i = s(_, "fg", l, t.i)), t;
 									}, {
@@ -1161,7 +1236,7 @@ function Ne(u) {
 				}), null), x;
 			})()
 		});
-	}, S = (o) => {
+	}, ee = (o) => {
 		let c = () => o.finding, l = (n) => (() => {
 			var r = t("box"), o = t("text");
 			return a(r, o), s(r, "flexDirection", "column"), i(r, e(_, { get children() {
@@ -1193,8 +1268,8 @@ function Ne(u) {
 				t: void 0
 			}), o;
 		})();
-	}, C = () => {
-		let c = () => u.store.operations(), l = () => Math.max(0, c().indexOf(u.operation)), p = () => pe(c(), l(), Me);
+	}, T = () => {
+		let c = () => u.store.operations(), l = () => Math.max(0, c().indexOf(u.operation)), p = () => he(c(), l(), Pe);
 		return e(f, {
 			get when() {
 				return u.opsAvailable;
@@ -1226,12 +1301,12 @@ function Ne(u) {
 								let a = () => e.operationId === n().operationId;
 								return (() => {
 									var n = t("text");
-									return i(n, () => fe(`${a() ? "›" : " "} ${ue(e)}`, m())), r((e) => s(n, "fg", a() ? h.accent() : h.muted(), e)), n;
+									return i(n, () => me(`${a() ? "›" : " "} ${fe(e)}`, m())), r((e) => s(n, "fg", a() ? h.accent() : h.muted(), e)), n;
 								})();
 							}
 						}), null), i(u, e(f, {
 							get when() {
-								return c().length > Me;
+								return c().length > Pe;
 							},
 							get children() {
 								return e(_, { get children() {
@@ -1246,16 +1321,16 @@ function Ne(u) {
 									];
 								} });
 							}
-						}), null), i(l, e(w, { get op() {
+						}), null), i(l, e(E, { get op() {
 							return n();
 						} }), null), l;
 					})()
 				});
 			}
 		});
-	}, w = (o) => (() => {
+	}, E = (o) => (() => {
 		var c = t("box"), l = t("text"), u = t("b"), d = n(" · "), p = t("text");
-		return a(c, l), a(c, p), s(c, "flexDirection", "column"), a(l, u), a(l, d), i(u, () => le(o.op)), i(l, () => E(o.op.status), null), i(c, e(_, { get children() {
+		return a(c, l), a(c, p), s(c, "flexDirection", "column"), a(l, u), a(l, d), i(u, () => de(o.op)), i(l, () => w(o.op.status), null), i(c, e(_, { get children() {
 			return o.op.repository;
 		} }), p), i(p, () => o.op.phase), i(c, e(f, {
 			get when() {
@@ -1281,11 +1356,11 @@ function Ne(u) {
 				return e(_, { children: "Press enter to read the result." });
 			}
 		}), null), c;
-	})(), te = (c) => {
+	})(), j = (c) => {
 		let l = () => c.op;
 		return (() => {
 			var c = t("box"), u = t("box"), p = t("text"), m = t("b"), g = n(" · "), v = t("text");
-			return a(c, u), s(c, "flexDirection", "column"), s(c, "gap", 1), a(u, p), a(u, v), s(u, "flexDirection", "column"), a(p, m), a(p, g), i(m, () => le(l())), i(p, () => E(l().status), null), i(u, e(_, { get children() {
+			return a(c, u), s(c, "flexDirection", "column"), s(c, "gap", 1), a(u, p), a(u, v), s(u, "flexDirection", "column"), a(p, m), a(p, g), i(m, () => de(l())), i(p, () => w(l().status), null), i(u, e(_, { get children() {
 				return [o(() => l().repository), o(() => o(() => l().kind === "policy")() ? ` · ${l().plan.path ?? "."}` : "")];
 			} }), v), i(v, () => l().phase), i(u, e(f, {
 				get when() {
@@ -1366,9 +1441,53 @@ function Ne(u) {
 								return e(_, { children: "Truncated here; the full draft is in the local SDK artifacts." });
 							}
 						}), null), r;
+					})() : c.kind === "fix" ? (() => {
+						var n = t("box"), r = t("text"), l = t("b");
+						return a(n, r), s(n, "flexDirection", "column"), s(n, "gap", 1), a(r, l), i(l, () => G(c.status)), i(r, e(f, {
+							get when() {
+								return o(() => c.resolution !== "pending")() && c.resolution !== "none";
+							},
+							get children() {
+								return [
+									" ",
+									"· ",
+									o(() => c.resolution)
+								];
+							}
+						}), null), i(n, e(f, {
+							get when() {
+								return c.report;
+							},
+							get children() {
+								var e = t("text");
+								return i(e, () => c.report), e;
+							}
+						}), null), i(n, e(f, {
+							get when() {
+								return c.diff;
+							},
+							get fallback() {
+								return e(_, { children: "No files were changed." });
+							},
+							get children() {
+								return [e(_, { get children() {
+									return c.resolution === "pending" ? "Proposed change, not applied yet. y applies it to your working tree; r discards it." : "Change";
+								} }), (() => {
+									var e = t("text");
+									return i(e, () => c.diff), e;
+								})()];
+							}
+						}), null), i(n, e(f, {
+							get when() {
+								return c.truncated;
+							},
+							get children() {
+								return e(_, { children: "Diff truncated here; applying uses the whole change." });
+							}
+						}), null), n;
 					})() : (() => {
 						var r = t("box"), o = t("text"), l = t("b"), u = n("Assessment: "), d = t("text");
-						return a(r, o), a(r, d), s(r, "flexDirection", "column"), s(r, "gap", 1), a(o, l), a(l, u), i(l, () => E(c.disposition), null), i(d, () => c.report), i(r, e(f, {
+						return a(r, o), a(r, d), s(r, "flexDirection", "column"), s(r, "gap", 1), a(o, l), a(l, u), i(l, () => w(c.disposition), null), i(d, () => c.report), i(r, e(f, {
 							get when() {
 								return c.truncated;
 							},
@@ -1380,7 +1499,7 @@ function Ne(u) {
 				}
 			}), null), c;
 		})();
-	}, D = () => {
+	}, H = () => {
 		let e = () => u.keys.filter((e) => e.key && e.label && e.when()).map((e) => `${e.key} ${e.label()}`).join(" · ");
 		return (() => {
 			var n = t("text");
@@ -1389,7 +1508,7 @@ function Ne(u) {
 				return () => t() ? "Working…" : e();
 			})()), r((e) => s(n, "fg", h.muted(), e)), n;
 		})();
-	}, O = () => u.run?.findings[Math.min(u.findingIndex, (u.run?.findings.length ?? 1) - 1)];
+	}, U = () => u.run?.findings[Math.min(u.findingIndex, (u.run?.findings.length ?? 1) - 1)];
 	return (() => {
 		var n = t("box"), l = t("scrollbox");
 		return a(n, l), s(n, "flexDirection", "column"), s(n, "flexGrow", 1), s(n, "paddingLeft", 1), s(n, "paddingRight", 1), i(n, e(v, {}), l), i(n, e(f, {
@@ -1415,12 +1534,12 @@ function Ne(u) {
 			get children() {
 				return e(f, {
 					get when() {
-						return o(() => u.detail === "finding")() && O();
+						return o(() => u.detail === "finding")() && U();
 					},
 					get fallback() {
-						return e(x, {});
+						return e(S, {});
 					},
-					children: (t) => e(S, { get finding() {
+					children: (t) => e(ee, { get finding() {
 						return t();
 					} })
 				});
@@ -1435,21 +1554,21 @@ function Ne(u) {
 						return o(() => u.detail === "operation")() && u.operation;
 					},
 					get fallback() {
-						return e(C, {});
+						return e(T, {});
 					},
-					children: (t) => e(te, { get op() {
+					children: (t) => e(j, { get op() {
 						return t();
 					} })
 				});
 			}
-		}), null), i(n, e(D, {}), null), n;
+		}), null), i(n, e(H, {}), null), n;
 	})();
 }
 // src/tui/app.tsx
-var Pe = "security";
-function Fe(t) {
-	let n = ke(t), r = Ae(t), [i, a] = m("scans"), [o, s] = m("runs"), [c, l] = m(), [u, d] = m(), [f, v] = m(0), [b, x] = m(), [S, w] = m(!1), [T, ee] = m(), E = () => n.client.setup({}, { location: n.location }).then((e) => ee(e)).catch((e) => n.setError(H(e))), te = () => n.perform(async () => {
-		let e = T();
+var Ie = "security";
+function Le(t) {
+	let n = je(t), r = Me(t), [i, a] = m("scans"), [o, s] = m("runs"), [c, l] = m(), [u, d] = m(), [f, v] = m(0), [b, x] = m(), [S, C] = m(!1), [w, ee] = m(), T = () => n.client.setup({}, { location: n.location }).then((e) => ee(e)).catch((e) => n.setError(H(e))), E = () => n.perform(async () => {
+		let e = w();
 		if (!e) return;
 		let r = await t.ui.dialog.select({
 			title: "Codex profile",
@@ -1463,43 +1582,43 @@ function Fe(t) {
 				value: e
 			}))]
 		});
-		r !== void 0 && (await n.client.setProfile({ profile: r }, { location: n.location }), await E());
-	}), D, O = C(t.location?.directory) ? t.location.directory : void 0, k = () => {
+		r !== void 0 && (await n.client.setProfile({ profile: r }, { location: n.location }), await T());
+	}), te, D = se(t.location?.directory) ? t.location.directory : void 0, O = () => {
 		let e = t.ui.router.current();
 		return e.type === "plugin" && e.name === "security";
-	}, A = n.runs, j = () => A().find((e) => e.runId === u()) ?? A()[0], M = () => j()?.findings ?? [], N = () => M()[Math.min(f(), M().length - 1)], P = () => n.operations().find((e) => e.operationId === b()) ?? n.operations()[0], F = () => n.operations().filter((e) => e.question);
+	}, k = n.runs, A = () => k().find((e) => e.runId === u()) ?? k()[0], j = () => A()?.findings ?? [], M = () => j()[Math.min(f(), j().length - 1)], N = () => n.operations().find((e) => e.operationId === b()) ?? n.operations()[0], P = () => n.operations().filter((e) => e.question);
 	p(h(u, () => v(0), { defer: !0 }));
 	let ne = () => {
-		k() || (D = t.ui.router.current()), t.ui.router.navigate({
+		O() || (te = t.ui.router.current()), t.ui.router.navigate({
 			type: "plugin",
-			name: Pe
+			name: Ie
 		});
-	}, re = () => t.ui.router.navigate(D ?? { type: "home" }), ie = async () => {
-		if (O) return O;
+	}, re = () => t.ui.router.navigate(te ?? { type: "home" }), F = async () => {
+		if (D) return D;
 		let e = await t.ui.dialog.prompt({
 			title: "Target repository",
 			description: "Absolute path to a local repository.",
 			placeholder: "/path/to/project"
 		});
-		return e?.trim() ? xe(e.trim()) : void 0;
-	}, I = he(t, n, ie, (e) => {
+		return e?.trim() ? Ce(e.trim()) : void 0;
+	}, I = _e(t, n, F, (e) => {
 		x(e), a("operations"), l(void 0);
-	}), ae = () => n.perform(async () => {
+	}), L = () => n.perform(async () => {
 		await n.refreshScans();
 		let e = n.catalog()?.maxConcurrent ?? 2;
-		if (A().filter((e) => e.status === "running").length >= e) throw Error(`All ${e} scan slots are in use. Start another when one finishes.`);
-		let i = await ie();
+		if (k().filter((e) => e.status === "running").length >= e) throw Error(`All ${e} scan slots are in use. Start another when one finishes.`);
+		let i = await F();
 		if (!i) return;
 		let o = async (e) => {
 			let t = y(await n.client.prepare(e, { location: n.location })).plan;
 			if (!t) throw Error("The server returned no preview.");
 			return t;
-		}, c = await ye(t, r, o, await o({ repository: i }));
+		}, c = await xe(t, r, o, await o({ repository: i }));
 		if (!c) return;
 		let u = y(await n.client.start({ planId: c.id }, { location: n.location }));
 		a("scans"), l(void 0), s("runs"), d(u.runId), await n.refreshScans();
-	}), L = () => n.perform(async () => {
-		let e = j();
+	}), ie = () => n.perform(async () => {
+		let e = A();
 		e?.status === "running" && await t.ui.dialog.confirm({
 			title: "Cancel scan",
 			message: `Stop the scan of ${e.repository}? A cancelled scan has no results.`,
@@ -1509,9 +1628,9 @@ function Fe(t) {
 			}
 		}) && (await n.client.cancel({ runId: e.runId }, { location: n.location }), await n.refreshScans());
 	}), R = async () => {
-		let e = j();
+		let e = A();
 		if (!e?.findings.length) return I.validateText();
-		let n = c() === "finding" || o() === "findings" ? N() : void 0;
+		let n = c() === "finding" || o() === "findings" ? M() : void 0;
 		if (!n) {
 			let r = await t.ui.dialog.select({
 				title: `Validate a finding · ${e.repository}`,
@@ -1527,144 +1646,168 @@ function Fe(t) {
 	}, z, B = (e) => {
 		if (c()) return z?.scrollBy(e);
 		if (i() === "operations") {
-			let t = n.operations(), r = t.indexOf(P()), i = t[Math.max(0, Math.min(t.length - 1, r + e))];
+			let t = n.operations(), r = t.indexOf(N()), i = t[Math.max(0, Math.min(t.length - 1, r + e))];
 			i && x(i.operationId);
 			return;
 		}
 		if (o() === "findings") {
-			let t = Math.max(0, Math.min(M().length - 1, f() + e));
+			let t = Math.max(0, Math.min(j().length - 1, f() + e));
 			return v(t), z?.scrollChildIntoView(`finding-${t}`);
 		}
-		let t = A(), r = t.indexOf(j()), a = t[Math.max(0, Math.min(t.length - 1, r + e))];
+		let t = k(), r = t.indexOf(A()), a = t[Math.max(0, Math.min(t.length - 1, r + e))];
 		a && d(a.runId);
-	}, oe = () => {
-		if (i() === "operations") return void (P() && l("operation"));
-		if (o() === "runs") return M().length ? (s("findings"), z?.scrollChildIntoView(`finding-${f()}`)) : void 0;
+	}, ae = () => {
+		if (i() === "operations") return void (N() && l("operation"));
+		if (o() === "runs") return j().length ? (s("findings"), z?.scrollChildIntoView(`finding-${f()}`)) : void 0;
 		l("finding");
-	}, se = () => {
+	}, V = () => {
 		if (c()) return void l(void 0);
 		if (i() === "scans" && o() === "findings") return void s("runs");
 		re();
-	}, ce = () => {
+	}, U = () => {
 		l(void 0), s("runs"), a((e) => e === "scans" ? "operations" : "scans"), n.refreshOperations();
-	}, V = () => P()?.question ? P() : F()[0], U = () => i() === "scans", W = () => !c(), G = () => U() && !!N() && (c() === "finding" || o() === "findings"), K = () => n.capabilities().policy || n.capabilities().validation, q = () => !!c() || (U() ? A().length > 1 || o() === "findings" : n.operations().length > 1), J = [
+	}, W = () => N()?.question ? N() : P()[0], G = () => i() === "scans", K = () => !c(), q = () => {
+		let e = N()?.result;
+		return e?.kind === "fix" && e.resolution === "pending";
+	}, oe = () => G() && !!M() && (c() === "finding" || o() === "findings"), ce = () => n.capabilities().policy || n.capabilities().validation, J = () => !!c() || (G() ? k().length > 1 || o() === "findings" : n.operations().length > 1), le = [
 		{
 			bind: "up,k",
 			run: () => B(-1),
-			when: () => q()
+			when: () => J()
 		},
 		{
 			bind: "down,j",
 			key: "↑↓",
 			label: () => c() ? "scroll" : "move",
 			run: () => B(1),
-			when: () => q()
+			when: () => J()
 		},
 		{
 			bind: "return",
 			key: "enter",
-			label: () => U() && o() === "runs" ? "findings" : "open",
-			run: oe,
-			when: () => W() && (U() ? !!M().length : !!P())
+			label: () => G() && o() === "runs" ? "findings" : "open",
+			run: ae,
+			when: () => K() && (G() ? !!j().length : !!N())
 		},
 		{
 			bind: "v",
 			key: "v",
 			label: () => "validate",
 			run: R,
-			when: () => n.capabilities().validation && G()
+			when: () => n.capabilities().validation && oe()
+		},
+		{
+			bind: "x",
+			key: "x",
+			label: () => "propose fix",
+			run: () => I.fix(A().repository, M()),
+			when: () => n.capabilities().fix && oe()
+		},
+		{
+			bind: "y",
+			key: "y",
+			label: () => "apply fix",
+			run: () => I.resolve(N(), "apply"),
+			when: () => !G() && q()
+		},
+		{
+			bind: "r",
+			key: "r",
+			label: () => "discard fix",
+			run: () => I.resolve(N(), "discard"),
+			when: () => !G() && q()
 		},
 		{
 			bind: "s",
 			key: "s",
 			label: () => "start",
-			run: () => I.start(P()),
-			when: () => !U() && P()?.status === "prepared"
+			run: () => I.start(N()),
+			when: () => !G() && N()?.status === "prepared"
 		},
 		{
 			bind: "a",
 			key: "a",
 			label: () => "answer",
-			run: () => I.answer(V()),
-			when: () => !!V()
+			run: () => I.answer(W()),
+			when: () => !!W()
 		},
 		{
 			bind: "c",
 			key: "c",
 			label: () => "cancel",
-			run: () => U() ? L() : I.cancel(P()),
-			when: () => U() ? W() && j()?.status === "running" : de(P())
+			run: () => G() ? ie() : I.cancel(N()),
+			when: () => G() ? K() && A()?.status === "running" : pe(N())
 		},
 		{
 			bind: "d",
 			key: "d",
 			label: () => S() ? "hide details" : "details",
-			run: () => w((e) => !e),
-			when: () => U() && W() && !!j()
+			run: () => C((e) => !e),
+			when: () => G() && K() && !!A()
 		},
 		{
 			bind: "n",
 			key: "n",
 			label: () => "new scan",
-			run: ae,
+			run: L,
 			when: () => !0
 		},
 		{
 			bind: "o",
 			key: "o",
 			label: () => "profile",
-			run: te,
-			when: () => W() && (T()?.profiles.length ?? 0) > 1
+			run: E,
+			when: () => K() && (w()?.profiles.length ?? 0) > 1
 		},
 		{
 			bind: "p",
 			key: "p",
 			label: () => "draft policy",
 			run: I.draftPolicy,
-			when: () => !U() && W() && n.capabilities().policy
+			when: () => !G() && K() && n.capabilities().policy
 		},
 		{
 			bind: "tab",
 			key: "tab",
-			label: () => U() ? "operations" : "scans",
-			run: ce,
+			label: () => G() ? "operations" : "scans",
+			run: U,
 			when: () => !0
 		},
 		{
 			bind: "escape",
 			key: "esc",
 			label: () => "back",
-			run: se,
+			run: V,
 			when: () => !0
 		}
 	];
 	return {
 		store: n,
 		open: ne,
-		onRoute: k,
+		onRoute: O,
 		View: () => {
 			let [a, s] = m(Date.now());
 			return _(() => {
-				E(), n.loadCapabilities(), g(n.watch());
+				T(), n.loadCapabilities(), g(n.watch());
 			}), p(() => {
-				if (!A().some((e) => e.status === "running")) return;
+				if (!k().some((e) => e.status === "running")) return;
 				let e = setInterval(() => s(Date.now()), 1e3);
 				g(() => clearInterval(e));
 			}), t.keymap.layer(() => ({
 				priority: 10,
-				enabled: k,
-				commands: J.map((e) => ({
+				enabled: O,
+				commands: le.map((e) => ({
 					bind: e.bind,
 					title: e.label ? `Security: ${e.label()}` : void 0,
 					group: "Security",
 					enabled: e.when,
 					run: () => void e.run()
 				}))
-			})), e(Ne, {
+			})), e(Fe, {
 				ctx: t,
 				color: r,
 				store: n,
-				keys: J,
+				keys: le,
 				get now() {
 					return a();
 				},
@@ -1678,30 +1821,30 @@ function Fe(t) {
 					return c();
 				},
 				get run() {
-					return j();
+					return A();
 				},
 				get findingIndex() {
 					return f();
 				},
 				get operation() {
-					return P();
+					return N();
 				},
 				get details() {
 					return S();
 				},
 				get waiting() {
-					return F().length;
+					return P().length;
 				},
 				get opsAvailable() {
-					return K();
+					return ce();
 				},
 				get setup() {
-					return T();
+					return w();
 				},
 				ref: (e) => z = e
 			});
 		},
-		newScan: ae,
+		newScan: L,
 		draftPolicy: I.draftPolicy,
 		validate: R,
 		showOperations: () => {
@@ -1710,11 +1853,11 @@ function Fe(t) {
 	};
 }
 // src/tui.tsx
-var Ie = u.define({
+var Re = u.define({
 	id: "gill.security.tui",
 	setup(t) {
-		let n = Fe(t), r = t.ui.router.register({
-			name: Pe,
+		let n = Le(t), r = t.ui.router.register({
+			name: Ie,
 			render: () => e(n.View, {})
 		}), i = /* @__PURE__ */ new Set(), a = n.store.client.events.on("operationChanged", (e) => {
 			let r = e.data;
@@ -1746,4 +1889,4 @@ var Ie = u.define({
 		};
 	}
 });
-export { Ie as default };
+export { Re as default };

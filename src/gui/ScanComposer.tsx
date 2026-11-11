@@ -22,6 +22,7 @@ export function ScanComposer(props: {
   const [mode, setMode] = createSignal<Mode>(initial?.inputs.mode ?? 'default');
   const [focus, setFocus] = createSignal(initial?.scanPrompt ?? '');
   const [paths, setPaths] = createSignal(initial?.scopePaths.join('\n') ?? '');
+  const [changes, setChanges] = createSignal(initial?.changes ?? '');
   const [documents, setDocuments] = createSignal(
     initial?.contextFiles.map((file) => file.path).join('\n') ?? '',
   );
@@ -47,7 +48,7 @@ export function ScanComposer(props: {
       const input: ScanInputs = {
         repository: repository().trim() || props.directory,
         scanPrompt: focus(),
-        scopePaths: splitPaths(paths()),
+        ...(changes().trim() ? { changes: changes().trim() } : { scopePaths: splitPaths(paths()) }),
         contextFiles: splitPaths(documents()),
         ...(mode() !== 'default' ? { mode: mode() as 'standard' | 'deep' } : {}),
       };
@@ -138,6 +139,17 @@ export function ScanComposer(props: {
                     aria-label="Scope paths"
                   />
                   <span class="gs-help">One path per line. Leave blank for everything.</span>
+                </label>
+                <label>
+                  Only changes
+                  <input
+                    value={changes()}
+                    onInput={(e) => setChanges(e.currentTarget.value)}
+                    placeholder="uncommitted, or a base ref such as origin/main"
+                    aria-label="Changes"
+                    spellcheck={false}
+                  />
+                  <span class="gs-help">Scans a diff instead of paths. Standard depth only.</span>
                 </label>
                 <label>
                   Context files

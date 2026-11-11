@@ -13,8 +13,13 @@ export function runTitle(run: ScanState) {
     (run.plan?.scopePaths.length ? run.plan.scopePaths.join(', ') : projectName(run.repository))
   );
 }
+export function scopeLabel(plan: { scopePaths: string[]; changes?: string }) {
+  if (plan.changes)
+    return plan.changes === 'uncommitted' ? 'Uncommitted changes' : `Changes since ${plan.changes}`;
+  return plan.scopePaths.join(', ') || 'Whole repository';
+}
 export function scanScope(run: ScanState) {
-  return run.plan?.scopePaths.join(', ') || 'Whole repository';
+  return run.plan ? scopeLabel(run.plan) : 'Whole repository';
 }
 export function phaseLabel(phase: string) {
   const clean = phase.replace(/\s*\((files|reviews)\)$/, '').replaceAll('_', ' ');
@@ -309,4 +314,16 @@ export function runtimeProblems(runtime: { node: string | null; python: string |
       ? []
       : [`Python 3.10+ (${found(runtime.python)})`]),
   ];
+}
+
+/** The SDK's verdict on a fix it wrote. */
+export function fixStatusLabel(status: string) {
+  return (
+    {
+      verified: 'Fix verified',
+      no_change: 'No change needed',
+      blocked: 'Fix blocked',
+      failed: 'Fix failed verification',
+    }[status] ?? 'Fix'
+  );
 }

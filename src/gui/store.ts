@@ -17,12 +17,14 @@ export interface SecurityPort {
   subscribe?(listener: (event: 'changed' | 'operationChanged') => void): () => void;
 }
 export interface OperationPort {
-  capabilities?: { policy: boolean; validation: boolean; questionAnswers: boolean };
+  capabilities?: { policy: boolean; validation: boolean; fix?: boolean };
   list(): Promise<unknown>;
   prepare(input: SecurityOperationInputs): Promise<unknown>;
   start(input: { operationId: string }): Promise<unknown>;
   answer(input: { operationId: string; questionId: string; answer: string }): Promise<unknown>;
   cancel(input: { operationId: string }): Promise<unknown>;
+  /** Apply a proposed fix to the working tree, or discard it. */
+  resolve(input: { operationId: string; action: 'apply' | 'discard' }): Promise<unknown>;
 }
 export interface Catalog {
   engine?: string;

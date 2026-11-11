@@ -10,6 +10,7 @@ export const FALLBACK_POLL_MS = 30_000;
 export interface Capabilities {
   policy: boolean;
   validation: boolean;
+  fix: boolean;
 }
 
 /** Shared data for the Security route and its commands. Nothing here polls on its own. */
@@ -21,6 +22,7 @@ export function createStore(ctx: Plugin.Context) {
   const [capabilities, setCapabilities] = createSignal<Capabilities>({
     policy: false,
     validation: false,
+    fix: false,
   });
   const [error, setError] = createSignal('');
   const [busy, setBusy] = createSignal(false);
@@ -32,7 +34,12 @@ export function createStore(ctx: Plugin.Context) {
       .capabilities({}, { location })
       .then((value) => {
         const caps = value as Partial<Capabilities>;
-        if (!disposed) setCapabilities({ policy: !!caps.policy, validation: !!caps.validation });
+        if (!disposed)
+          setCapabilities({
+            policy: !!caps.policy,
+            validation: !!caps.validation,
+            fix: !!caps.fix,
+          });
       })
       .catch(() => {
         capabilityLoad = undefined;

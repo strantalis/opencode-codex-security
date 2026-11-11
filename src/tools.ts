@@ -72,12 +72,14 @@ function scanNotice(s: ScanState) {
     : `Codex Security scan ${s.runId} ended: ${s.status}. Call security_scan_status with runId ${s.runId} for details.`;
 }
 function operationNotice(s: SecurityOperationState) {
-  const name = `Codex Security ${s.kind === 'policy' ? 'policy draft' : 'validation'} ${s.operationId}`;
+  const name = `Codex Security ${{ policy: 'policy draft', validation: 'validation', fix: 'fix' }[s.kind]} ${s.operationId}`;
   const read = `Call security_operations with operationId ${s.operationId}`;
   if (s.status === 'awaiting_answers')
     return `${name} is waiting for owner answers. ${read} to read the questions, ask the user, then call security_answer_questions.`;
   if (s.status === 'completed')
-    return `${name} completed. ${read} for the ${s.kind === 'policy' ? 'draft' : 'disposition'} and report it to the user.`;
+    return s.kind === 'fix'
+      ? `${name} completed. ${read} for the proposed diff, show it to the user, and call security_apply_fix only if they accept it.`
+      : `${name} completed. ${read} for the ${s.kind === 'policy' ? 'draft' : 'disposition'} and report it to the user.`;
   return `${name} ended: ${s.status}. ${read} for details.`;
 }
 
@@ -278,19 +280,14 @@ export function registerTools(
 
   const start = async (context: ToolContext, state: SecurityOperationState) => {
     const route = describeInferenceRoute(state.plan.settings);
-    await permit(
-      context,
-      state.kind === 'policy' ? 'codex_security_policy' : 'codex_security_validation',
-      [state.repository, route],
-      {
-        kind: state.kind,
-        repository: state.repository,
-        path: state.plan.path ?? null,
-        contextFiles: state.plan.contextFiles.map((file) => file.path),
-        sentTo: route,
-        cost: state.plan.costNotice,
-      },
-    );
+    await permit(context, `codex_security_${state.kind}`, [state.repository, route], {
+      kind: state.kind,
+      repository: state.repository,
+      path: state.plan.path ?? null,
+      contextFiles: state.plan.contextFiles.map((file) => file.path),
+      sentTo: route,
+      cost: state.plan.costNotice,
+    });
     const started = await operations.start({ operationId: state.operationId });
     notices.operation(started.operationId, context.sessionID);
     return operationSummary(started);
@@ -313,24 +310,48 @@ export function registerTools(
       'runId',
       'findingId',
     ]),
-    async (input: { runId: string; findingId: string }, context) => {
-      const state = await run(input);
-      const finding = state.findings.find((f) => f.id === input.findingId);
-      if (state.status !== 'completed' || !finding)
-        throw new SecurityInputError('Choose a finding from a completed scan.');
-      return start(
-        context,
-        await operations.prepare({
-          kind: 'validation',
+    async (input: { runId: string; findingId: string }, context) =>
+      start(context, await operations.prepare({ kind: 'validation', ...(await finding(input)) })),
+  );
+  const finding = async (input: { runId: string; findingId: string }) => {
+    const state = await run(input);
+    const found = state.findings.find((f) => f.id === input.findingId);
+    if (state.status !== 'completed' || !found)
+      throw new SecurityInputError('Choose a finding from a completed scan.');
+    return { repository: state.repository, finding: { ...safeFinding(found) } };
+  };
+  add(
+    'security_fix',
+    'Propose a fix for one finding from a completed scan. The user approves first; it has no cost limit. The fix is written and verified in a copy of the last commit, so no file changes until security_apply_fix. A notice arrives in this session when the diff is ready.',
+    object({ runId, findingId: id('Finding ID from security_scan_results.') }, [
+      'runId',
+      'findingId',
+    ]),
+    async (input: { runId: string; findingId: string }, context) =>
+      start(context, await operations.prepare({ kind: 'fix', ...(await finding(input)) })),
+  );
+  add(
+    'security_apply_fix',
+    'Apply a proposed fix to the working tree after the user has seen the diff and accepted it, or pass `discard` to throw it away. The user approves an apply.',
+    object({ operationId, discard: { type: 'boolean' } }, ['operationId']),
+    async (input: { operationId: string; discard?: boolean }, context) => {
+      const state = operations.getState(input.operationId);
+      if (!input.discard)
+        await permit(context, 'codex_security_apply_fix', [state.repository], {
           repository: state.repository,
-          finding: { ...safeFinding(finding) },
+          diff: state.result?.kind === 'fix' ? state.result.diff : '',
+        });
+      return operationSummary(
+        await operations.resolve({
+          operationId: input.operationId,
+          action: input.discard ? 'discard' : 'apply',
         }),
       );
     },
   );
   add(
     'security_operations',
-    'Status, pending owner questions and result of one policy or validation operation, or a list of all of them when `operationId` is omitted.',
+    'Status, pending owner questions and result of one policy, validation or fix operation, or a list of all of them when `operationId` is omitted.',
     object({ operationId }),
     async (input: { operationId?: string }) =>
       input.operationId
@@ -360,7 +381,7 @@ export function registerTools(
   );
   add(
     'security_cancel_operation',
-    'Cancel one policy or validation operation.',
+    'Cancel one policy, validation or fix operation.',
     object({ operationId }, ['operationId']),
     async (input: { operationId: string }) =>
       operationSummary(operations.cancel(input.operationId)),

@@ -260,3 +260,46 @@ test('execution headers stay private across previews, events, lists and saved hi
       /synthetic-private-authorization|codexOverrides/,
     );
 });
+
+test('a changes scan targets a diff, and cannot be combined with paths', async (t) => {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const { writeFile } = await import('node:fs/promises');
+  const root = await project(t);
+  const git = (...args) =>
+    promisify(execFile)('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.test', ...args], {
+      cwd: root,
+    });
+  await git('init', '--quiet', '--initial-branch=main');
+  await git('add', '-A');
+  await git('commit', '--quiet', '-m', 'base');
+  await writeFile(join(root, 'src', 'app.js'), 'export const ok = false;\n');
+  let options;
+  const service = new PlannedScanService(root, {
+    createClient: () => ({
+      run: async (_repository, received) => {
+        options = received;
+        return fakeResult;
+      },
+      close: async () => {},
+    }),
+    mock: true,
+  });
+  t.after(() => service.dispose());
+  const { plan } = await service.prepare({ changes: 'uncommitted' });
+  assert.equal(plan.changes, 'uncommitted');
+  assert.match(describePlan(plan), /Scope: Uncommitted changes/);
+  await service.start({ planId: plan.id });
+  await service.wait();
+  assert.equal(options.target.kind, 'working_tree');
+
+  await git('commit', '--quiet', '-am', 'change');
+  const since = await prepareScan(root, { changes: 'HEAD~1' });
+  assert.match(describePlan(since), /Scope: Changes since HEAD~1/);
+  await assert.rejects(
+    prepareScan(root, { changes: 'HEAD~1', scopePaths: ['src'] }),
+    /paths or changes/,
+  );
+  await assert.rejects(prepareScan(root, { changes: 'no-such-ref' }), /no-such-ref|ref|revision/i);
+  await assert.rejects(prepareScan(root, { changes: 'HEAD~1', mode: 'deep' }), /standard|deep/i);
+});

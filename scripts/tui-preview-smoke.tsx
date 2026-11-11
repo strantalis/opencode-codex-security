@@ -188,6 +188,10 @@ const rpc = {
     opCalls.push(['answer', input]);
     return {};
   },
+  operationResolve: async (input: unknown) => {
+    opCalls.push(['resolve', input]);
+    return {};
+  },
   operationCancel: async (input: unknown) => {
     opCalls.push(['cancel', input]);
     return {};

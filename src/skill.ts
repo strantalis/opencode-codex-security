@@ -19,9 +19,11 @@ export const skill = {
    - Default: \`repository\` is the target checkout. \`contextFiles\` holds the absolute path of \`deployment.md\` and the few infrastructure files that matter.
    - When the user wants data flow followed across repositories: \`repository\` is the \`app/\` folder and \`scopePaths\` point into each checkout's source, for example \`api/src\`. This costs more; say so and let the user choose.
 
+   - To check only recent work, pass \`changes\`: "uncommitted", or a base ref such as "origin/main".
+
 5. Call security_scan. Tell the user it runs in the background. A notice arrives in this session when it ends; then call security_scan_results and report the findings by severity.
 
-6. Offer security_validate for findings the user cares about. Offer security_policy with the deployment summary as context, so a SECURITY.md records these facts and later scans pick them up.
+6. Offer security_validate for findings the user cares about, and security_fix to propose a fix: it returns a diff, and you call security_apply_fix only after the user accepts it. Offer security_policy with the deployment summary as context, so a SECURITY.md records these facts and later scans pick them up.
 
 7. When the user is done, delete the workspace folder.`,
 };

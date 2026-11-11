@@ -233,7 +233,14 @@ try {
   const caps = await rpc.capabilities({}, { location });
   assert.equal(caps.policy, true);
   assert.equal(caps.validation, true);
-  assert.equal(caps.patch, false);
+  assert.equal(caps.fix, true);
+  // The sample project is not a git repository, so a fix is refused before anything runs.
+  await assert.rejects(
+    rpc.operationPrepare({ kind: 'fix', finding: 'Synthetic finding.' }, { location }),
+    (error) => error.type === 'security.setup' && /git repository/.test(error.message),
+  );
+  const changes = await rpc.prepare({ changes: 'uncommitted' }, { location }).catch((e) => e);
+  assert.ok(changes.type === 'security.setup', 'a diff scan of a non-git folder is refused');
   const policyPreview = await rpc.operationPrepare({ kind: 'policy' }, { location });
   assert.equal(policyPreview.plan.targetPath, join(fixture, 'SECURITY.md'));
   assert.equal((await test.inspect({}, { location })).operationCalls.length, 0);

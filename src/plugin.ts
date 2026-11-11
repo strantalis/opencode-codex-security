@@ -82,8 +82,7 @@ export function createSecurityPlugin(
           policy: !!operations,
           validation: !!operations,
           questionAnswers: !!operations,
-          patch: false,
-          verifyFix: false,
+          fix: !!operations,
         }),
         prepare: rpc((input: ScanInputs) => scans.prepare(input)),
         start: rpc((input: { planId?: string }) => scans.start(input)),
@@ -109,6 +108,9 @@ export function createSecurityPlugin(
         ),
         operationCancel: rpc((input: { operationId: string }) =>
           requireOperations().cancel(input.operationId),
+        ),
+        operationResolve: rpc((input: { operationId: string; action: 'apply' | 'discard' }) =>
+          requireOperations().resolve(input),
         ),
         setup: rpc(() => setupStatus(directory)),
         setProfile: rpc((input: { profile: string }) => saveProfile(input.profile)),

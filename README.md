@@ -6,9 +6,10 @@ This is an early, unofficial project (not an OpenCode or OpenAI product), releas
 
 ## What it does
 
-- **Scans**: Standard or Deep, on the whole repository or selected paths, with progress, estimated cost and findings. Two scans can run at once per project, and results are kept in local history.
+- **Scans**: Standard or Deep, on the whole repository, selected paths, or only what changed (uncommitted work, or a branch against a base ref), with progress, estimated cost and findings. Two scans can run at once per project, and results are kept in local history.
 - **Policy drafts**: generates a `SECURITY.md` draft for a repository or component. It can pause to ask you questions, and it never writes the file.
 - **Finding validation**: re-checks one finding against the source.
+- **Fixes**: writes and verifies a fix for one finding in a throwaway copy of the last commit, then shows you the diff. Your files change only if you apply it, and nothing is committed.
 
 The plugin is a thin layer over the [`@openai/codex-security`](https://www.npmjs.com/package/@openai/codex-security) SDK, which runs the Codex runtime underneath. Scans send your source to the model provider you have configured, so every scan, policy draft and validation shows a preview and waits for your approval.
 
@@ -37,22 +38,23 @@ To change the model, provider, scan mode or cost limit, see [docs/CONFIG.md](doc
 
 ## Using it
 
-In the terminal, `/security` opens the scan view and `/security-scan` starts a new scan. `/security-target` and `/security-mode` change the repository and depth of the next scan, `/security-policy` drafts a policy and `/security-validate` re-checks a finding. The remaining `/security-*` commands select, inspect and cancel work in progress.
+In the terminal, `/security` opens the view, `/security-scan` starts a new scan, `/security-policy` drafts a policy and `/security-validate` re-checks a finding. Everything else is a key inside the view, listed in its footer: move through scans and findings, open a finding, validate it or propose a fix, answer policy questions, apply or discard a fix, and cancel. The scan review lets you change the target, depth, scope (paths, or a diff), focus and context before you start.
 
 Your session's model can do the same through these tools:
 
-| Tool                                                | Purpose                                                                  |
-| --------------------------------------------------- | ------------------------------------------------------------------------ |
-| `security_status`                                   | The resolved route, config files, Codex profiles, and Node/Python found. |
-| `security_scan`                                     | Start a scan. Asks for your approval with the preview.                   |
-| `security_scans`, `security_scan_status`            | List scans and follow one.                                               |
-| `security_scan_results`                             | Findings of a completed scan, or one finding in detail.                  |
-| `security_policy`, `security_validate`              | Start a policy draft or a validation. Each asks first.                   |
-| `security_operations`                               | Status, pending questions and results of those operations.               |
-| `security_answer_questions`                         | Answer a policy's owner questions. Asks first.                           |
-| `security_cancel_scan`, `security_cancel_operation` | Cancel one run.                                                          |
+| Tool                                                | Purpose                                                                       |
+| --------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `security_status`                                   | The resolved route, config files, Codex profiles, and Node/Python found.      |
+| `security_scan`                                     | Start a scan. Asks for your approval with the preview.                        |
+| `security_scans`, `security_scan_status`            | List scans and follow one.                                                    |
+| `security_scan_results`                             | Findings of a completed scan, or one finding in detail.                       |
+| `security_policy`, `security_validate`              | Start a policy draft or a validation. Each asks first.                        |
+| `security_fix`, `security_apply_fix`                | Propose a fix for a finding, then apply or discard the diff. Each asks first. |
+| `security_operations`                               | Status, pending questions and results of those operations.                    |
+| `security_answer_questions`                         | Answer a policy's owner questions. Asks first.                                |
+| `security_cancel_scan`, `security_cancel_operation` | Cancel one run.                                                               |
 
-Approvals use OpenCode's permission rules, under the actions `codex_security_scan`, `codex_security_policy`, `codex_security_validation` and `codex_security_answer`.
+Approvals use OpenCode's permission rules, under the actions `codex_security_scan`, `codex_security_policy`, `codex_security_validation`, `codex_security_fix`, `codex_security_apply_fix` and `codex_security_answer`.
 
 When a scan, policy draft or validation started by the session's model ends, or a policy draft has questions for you, the plugin posts a short notice into that session and the model picks it up from there.
 
@@ -69,10 +71,11 @@ The workspace stays until you ask the model to delete it, so validation can reus
 
 ## Limits
 
-- Cost figures are the SDK's estimates, and `scan.maxCostUsd` stops a scan on that estimate. Neither is a billing cap, and validation has no cost limit at all.
+- Cost figures are the SDK's estimates, and `scan.maxCostUsd` stops a scan on that estimate. Neither is a billing cap, and validation and fixes have no cost limit at all.
 - Findings arrive when a scan completes, not while it runs.
 - Policy and validation operations live in memory and are lost when OpenCode restarts. A scan interrupted by a restart is marked as interrupted, not resumed. Session notices are not sent for work that outlives a restart.
-- Patching and fix verification are not exposed.
+- A fix is written against the last commit, so it does not see uncommitted work, and applying it fails if your working tree has changed the same lines. A proposed fix that is neither applied nor discarded is removed when OpenCode restarts.
+- Diff scans are Standard only.
 - Tested on macOS and Linux. The Desktop panel is experimental.
 
 ## Development

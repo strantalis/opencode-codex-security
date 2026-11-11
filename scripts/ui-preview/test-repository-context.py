@@ -32,7 +32,7 @@ async def main():
         await page.locator('.gs-finding > summary').first.click()
         await page.get_by_role('button', name='Validate finding', exact=True).click()
         await expect(journal).to_have_text('Prepared validation; 0 model calls')
-        validation = page.locator('.gs-finding-validation')
+        validation = page.locator('.gs-finding-validation').first
         await expect(validation).to_contain_text('Ready to start')
         await validation.get_by_role('button', name='Start mock run').click()
         await expect(validation).to_contain_text('Confirmed in source')

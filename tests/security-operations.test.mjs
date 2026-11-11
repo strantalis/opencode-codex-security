@@ -177,7 +177,7 @@ test('validation sends the finding as given, including credential-shaped text', 
   });
   assert.equal(received.repositoryPath, root);
   assert.equal(received.finding, JSON.stringify(finding));
-  await assert.rejects(operations.prepare({ kind: 'validation' }), /finding text/);
+  await assert.rejects(operations.prepare({ kind: 'validation' }), /finding is needed/);
   await assert.rejects(
     operations.prepare({ kind: 'validation', finding: 'x', path: 'src' }),
     /Policy takes a path/,
@@ -294,4 +294,81 @@ test('operation previews and events never expose execution-only provider headers
   assert.equal(received.codexOverrides.model_providers.gateway.http_headers.Authorization, secret);
   assert.doesNotMatch(JSON.stringify(events), /synthetic-private-header/);
   assert.doesNotMatch(JSON.stringify(operations.list()), /synthetic-private-header/);
+});
+
+test('a fix is written in a throwaway worktree, then applied or discarded', async (t) => {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const { readFile, writeFile, access } = await import('node:fs/promises');
+  const root = await project(t);
+  const git = (...args) =>
+    promisify(execFile)('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.test', ...args], {
+      cwd: root,
+    });
+  await assert.rejects(
+    service(t, root).prepare({ kind: 'fix', finding: 'x' }),
+    /needs a git repository/,
+  );
+  await git('init', '--quiet', '--initial-branch=main');
+  await git('add', '-A');
+  await git('commit', '--quiet', '-m', 'base');
+  const app = join(root, 'src', 'app.js');
+  const workspaces = [];
+  let outcome = { status: 'verified', verificationReport: 'Checked the guard.', changedFiles: [] };
+  const operations = service(t, root, () =>
+    client({
+      patch: async (options) => {
+        workspaces.push(options.repositoryPath);
+        assert.notEqual(options.repositoryPath, root);
+        if (outcome.status === 'verified')
+          await writeFile(join(options.repositoryPath, 'src', 'app.js'), 'export const ok = 1;\n');
+        return { ...outcome, threadId: null, cost: { estimatedUsd: 0.4 } };
+      },
+    }),
+  );
+  const propose = async () => {
+    const prepared = await operations.prepare({ kind: 'fix', finding: { title: 'Weak check' } });
+    assert.match(prepared.plan.costNotice, /no cost limit/);
+    await operations.start({ operationId: prepared.operationId });
+    return operations.wait(prepared.operationId);
+  };
+
+  // Discard: the checkout is untouched and the worktree is gone.
+  const first = await propose();
+  assert.equal(first.status, 'completed', first.error);
+  assert.equal(first.result.status, 'verified');
+  assert.equal(first.result.resolution, 'pending');
+  assert.match(first.result.diff, /^-export const ok = true;$/m);
+  assert.match(first.result.diff, /^\+export const ok = 1;$/m);
+  assert.equal(first.estimatedCostUsd, 0.4);
+  assert.equal(await readFile(app, 'utf8'), 'export const ok = true;\n');
+  const discarded = await operations.resolve({ operationId: first.operationId, action: 'discard' });
+  assert.equal(discarded.result.resolution, 'discarded');
+  await assert.rejects(access(workspaces[0]));
+  await assert.rejects(
+    operations.resolve({ operationId: first.operationId, action: 'apply' }),
+    /no fix waiting/,
+  );
+
+  // Apply fails cleanly when the working tree has moved on, and stays pending.
+  const second = await propose();
+  await writeFile(app, 'export const ok = "edited";\n');
+  await assert.rejects(
+    operations.resolve({ operationId: second.operationId, action: 'apply' }),
+    /no longer applies/,
+  );
+  assert.equal(operations.getState(second.operationId).result.resolution, 'pending');
+  await git('checkout', '--', 'src/app.js');
+  const applied = await operations.resolve({ operationId: second.operationId, action: 'apply' });
+  assert.equal(applied.result.resolution, 'applied');
+  assert.equal(await readFile(app, 'utf8'), 'export const ok = 1;\n');
+  await assert.rejects(access(workspaces[1]));
+
+  // Nothing changed: no decision to make, and no worktree left behind.
+  outcome = { status: 'blocked', reason: 'Needs a schema change.', changedFiles: [] };
+  const blocked = await propose();
+  assert.equal(blocked.result.resolution, 'none');
+  assert.equal(blocked.result.report, 'Needs a schema change.');
+  await assert.rejects(access(workspaces[2]));
+  assert.equal((await git('worktree', 'list')).stdout.trim().split('\n').length, 1);
 });

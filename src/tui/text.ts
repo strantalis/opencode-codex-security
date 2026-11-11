@@ -1,6 +1,6 @@
 import type { ScanState } from '../types';
 import type { SecurityOperationState } from '../core/security-operations';
-import { runtimeProblems, elapsedLabel, phaseLabel, projectName } from '../scan-display';
+import { runtimeProblems, elapsedLabel, phaseLabel, projectName, scanScope } from '../scan-display';
 
 /**
  * Shape of the planned `setup` RPC result. Not called yet: wire it up by fetching
@@ -57,8 +57,8 @@ export function runRow(run: ScanState, now: number) {
   const parts = [
     runStatus(run),
     projectName(run.repository),
-    run.plan?.scopePaths.length ? run.plan.scopePaths.join(', ') : 'Whole repository',
-    run.mode ?? 'fixture',
+    scanScope(run),
+    run.mode ?? 'standard',
   ];
   if (run.status === 'running') parts.push(elapsedLabel(run.startedAt, null, now));
   else if (run.status === 'completed')
@@ -67,7 +67,7 @@ export function runRow(run: ScanState, now: number) {
 }
 
 export function operationTitle(op: SecurityOperationState) {
-  return op.kind === 'policy' ? 'Policy draft' : 'Validation';
+  return { policy: 'Policy draft', validation: 'Validation', fix: 'Fix' }[op.kind];
 }
 
 export function operationRow(op: SecurityOperationState) {

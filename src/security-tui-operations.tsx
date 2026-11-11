@@ -24,14 +24,17 @@ export function createTuiOperations(
         : `Finding: ${(plan.finding ?? '').split('\n')[0]}`;
     const destination = plan.mock
       ? 'Mock SDK responses; no model calls.'
-      : `Sends source${op.kind === 'validation' ? ', the finding' : ''} and context to ${describeInferenceRoute(plan.settings)}.`;
+      : `Sends source${op.kind === 'policy' ? '' : ', the finding'} and context to ${describeInferenceRoute(plan.settings)}.`;
     const cost = op.kind === 'policy' ? costLine(plan.settings.scan.maxCostUsd) : plan.costNotice;
-    const outcome =
-      op.kind === 'policy'
-        ? 'Produces a draft for you to review; no files are written.'
-        : 'Reads source only; nothing is executed or patched.';
+    const outcome = {
+      policy: 'Produces a draft for you to review; no files are written.',
+      validation: 'Reads source only; nothing is executed or patched.',
+      fix: 'Writes the fix in a copy of the last commit. Your files change only if you apply the diff.',
+    }[op.kind];
     const confirmed = await ctx.ui.dialog.confirm({
-      title: op.kind === 'policy' ? 'Draft a policy' : 'Validate a finding',
+      title: { policy: 'Draft a policy', validation: 'Validate a finding', fix: 'Propose a fix' }[
+        op.kind
+      ],
       message: [`Repository: ${op.repository}`, subject, '', destination, cost, outcome].join('\n'),
       label: { confirm: 'Start', cancel: 'Back' },
     });
@@ -64,6 +67,24 @@ export function createTuiOperations(
 
   const validate = (repository: string, finding: Finding) =>
     store.perform(() => prepare({ kind: 'validation', repository, finding: findingText(finding) }));
+
+  const fix = (repository: string, finding: Finding) =>
+    store.perform(() => prepare({ kind: 'fix', repository, finding: findingText(finding) }));
+
+  /** Apply a proposed fix to the working tree, or discard it. */
+  const resolve = (op: SecurityOperationState, action: 'apply' | 'discard') =>
+    store.perform(async () => {
+      if (action === 'apply') {
+        const confirmed = await ctx.ui.dialog.confirm({
+          title: 'Apply this fix',
+          message: `Applies the diff to ${op.repository}. Nothing is committed.`,
+          label: { confirm: 'Apply', cancel: 'Back' },
+        });
+        if (!confirmed || store.isDisposed()) return;
+      }
+      await client.operationResolve({ operationId: op.operationId, action }, { location });
+      await store.refreshOperations();
+    });
 
   /** Validate free text when there is no scan finding to start from. */
   const validateText = () =>
@@ -104,7 +125,7 @@ export function createTuiOperations(
       await store.refreshOperations();
     });
 
-  return { draftPolicy, validate, validateText, start, answer, cancel };
+  return { draftPolicy, validate, validateText, fix, resolve, start, answer, cancel };
 }
 
 export type TuiOperations = ReturnType<typeof createTuiOperations>;

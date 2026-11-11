@@ -38,12 +38,24 @@ export function Findings(props: {
               <p>{finding.remediation}</p>
               <Show when={props.validation}>
                 {(port) => (
-                  <FindingValidation
-                    run={props.run}
-                    finding={finding}
-                    port={port()}
-                    store={props.store}
-                  />
+                  <>
+                    <FindingAction
+                      kind="validation"
+                      run={props.run}
+                      finding={finding}
+                      port={port()}
+                      store={props.store}
+                    />
+                    <Show when={port().capabilities?.fix ?? true}>
+                      <FindingAction
+                        kind="fix"
+                        run={props.run}
+                        finding={finding}
+                        port={port()}
+                        store={props.store}
+                      />
+                    </Show>
+                  </>
                 )}
               </Show>
             </div>
@@ -54,8 +66,9 @@ export function Findings(props: {
   );
 }
 
-/** The latest validation for this exact finding text, or a button to prepare one. */
-function FindingValidation(props: {
+/** The latest validation or fix for this exact finding text, or a button to prepare one. */
+function FindingAction(props: {
+  kind: 'validation' | 'fix';
   run: ScanState;
   finding: Finding;
   port: OperationPort;
@@ -65,7 +78,7 @@ function FindingValidation(props: {
   const latest = createMemo(() =>
     props.store
       .operations()
-      .filter((op) => op.kind === 'validation' && op.plan.finding === text())
+      .filter((op) => op.kind === props.kind && op.plan.finding === text())
       .reduce<SecurityOperationState | undefined>(
         (best, op) => (!best || op.createdAt > best.createdAt ? op : best),
         undefined,
@@ -79,7 +92,7 @@ function FindingValidation(props: {
     setError('');
     try {
       await props.port.prepare({
-        kind: 'validation',
+        kind: props.kind,
         repository: props.run.repository,
         finding: text(),
       });
@@ -111,10 +124,22 @@ function FindingValidation(props: {
       <Show when={canRetry()}>
         <div class="gs-actions">
           <button class="gs-button" disabled={busy()} onClick={() => void prepare()}>
-            {busy() ? 'Preparing…' : latest() ? 'Validate again' : 'Validate finding'}
+            {busy()
+              ? 'Preparing…'
+              : props.kind === 'fix'
+                ? latest()
+                  ? 'Propose another fix'
+                  : 'Propose fix'
+                : latest()
+                  ? 'Validate again'
+                  : 'Validate finding'}
           </button>
           <Show when={!latest()}>
-            <span class="gs-muted">Checks the finding against the source. You approve first.</span>
+            <span class="gs-muted">
+              {props.kind === 'fix'
+                ? 'Writes a fix in a copy of the last commit. You review the diff first.'
+                : 'Checks the finding against the source. You approve first.'}
+            </span>
           </Show>
         </div>
       </Show>

@@ -1,4 +1,5 @@
 import type { ScanState } from './types';
+import { scopeLabel } from './scan-display.ts';
 import type { ScanInputs, ScanPlan } from './core/scan-plan';
 export function describeCostLimit(limit?: number): string {
   return limit === undefined
@@ -15,7 +16,7 @@ export function describePlan(plan: ScanPlan): string {
   return [
     ...(plan.mock ? ['MOCK SDK TEST: no model calls or uploads.'] : []),
     `Repository: ${plan.repository}`,
-    `Scope: ${plan.scopePaths.join(', ') || 'whole repository'}`,
+    `Scope: ${scopeLabel(plan)}`,
     `Mode: ${plan.settings.scan.mode}`,
     ...(plan.scanPrompt ? [`Instructions: ${plan.scanPrompt}`] : []),
     ...(plan.contextFiles.length

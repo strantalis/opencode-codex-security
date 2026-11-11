@@ -3,7 +3,7 @@ import type { Plugin } from '@opencode/plugin/tui';
 import { createSignal, For, Show } from 'solid-js';
 import type { ScanInputs, ScanPlan } from '../core/scan-plan';
 import { describeInferenceRoute, describePlan, isAbsoluteLocalDirectory } from '../plan-view';
-import { userError } from '../scan-display';
+import { scopeLabel, userError } from '../scan-display';
 import type { Colors } from './theme';
 import { costLine, splitList } from './text';
 
@@ -119,11 +119,21 @@ async function edit(ctx: Plugin.Context, field: Edit, plan: ScanPlan) {
   if (field === 'scope') {
     const value = await ctx.ui.dialog.prompt({
       title: 'Scope',
-      description: 'Repository-relative paths, separated by commas. Leave empty for everything.',
-      value: plan.scopePaths.join(', '),
+      description:
+        'Paths separated by commas, or leave empty for everything. For a diff scan, type "uncommitted" or "since origin/main".',
+      value: plan.changes
+        ? plan.changes === 'uncommitted'
+          ? 'uncommitted'
+          : `since ${plan.changes}`
+        : plan.scopePaths.join(', '),
       placeholder: 'src/api, src/auth',
     });
-    return value === undefined ? undefined : { ...inputs, scopePaths: splitList(value) };
+    if (value === undefined) return;
+    const { scopePaths: _paths, changes: _changes, ...rest } = inputs;
+    const text = value.trim();
+    if (text === 'uncommitted') return { ...rest, changes: text };
+    if (text.startsWith('since ')) return { ...rest, changes: text.slice(6).trim() };
+    return { ...rest, scopePaths: splitList(value) };
   }
   if (field === 'focus') {
     const value = await ctx.ui.dialog.prompt({
@@ -180,7 +190,7 @@ function Review(props: {
   const rows = (): [string, string][] => [
     ['Repository', props.plan.repository],
     ['Depth', depth()],
-    ['Scope', props.plan.scopePaths.join(', ') || 'Whole repository'],
+    ['Scope', scopeLabel(props.plan)],
     ['Focus', props.plan.scanPrompt || '—'],
     ['Context', props.plan.contextFiles.map((file) => file.path).join(', ') || '—'],
     ['Route', describeInferenceRoute(props.plan.settings)],

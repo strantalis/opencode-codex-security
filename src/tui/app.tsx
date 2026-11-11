@@ -191,6 +191,10 @@ export function createApp(ctx: Plugin.Context) {
 
   const scans = () => tab() === 'scans';
   const listing = () => !detail();
+  const fixPending = () => {
+    const result = operation()?.result;
+    return result?.kind === 'fix' && result.resolution === 'pending';
+  };
   const findingSelected = () =>
     scans() && !!finding() && (detail() === 'finding' || focus() === 'findings');
   const opsAvailable = () => store.capabilities().policy || store.capabilities().validation;
@@ -219,6 +223,27 @@ export function createApp(ctx: Plugin.Context) {
       label: () => 'validate',
       run: validate,
       when: () => store.capabilities().validation && findingSelected(),
+    },
+    {
+      bind: 'x',
+      key: 'x',
+      label: () => 'propose fix',
+      run: () => operations.fix(run()!.repository, finding()!),
+      when: () => store.capabilities().fix && findingSelected(),
+    },
+    {
+      bind: 'y',
+      key: 'y',
+      label: () => 'apply fix',
+      run: () => operations.resolve(operation()!, 'apply'),
+      when: () => !scans() && fixPending(),
+    },
+    {
+      bind: 'r',
+      key: 'r',
+      label: () => 'discard fix',
+      run: () => operations.resolve(operation()!, 'discard'),
+      when: () => !scans() && fixPending(),
     },
     {
       bind: 's',

@@ -16,6 +16,8 @@ export interface ScanInputs {
   mode?: 'standard' | 'deep';
   repository?: string;
   scopePaths?: string[];
+  /** Scan a diff instead: "uncommitted", or a base ref to compare with HEAD. */
+  changes?: string;
   scanPrompt?: string;
   contextFiles?: string[];
 }
@@ -33,6 +35,8 @@ export interface ScanPlan {
   id: string;
   repository: string;
   scopePaths: string[];
+  /** Set for a diff scan: "uncommitted" or the base ref. */
+  changes?: string;
   scanPrompt: string;
   contextFiles: { path: string }[];
   settings: { codex: Route; scan: ScanSettings & { mode: 'standard' | 'deep' } };
@@ -61,14 +65,28 @@ function parseInputs(value: unknown): ScanInputs {
     Array.isArray(data) ||
     !['undefined', 'string'].includes(typeof data.repository) ||
     !['undefined', 'string'].includes(typeof data.scanPrompt) ||
+    !['undefined', 'string'].includes(typeof data.changes) ||
     !strings(data.scopePaths) ||
     !strings(data.contextFiles) ||
     ![undefined, 'standard', 'deep'].includes(data.mode as string)
   )
     throw new SecurityInputError(
-      'Scan inputs are repository, scopePaths, scanPrompt, contextFiles and mode (standard or deep).',
+      'Scan inputs are repository, scopePaths, changes, scanPrompt, contextFiles and mode (standard or deep).',
     );
+  if (data.changes && (data.scopePaths as string[] | undefined)?.length)
+    throw new SecurityInputError('Scan either paths or changes, not both.');
   return data as ScanInputs;
+}
+
+/** The SDK target for a plan: the whole repository, paths, or a diff. */
+export async function scanTarget(input: Pick<ScanInputs, 'scopePaths' | 'changes'>) {
+  if (input.changes) {
+    const { DiffTarget } = await import('@openai/codex-security');
+    return input.changes === 'uncommitted'
+      ? DiffTarget.workingTree()
+      : DiffTarget.refs({ base: input.changes });
+  }
+  return input.scopePaths?.length ? [...input.scopePaths] : ('repository' as const);
 }
 
 async function resolveRepository(workspace: string, requested = '.') {
@@ -150,11 +168,13 @@ export async function prepareScan(
   const contextFiles = [...new Set(input.contextFiles ?? [])];
   const scanSettings = { ...settings.scan };
   if (purpose === 'validation') delete scanSettings.maxCostUsd;
+  const changes = input.changes?.trim() || undefined;
+  const target = await scanTarget({ scopePaths: input.scopePaths, changes });
   return withSdk(settings.codex, async (client, sdk) => {
     const preflight = await client.preflight(repository, {
       ...scanSettings,
       auth: settings.auth,
-      target: input.scopePaths?.length ? input.scopePaths : 'repository',
+      target,
       // Relative to the repository; absolute paths may name files in other checkouts.
       knowledgeBasePaths: contextFiles.map((path) => resolve(repository, path)),
     });
@@ -163,6 +183,7 @@ export async function prepareScan(
       id: randomUUID(),
       repository: preflight.repository,
       scopePaths,
+      ...(changes ? { changes } : {}),
       scanPrompt: input.scanPrompt ?? '',
       contextFiles: contextFiles.map((path) => ({ path })),
       settings: {
@@ -173,7 +194,7 @@ export async function prepareScan(
       sdk: { codexOverrides: settings.codex, auth: settings.auth },
       expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
       mock,
-      inputs: { ...input, repository: preflight.repository, scopePaths, contextFiles },
+      inputs: { ...input, repository: preflight.repository, scopePaths, changes, contextFiles },
     };
   });
 }

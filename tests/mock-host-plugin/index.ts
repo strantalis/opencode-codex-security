@@ -45,6 +45,16 @@ const implementation = createSecurityPlugin({
         operationCalls.push({ kind: 'validation', repository: options.repositoryPath });
         return { disposition: 'reportable', report: 'Mock source-grounded validation result.' };
       },
+      async patch(options: any) {
+        operationCalls.push({ kind: 'fix', repository: options.repositoryPath });
+        return {
+          status: 'no_change',
+          verificationReport: 'Mock: nothing to change.',
+          changedFiles: [],
+          threadId: null,
+          cost: null,
+        };
+      },
       async close() {},
     }) as any,
   createClient: (config) => {

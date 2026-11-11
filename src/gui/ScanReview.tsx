@@ -1,4 +1,5 @@
 import { Show } from 'solid-js';
+import { scopeLabel } from '../scan-display';
 import type { ScanPlan } from '../core/scan-plan';
 import { describeCostLimit, describeInferenceRoute, inferenceDestination } from '../plan-view';
 import type { SecurityStore } from './store';
@@ -19,7 +20,7 @@ export function ScanReview(props: {
         <dt>Repository</dt>
         <dd>{props.plan.repository}</dd>
         <dt>Scope</dt>
-        <dd>{props.plan.scopePaths.join(', ') || 'Whole repository'}</dd>
+        <dd>{scopeLabel(props.plan)}</dd>
         <dt>Depth</dt>
         <dd>{props.plan.settings.scan.mode === 'deep' ? 'Deep' : 'Standard'}</dd>
         <Show when={props.plan.scanPrompt}>
