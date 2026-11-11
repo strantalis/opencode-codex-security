@@ -1,10 +1,21 @@
 import { randomUUID } from 'node:crypto';
 import { CodexScanService, type SecurityFactory } from './codex-adapter.ts';
-import { prepareScan, type ScanInputs, type ScanPlan } from './scan-plan.ts';
+import {
+  prepareScan,
+  publicScanPlan,
+  type PreparedScanPlan,
+  type ScanInputs,
+  type ScanPlan,
+} from './scan-plan.ts';
 import { SecurityInputError } from './errors.ts';
 import { RunHistory } from './run-history.ts';
 import type { ScanState, ScanList } from '../types.ts';
-type Draft = { plan: ScanPlan; consumed: boolean; runId?: string; starting?: Promise<ScanState> };
+type Draft = {
+  plan: PreparedScanPlan;
+  consumed: boolean;
+  runId?: string;
+  starting?: Promise<ScanState>;
+};
 type Run = {
   state: ScanState;
   service: CodexScanService;
@@ -76,7 +87,7 @@ export class PlannedScanService {
       revision: this.#revision,
       ...(plan
         ? {
-            plan: structuredClone(plan),
+            plan: publicScanPlan(plan),
             planConsumed: this.#drafts.get(plan.id)?.consumed ?? false,
             mode: plan.settings.scan.mode,
             model: plan.settings.codex.model,
@@ -102,7 +113,7 @@ export class PlannedScanService {
   }
   getPlan(planId: string) {
     const d = this.#drafts.get(planId);
-    return d ? structuredClone(d.plan) : undefined;
+    return d ? publicScanPlan(d.plan) : undefined;
   }
   async list(): Promise<ScanList> {
     await this.#ready;
@@ -203,7 +214,7 @@ export class PlannedScanService {
       ...state,
       runId,
       repository: plan.repository,
-      plan: structuredClone(plan),
+      plan: publicScanPlan(plan),
       planConsumed: true,
       mode: plan.settings.scan.mode,
       model: plan.settings.codex.model,

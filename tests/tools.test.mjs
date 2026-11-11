@@ -188,3 +188,37 @@ test('RPC returns input problems as declared setup errors', async (t) => {
   assert.equal(prepared.plan.mock, true);
   assert.equal(errors.length, 3);
 });
+
+test('aborted tools never start scans or operations, including after permission', async (t) => {
+  const { tools, ctx, calls } = await setup(t);
+  for (const name of ['security_scan', 'security_policy']) {
+    for (const abortAfterPermission of [false, true]) {
+      const controller = new AbortController();
+      if (!abortAfterPermission) controller.abort();
+      ctx.permission.assert = async () => controller.abort();
+      const tool = tools.find((tool) => tool.name === name);
+      await assert.rejects(
+        tool.execute(
+          {},
+          {
+            signal: controller.signal,
+            sessionID: 'session',
+            agent: 'agent',
+            messageID: 'm',
+            id: 'call',
+          },
+        ),
+        /aborted/,
+      );
+    }
+  }
+  assert.equal(calls.scans.length, 0);
+  assert.equal(calls.policy, 0);
+});
+
+test('policy approval identifies the context files sent to inference', async (t) => {
+  const { call, deny, permissions } = await setup(t);
+  deny();
+  await assert.rejects(call('security_policy', { contextFiles: ['ARCHITECTURE.md'] }), /Denied/);
+  assert.deepEqual(permissions.at(-1).metadata.contextFiles, ['ARCHITECTURE.md']);
+});

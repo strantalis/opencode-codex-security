@@ -37,10 +37,19 @@ export interface ScanPlan {
   contextFiles: { path: string }[];
   settings: { codex: Route; scan: ScanSettings & { mode: 'standard' | 'deep' } };
   globalConfigFile: string;
-  sdk: { codexOverrides: JsonObject; auth: ScanAuthMode };
   expiresAt: string;
   mock: boolean;
   inputs: ScanInputs;
+}
+
+/** Execution-only configuration. Never serialize this into RPC, events or history. */
+export interface PreparedScanPlan extends ScanPlan {
+  sdk: { codexOverrides: JsonObject; auth: ScanAuthMode };
+}
+export function publicScanPlan(plan: ScanPlan): ScanPlan {
+  const copy = structuredClone(plan) as ScanPlan & { sdk?: unknown };
+  delete copy.sdk;
+  return copy;
 }
 
 function parseInputs(value: unknown): ScanInputs {
@@ -112,20 +121,29 @@ export async function prepareScan(
   workspace: string,
   raw: unknown = {},
   mock = false,
-): Promise<ScanPlan> {
+  purpose: 'scan' | 'validation' = 'scan',
+): Promise<PreparedScanPlan> {
   const input = parseInputs(raw);
   const repository = await resolveRepository(workspace, input.repository);
   const settings = await loadSettings(input.mode);
   const contextFiles = [...new Set(input.contextFiles ?? [])];
-  return withSdk(settings.codex, async (client, sdk) => {
+  const scanSettings = { ...settings.scan };
+  if (purpose === 'validation') delete scanSettings.maxCostUsd;
+  const sdk = await import('@openai/codex-security');
+  // Resolve file profiles once, before preflight; execution must not reread a changed file.
+  const config = await sdk.mergedCodexConfig({ codexOverrides: settings.codex }, codexHome());
+  const profiles = config.profiles as Record<string, unknown> | undefined;
+  if (typeof config.profile === 'string' && !profiles?.[config.profile]) delete config.profile;
+  // SDK defaults include its own plugin-loading flag, which cannot be supplied as an override.
+  if (config.features && typeof config.features === 'object')
+    delete (config.features as JsonObject).plugins;
+  return withSdk(config, async (client) => {
     const preflight = await client.preflight(repository, {
-      ...settings.scan,
+      ...scanSettings,
       auth: settings.auth,
       target: input.scopePaths?.length ? input.scopePaths : 'repository',
       knowledgeBasePaths: contextFiles.map((path) => resolve(repository, path)),
     });
-    // The same merge the SDK runs, including a `<profile>.config.toml` file profile.
-    const config = await sdk.mergedCodexConfig({ codexOverrides: settings.codex }, codexHome());
     const provider = preflight.modelProvider ?? 'openai';
     const providers = config.model_providers as Record<string, { base_url?: string }> | undefined;
     const baseUrl =
@@ -146,10 +164,10 @@ export async function prepareScan(
           daybreak: config.daybreak === true,
           auth: describeAuthentication(preflight.authentication),
         },
-        scan: { ...settings.scan, mode: preflight.mode },
+        scan: { ...scanSettings, mode: preflight.mode },
       },
       globalConfigFile: settings.path,
-      sdk: { codexOverrides: settings.codex, auth: settings.auth },
+      sdk: { codexOverrides: config, auth: settings.auth },
       expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
       mock,
       inputs: { ...input, repository: preflight.repository, scopePaths, contextFiles },

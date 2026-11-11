@@ -1,12 +1,15 @@
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { codexHome, configHome } from './isolated-codex.mjs';
 
 /** A throwaway repository with one source file and one document. */
 export async function project(t) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'security-project-')));
   t.after(() => rm(root, { recursive: true, force: true }));
+  await promisify(execFile)('git', ['init', '--quiet', root]);
   await mkdir(join(root, 'src'));
   await mkdir(join(root, 'services', 'api'), { recursive: true });
   await writeFile(join(root, 'src', 'app.js'), 'export const ok = true;\n');

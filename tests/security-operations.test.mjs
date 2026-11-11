@@ -76,7 +76,7 @@ test('a policy run passes the previewed inputs and returns an unapplied draft', 
   assert.equal(received.options.path, 'services/api');
   assert.equal(received.options.maxCostUsd, 3);
   assert.equal(received.options.auth, 'auto');
-  assert.deepEqual(received.config, { codexOverrides: {} });
+  assert.equal(received.config.codexOverrides.model, prepared.plan.settings.codex.model);
   await assert.rejects(operations.start({ operationId: prepared.operationId }), /already used/);
 });
 
@@ -197,4 +197,61 @@ test('cancellation aborts the SDK call, and two operations run at once at most',
   assert.equal(signals[1].aborted, false);
   assert.equal(operations.cancel(ids[2]).status, 'cancelled');
   assert.equal(operations.list().length, 3);
+});
+
+test('validation ignores a scan budget for an unpriced model', async (t) => {
+  const root = await project(t);
+  await configure(t, {
+    plugin: { codex: { model: 'custom-unpriced-model' }, scan: { maxCostUsd: 1 } },
+  });
+  let received;
+  const operations = service(t, root, () =>
+    client({
+      validate: async (options) => {
+        received = options;
+        return { disposition: 'deferred', report: 'Review complete.' };
+      },
+    }),
+  );
+  const prepared = await operations.prepare({ kind: 'validation', finding: 'Missing authz.' });
+  assert.match(prepared.plan.costNotice, /no cost limit/);
+  await operations.start({ operationId: prepared.operationId });
+  assert.equal((await operations.wait(prepared.operationId)).status, 'completed');
+  assert.equal(received.maxCostUsd, undefined);
+  await assert.rejects(operations.prepare({ kind: 'policy' }), /scan cost limit is not available/);
+});
+
+test('operation previews and events never expose execution-only provider headers', async (t) => {
+  const root = await project(t);
+  const secret = 'synthetic-private-header';
+  await configure(t, {
+    plugin: {
+      codex: {
+        model: 'custom-model',
+        model_provider: 'gateway',
+        model_providers: {
+          gateway: {
+            base_url: 'https://gateway.example.test/v1',
+            wire_api: 'responses',
+            http_headers: { Authorization: secret },
+          },
+        },
+      },
+    },
+  });
+  let received;
+  const operations = service(t, root, (config) => {
+    received = config;
+    return client();
+  });
+  const events = [];
+  operations.subscribe((state) => events.push(state));
+  const prepared = await operations.prepare({ kind: 'validation', finding: 'Missing authz.' });
+  assert.equal('sdk' in prepared.plan, false);
+  assert.doesNotMatch(JSON.stringify(prepared), /synthetic-private-header/);
+  await operations.start({ operationId: prepared.operationId });
+  await operations.wait(prepared.operationId);
+  assert.equal(received.codexOverrides.model_providers.gateway.http_headers.Authorization, secret);
+  assert.doesNotMatch(JSON.stringify(events), /synthetic-private-header/);
+  assert.doesNotMatch(JSON.stringify(operations.list()), /synthetic-private-header/);
 });

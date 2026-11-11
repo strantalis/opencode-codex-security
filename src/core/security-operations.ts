@@ -7,7 +7,13 @@ import type {
   ValidationOptions,
   ValidationResult,
 } from '@openai/codex-security';
-import { prepareScan, withSdk, type ScanPlan } from './scan-plan.ts';
+import {
+  prepareScan,
+  publicScanPlan,
+  withSdk,
+  type ScanPlan,
+  type PreparedScanPlan,
+} from './scan-plan.ts';
 import { safeReportText } from './report-safety.ts';
 import { SecurityInputError, userMessage } from './errors.ts';
 
@@ -79,6 +85,7 @@ export interface SecurityOperationsOptions {
 }
 
 type Entry = {
+  execution: PreparedScanPlan['sdk'];
   state: SecurityOperationState;
   controller: AbortController;
   task?: Promise<void>;
@@ -167,6 +174,7 @@ export class SecurityOperationsService {
       this.#project,
       { repository: input.repository, contextFiles: input.contextFiles },
       this.#mock,
+      input.kind === 'validation' ? 'validation' : 'scan',
     );
     const limit = scan.settings.scan.maxCostUsd;
     // The SDK decides which repository and SECURITY.md a policy path belongs to.
@@ -185,7 +193,7 @@ export class SecurityOperationsService {
       if (entry.state.status === 'prepared' && Date.parse(entry.state.plan.expiresAt) <= Date.now())
         this.#entries.delete(id);
     const plan: SecurityOperationPlan = {
-      ...scan,
+      ...publicScanPlan(scan),
       kind: input.kind,
       ...(target
         ? {
@@ -202,6 +210,7 @@ export class SecurityOperationsService {
             : `Stops at an estimated USD ${limit}. This is an estimate, not a billing cap.`,
     };
     const entry: Entry = {
+      execution: structuredClone(scan.sdk),
       controller: new AbortController(),
       state: {
         operationId: scan.id,
@@ -254,12 +263,12 @@ export class SecurityOperationsService {
     const observing = () => !signal.aborted && active(entry.state);
     try {
       signal.throwIfAborted();
-      client = await this.#factory({ codexOverrides: plan.sdk.codexOverrides });
+      client = await this.#factory({ codexOverrides: entry.execution.codexOverrides });
       signal.throwIfAborted();
       const context = plan.contextFiles.map((file) => resolve(plan.repository, file.path));
       if (plan.kind === 'policy') {
         const options: SecurityPolicyOptions = {
-          auth: plan.sdk.auth,
+          auth: entry.execution.auth,
           ...(plan.path ? { path: plan.path } : {}),
           knowledgeBasePaths: context,
           ...(plan.settings.scan.maxCostUsd !== undefined
@@ -307,7 +316,7 @@ export class SecurityOperationsService {
         const options: ValidationOptions = {
           repositoryPath: plan.repository,
           finding: plan.finding!,
-          auth: plan.sdk.auth,
+          auth: entry.execution.auth,
           knowledgeBasePaths: context,
           signal,
           ...(plan.settings.scan.cyberAccessProgram
