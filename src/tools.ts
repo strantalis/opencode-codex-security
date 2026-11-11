@@ -58,12 +58,100 @@ const operationSummary = (s: SecurityOperationState) => ({
 const withoutEvidence = ({ evidence: _evidence, ...finding }: ScanState['findings'][number]) =>
   finding;
 
+const severities = ['critical', 'high', 'medium', 'low'] as const;
+function scanNotice(s: ScanState) {
+  const counts = severities
+    .map((level) => [level, s.findings.filter((f) => f.severity === level).length] as const)
+    .filter(([, count]) => count)
+    .map(([level, count]) => `${count} ${level}`);
+  const findings = s.findings.length
+    ? `${s.findings.length} finding${s.findings.length === 1 ? '' : 's'} (${counts.join(', ')})`
+    : 'no findings';
+  return s.status === 'completed'
+    ? `Codex Security scan ${s.runId} completed with ${findings}. Call security_scan_results with runId ${s.runId} and report them to the user.`
+    : `Codex Security scan ${s.runId} ended: ${s.status}. Call security_scan_status with runId ${s.runId} for details.`;
+}
+function operationNotice(s: SecurityOperationState) {
+  const name = `Codex Security ${s.kind === 'policy' ? 'policy draft' : 'validation'} ${s.operationId}`;
+  const read = `Call security_operations with operationId ${s.operationId}`;
+  if (s.status === 'awaiting_answers')
+    return `${name} is waiting for owner answers. ${read} to read the questions, ask the user, then call security_answer_questions.`;
+  if (s.status === 'completed')
+    return `${name} completed. ${read} for the ${s.kind === 'policy' ? 'draft' : 'disposition'} and report it to the user.`;
+  return `${name} ended: ${s.status}. ${read} for details.`;
+}
+
+/**
+ * Tells the session that started a scan or operation when it ends or needs answers, through the
+ * host's synthetic session input. The session resumes and the model reads the result itself.
+ */
+export function sessionNotices(
+  ctx: Plugin.Context,
+  scans: PlannedScanService,
+  operations?: SecurityOperationsService,
+) {
+  const scanSessions = new Map<string, string>();
+  const operationSessions = new Map<string, { sessionID: string; asked?: string }>();
+  const sending = new Set<Promise<unknown>>();
+  const send = (sessionID: string, text: string, metadata: Record<string, string>) => {
+    const delivery = ctx.session
+      .synthetic({
+        sessionID,
+        text,
+        description: 'Codex Security',
+        metadata: { source: 'codex-security', ...metadata },
+        delivery: 'queue',
+      })
+      .catch(() => {});
+    sending.add(delivery);
+    void delivery.finally(() => sending.delete(delivery));
+  };
+  const onScan = (s: ScanState) => {
+    const sessionID = s.runId && scanSessions.get(s.runId);
+    if (!sessionID || s.status === 'running' || s.status === 'idle') return;
+    scanSessions.delete(s.runId!);
+    send(sessionID, scanNotice(s), { runId: s.runId!, status: s.status });
+  };
+  const onOperation = (s: SecurityOperationState) => {
+    const watch = operationSessions.get(s.operationId);
+    if (!watch || s.status === 'running' || s.status === 'prepared') return;
+    if (s.status === 'awaiting_answers') {
+      if (!s.question || watch.asked === s.question.id) return;
+      watch.asked = s.question.id;
+    } else operationSessions.delete(s.operationId);
+    send(watch.sessionID, operationNotice(s), {
+      operationId: s.operationId,
+      status: s.status,
+    });
+  };
+  const unsubscribe = [scans.subscribe(onScan), operations?.subscribe(onOperation)];
+  return {
+    scan(runId: string, sessionID?: string) {
+      if (!sessionID) return;
+      scanSessions.set(runId, sessionID);
+      onScan(scans.getState({ runId }));
+    },
+    operation(operationId: string, sessionID?: string) {
+      if (!sessionID || !operations) return;
+      operationSessions.set(operationId, { sessionID });
+      onOperation(operations.getState(operationId));
+    },
+    async dispose() {
+      for (const stop of unsubscribe) stop?.();
+      await Promise.allSettled([...sending]);
+    },
+  };
+}
+export type SessionNotices = ReturnType<typeof sessionNotices>;
+
 /** The model-facing tools. Anything that starts inference asks the host for permission first. */
 export function registerTools(
   editor: Editor,
   ctx: Plugin.Context,
   scans: PlannedScanService,
-  operations?: SecurityOperationsService,
+  operations: SecurityOperationsService | undefined,
+  notices: SessionNotices,
+  status: () => Promise<unknown>,
 ) {
   const add = (
     name: string,
@@ -117,7 +205,7 @@ export function registerTools(
 
   add(
     'security_scan',
-    'Start a Codex Security scan of the current workspace, or of `repository`. Source is sent to the configured model provider and a scan can take a long time, so the user is asked to approve the preview. Returns a run ID; poll security_scan_status and read security_scan_results when it completes.',
+    'Start a Codex Security scan of the workspace or `repository`; the user approves the preview first. It runs in the background, and a notice arrives in this session when it ends. Context files may come from other checkouts; for multi-repository scans load the codex-security skill.',
     scanInputSchema,
     async (input: ScanInputs, context) => {
       const plan = (await scans.prepare(input)).plan!;
@@ -129,8 +217,15 @@ export function registerTools(
         { preview, planId: plan.id },
       );
       const state = await scans.start({ planId: plan.id });
-      return `Scan started. Run ID: ${state.runId}\n\n${preview}`;
+      notices.scan(state.runId!, context.sessionID);
+      return `Scan started in the background. Run ID: ${state.runId}\n\n${preview}`;
     },
+  );
+  add(
+    'security_status',
+    'Show the resolved Codex Security setup: inference route, config files, Codex profiles, and the Node and Python versions scans will use.',
+    object({}),
+    status,
   );
   add(
     'security_scans',
@@ -196,22 +291,24 @@ export function registerTools(
         cost: state.plan.costNotice,
       },
     );
-    return operationSummary(await operations.start({ operationId: state.operationId }));
+    const started = await operations.start({ operationId: state.operationId });
+    notices.operation(started.operationId, context.sessionID);
+    return operationSummary(started);
   };
   add(
     'security_policy',
-    'Draft a SECURITY.md policy for the repository, or for the component at `path`. The user approves first. Generation may pause with questions for the repository owner; check security_operations. The draft is returned, never written.',
+    'Draft a SECURITY.md policy for the repository, or for the component at `path`. The user approves first. A notice arrives in this session when it needs owner answers or ends. The draft is returned, never written.',
     object({
       repository: id('Optional repository path; defaults to the workspace.'),
       path: id('Optional component directory, relative to the repository.'),
-      contextFiles: { type: 'array', items: { type: 'string' } },
+      contextFiles: scanInputSchema.properties.contextFiles,
     }),
     async (input: { repository?: string; path?: string; contextFiles?: string[] }, context) =>
       start(context, await operations.prepare({ ...input, kind: 'policy' })),
   );
   add(
     'security_validate',
-    'Re-check one finding from a completed scan against the source. The user approves first; validation has no cost limit. Returns an operation ID; read the disposition from security_operations.',
+    'Re-check one finding from a completed scan against the source. The user approves first; validation has no cost limit. A notice arrives in this session when it ends; read the disposition from security_operations.',
     object({ runId, findingId: id('Finding ID from security_scan_results.') }, [
       'runId',
       'findingId',

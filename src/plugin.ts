@@ -12,7 +12,14 @@ import {
 } from './core/security-operations.ts';
 import type { SecurityFactory } from './core/codex-adapter.ts';
 import { userMessage } from './core/errors.ts';
-import { registerTools } from './tools.ts';
+import { saveProfile } from './core/settings.ts';
+import { setupStatus } from './core/status.ts';
+import { registerTools, sessionNotices } from './tools.ts';
+import { skill } from './skill.ts';
+
+type SkillInfo = Parameters<
+  Parameters<Parameters<Plugin.Context['skill']['transform']>[0]>[0]['add']
+>[0];
 
 type RpcContext = {
   error: (type: 'security.setup', message: string, data: Record<string, never>) => unknown;
@@ -103,10 +110,14 @@ export function createSecurityPlugin(
         operationCancel: rpc((input: { operationId: string }) =>
           requireOperations().cancel(input.operationId),
         ),
+        setup: rpc(() => setupStatus(directory)),
+        setProfile: rpc((input: { profile: string }) => saveProfile(input.profile)),
       });
+      const notices = sessionNotices(ctx, scans, operations);
       const tools = await ctx.tool.transform((editor) =>
-        registerTools(editor, ctx, scans, operations),
+        registerTools(editor, ctx, scans, operations, notices, () => setupStatus(directory)),
       );
+      const skills = await ctx.skill.transform((editor) => editor.add(skill as SkillInfo));
       let pending = Promise.resolve();
       const unsubscribe = scans.subscribe((state) => {
         pending = pending
@@ -121,9 +132,12 @@ export function createSecurityPlugin(
       return async () => {
         unsubscribe();
         unsubscribeOperations?.();
+        // Before disposal cancels running work: shutdown must not wake sessions.
+        await notices.dispose();
         await operations?.dispose();
         await scans.dispose();
         await pending;
+        await skills.dispose();
         await tools.dispose();
         await registration.dispose();
       };

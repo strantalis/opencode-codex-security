@@ -62,7 +62,7 @@ const settled = async (read) => {
   assert.fail('did not settle');
 };
 
-test('ten tools are registered, with short descriptions', async (t) => {
+test('eleven tools are registered, with short descriptions', async (t) => {
   const { tools } = await setup(t);
   assert.deepEqual(tools.map((tool) => tool.name).sort(), [
     'security_answer_questions',
@@ -74,9 +74,119 @@ test('ten tools are registered, with short descriptions', async (t) => {
     'security_scan_results',
     'security_scan_status',
     'security_scans',
+    'security_status',
     'security_validate',
   ]);
   for (const tool of tools) assert.ok(tool.description.length < 340, tool.name);
+});
+
+test('the bundled skill registers once and is removed on cleanup', async (t) => {
+  const root = await project(t);
+  const fake = host(root);
+  const cleanup = await createSecurityPlugin({ createClient: () => ({}) }).setup(fake.ctx);
+  assert.equal(fake.skills.length, 1);
+  const [skill] = fake.skills;
+  assert.equal(skill.id, 'codex-security');
+  assert.equal(skill.path, 'skill://codex-security/SKILL.md');
+  assert.ok(skill.description);
+  assert.ok(skill.content.split(/\s+/).length < 400);
+  assert.match(skill.content, /opencode\/codex-security\/workspaces/);
+  await cleanup();
+  assert.equal(fake.skills.length, 0);
+});
+
+test('a scan started by the tool tells its session when it ends', async (t) => {
+  const { call, synthetic } = await setup(t, {
+    run: async () => ({
+      findings: {
+        scanId: 'sdk-1',
+        findings: [
+          sdkFinding,
+          { ...sdkFinding, occurrenceId: 'o2', severity: { level: 'high' } },
+          { ...sdkFinding, occurrenceId: 'o3', severity: { level: 'low' } },
+        ],
+      },
+    }),
+  });
+  const runId = /Run ID: (\S+)/.exec(await call('security_scan'))[1];
+  await settled(() => call('security_scan_status', { runId }));
+  await tick();
+  assert.equal(synthetic.length, 1);
+  const [notice] = synthetic;
+  assert.equal(notice.sessionID, 'session');
+  assert.equal(notice.delivery, 'queue');
+  assert.deepEqual(notice.metadata, { source: 'codex-security', runId, status: 'completed' });
+  assert.match(
+    notice.text,
+    new RegExp(`scan ${runId} completed with 3 findings \\(2 high, 1 low\\)`),
+  );
+  assert.match(notice.text, /security_scan_results/);
+});
+
+test('a failed scan is reported too, and nothing is sent for shutdown', async (t) => {
+  let fail;
+  const { call, synthetic } = await setup(t, {
+    run: (_repository, options) =>
+      new Promise((_resolve, reject) => {
+        fail = reject;
+        options.signal.addEventListener('abort', () => reject(new Error('aborted')));
+      }),
+  });
+  const failed = /Run ID: (\S+)/.exec(await call('security_scan'))[1];
+  await tick();
+  fail(new Error('boom'));
+  await settled(() => call('security_scan_status', { runId: failed }));
+  await tick();
+  assert.equal(synthetic.length, 1);
+  assert.match(synthetic[0].text, new RegExp(`scan ${failed} ended: error`));
+  // Left running: disposal cancels it, and the session is not woken for that.
+  await call('security_scan');
+  await tick();
+  t.after(() => assert.equal(synthetic.length, 1));
+});
+
+test('policy and validation notices: owner questions, then completion', async (t) => {
+  const { call, synthetic } = await setup(t);
+  const policy = await call('security_policy');
+  await tick();
+  assert.equal(synthetic.length, 1);
+  assert.match(synthetic[0].text, /policy draft .* is waiting for owner answers/);
+  assert.doesNotMatch(synthetic[0].text, /Who approves releases/);
+  const waiting = await call('security_operations', { operationId: policy.operationId });
+  await call('security_answer_questions', {
+    operationId: policy.operationId,
+    questionId: waiting.question.id,
+    answer: 'Maintainers.',
+  });
+  await settled(() => call('security_operations', { operationId: policy.operationId }));
+  await tick();
+  assert.equal(synthetic.length, 2);
+  assert.match(synthetic[1].text, /policy draft .* completed/);
+  assert.equal(synthetic[1].metadata.operationId, policy.operationId);
+
+  const runId = /Run ID: (\S+)/.exec(await call('security_scan'))[1];
+  await settled(() => call('security_scan_status', { runId }));
+  const validation = await call('security_validate', { runId, findingId: 'o1' });
+  await settled(() => call('security_operations', { operationId: validation.operationId }));
+  await tick();
+  assert.match(synthetic.at(-1).text, /validation .* completed\. .*disposition/);
+  assert.equal(synthetic.length, 4);
+});
+
+test('security_status and the setup RPC report the resolved setup', async (t) => {
+  const { call, ctx } = await setup(t);
+  const status = await call('security_status');
+  assert.equal(status.route.provider, 'openai');
+  assert.ok(status.route.model);
+  assert.match(status.configFile, /codex-security\.json$/);
+  assert.match(status.codexConfigFile, /config\.toml$/);
+  assert.deepEqual(status.profiles, []);
+  assert.match(status.runtime.node, /^\d+\.\d+\.\d+$/);
+  assert.deepEqual(await ctx.handlers.setup({}, {}), status);
+  const saved = await ctx.handlers.setProfile({ profile: 'work' }, {});
+  assert.equal(saved.profile, 'work');
+  t.after(() => ctx.handlers.setProfile({ profile: '' }, {}));
+  assert.equal((await ctx.handlers.setup({}, {})).profile, 'work');
 });
 
 test('security_scan asks permission with the preview, then runs and reports', async (t) => {

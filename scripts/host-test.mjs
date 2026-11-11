@@ -96,6 +96,12 @@ try {
   assert.equal(gateway.plan.settings.codex.provider, 'gateway');
   assert.equal(gateway.plan.settings.codex.baseUrl, 'https://gateway.example.test/v1');
   assert.match(gateway.plan.settings.codex.auth, /SYNTHETIC_GATEWAY_KEY \(not set/);
+  const setup = await rpc.setup({}, { location });
+  assert.deepEqual(setup.route, gateway.plan.settings.codex);
+  assert.equal(setup.codexConfigFile, `${isolated}/home/.codex/config.toml`);
+  const skills = await client.skill.list({ location });
+  assert.ok(skills.data.some((skill) => skill.id === 'codex-security'));
+  console.log('Actual OpenCode lists the bundled skill and answers the setup RPC.');
   const policy = await rpc.operationPrepare({ kind: 'policy' }, { location });
   assert.equal(policy.plan.targetPath, `${project}/SECURITY.md`);
   // The plugin settings file wins, and SDK setup errors are shown as written.

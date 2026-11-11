@@ -78,6 +78,65 @@ test('bad targets are rejected with a clear message', async (t) => {
   await assert.rejects(prepareScan(root, { mode: 'turbo' }), /Scan inputs are/);
 });
 
+test('context may come from outside the repository, including infrastructure files', async (t) => {
+  const root = await project(t);
+  const infra = await project(t);
+  const { mkdir, writeFile } = await import('node:fs/promises');
+  await mkdir(join(infra, 'terraform'));
+  await writeFile(join(infra, 'terraform', 'iam.tf'), 'resource "aws_iam_role" "api" {}\n');
+  await writeFile(join(infra, 'values.yaml'), 'ingress: public\n');
+  const context = [
+    join(infra, 'ARCHITECTURE.md'),
+    join(infra, 'values.yaml'),
+    join(infra, 'terraform'),
+  ];
+  const plan = await prepareScan(root, { contextFiles: context });
+  assert.deepEqual(
+    plan.contextFiles,
+    context.map((path) => ({ path })),
+  );
+  const calls = [];
+  const scans = new PlannedScanService(root, {
+    createClient: () => ({
+      run: async (repository, options) => {
+        calls.push(options.knowledgeBasePaths);
+        return fakeResult;
+      },
+      close: async () => {},
+    }),
+  });
+  t.after(() => scans.dispose());
+  const state = await scans.prepare({ contextFiles: context });
+  await scans.start({ planId: state.plan.id });
+  await scans.wait();
+  assert.deepEqual(calls, [context]);
+  // The SDK rejects binary files by name.
+  await writeFile(join(infra, 'blob.bin'), Buffer.from('a\0b'));
+  await assert.rejects(
+    prepareScan(root, { contextFiles: [join(infra, 'blob.bin')] }),
+    /contains binary data/,
+  );
+});
+
+test('one system: a plain folder of checkouts, scoped into each', async (t) => {
+  const workspace = await project(t);
+  const { execFileSync } = await import('node:child_process');
+  const { mkdir, writeFile } = await import('node:fs/promises');
+  for (const name of ['api', 'web']) {
+    await mkdir(join(workspace, 'app', name, 'src'), { recursive: true });
+    await writeFile(join(workspace, 'app', name, 'src', 'index.js'), 'export {};\n');
+    execFileSync('git', ['init', '-q', join(workspace, 'app', name)]);
+  }
+  const plan = await prepareScan(workspace, {
+    repository: 'app',
+    scopePaths: ['api/src', 'web/src'],
+    contextFiles: [join(workspace, 'ARCHITECTURE.md')],
+  });
+  assert.equal(plan.repository, join(workspace, 'app'));
+  assert.deepEqual(plan.scopePaths, ['api/src', 'web/src']);
+  assert.match(describePlan(plan), /Scope: api\/src, web\/src/);
+});
+
 test('a scoped scan may target directories named like credentials', async (t) => {
   const root = await project(t);
   const { mkdir, writeFile } = await import('node:fs/promises');
