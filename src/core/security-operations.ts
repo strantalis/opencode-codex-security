@@ -49,6 +49,10 @@ export type SecurityOperationResult =
       content: string;
       reviewNotes: string[];
       targetPath: string;
+      /** True when targetPath already holds a SECURITY.md that this draft would replace. */
+      replacesExisting: boolean;
+      /** Unified diff from the existing file to the draft. Present only when replacing. */
+      diff?: string;
       applied: false;
       truncated: boolean;
     }
@@ -101,6 +105,8 @@ const realClient: SecurityOperationsFactory = async (config) =>
 const active = (state: SecurityOperationState) =>
   state.status === 'running' || state.status === 'awaiting_answers';
 const textLimit = 48_000;
+/** A rewrite diff carries both the old and new text. */
+const diffLimit = 2 * textLimit;
 
 function parseInputs(raw: unknown): SecurityOperationInputs {
   const value = (raw ?? {}) as Record<string, unknown>;
@@ -298,13 +304,26 @@ export class SecurityOperationsService {
         };
         const result = await client.generatePolicy(plan.repository, options);
         signal.throwIfAborted();
+        const replacesExisting = typeof result.previousContent === 'string';
+        // Computed in Node with no model call. It also rechecks that SECURITY.md is unchanged.
+        const diff = replacesExisting
+          ? await (
+              await import('@openai/codex-security')
+            ).securityPolicyDiff(result, undefined, signal)
+          : undefined;
+        signal.throwIfAborted();
         entry.state.result = {
           kind: 'policy',
           content: safeReportText(result.content),
           reviewNotes: result.reviewNotes.slice(0, 100).map((note) => safeReportText(note, 2000)),
           targetPath: result.targetPath,
+          replacesExisting,
+          ...(diff === undefined ? {} : { diff: safeReportText(diff, diffLimit) }),
           applied: false,
-          truncated: result.content.length > textLimit || result.reviewNotes.length > 100,
+          truncated:
+            result.content.length > textLimit ||
+            result.reviewNotes.length > 100 ||
+            (diff?.length ?? 0) > diffLimit,
         };
         if (
           result.cost &&

@@ -1,6 +1,8 @@
 import './helpers/isolated-codex.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { configure, project, tick } from './helpers/project.mjs';
 import { SecurityOperationsService } from '../src/core/security-operations.ts';
@@ -68,6 +70,7 @@ test('a policy run passes the previewed inputs and returns an unapplied draft', 
     content: '# Security policy\nOwner review required.',
     reviewNotes: ['Confirm public exposure.'],
     targetPath: join(root, 'services', 'api', 'SECURITY.md'),
+    replacesExisting: false,
     applied: false,
     truncated: false,
   });
@@ -78,6 +81,41 @@ test('a policy run passes the previewed inputs and returns an unapplied draft', 
   assert.equal(received.options.auth, 'auto');
   assert.deepEqual(received.config, { codexOverrides: {} });
   await assert.rejects(operations.start({ operationId: prepared.operationId }), /already used/);
+});
+
+test('a draft that replaces an existing SECURITY.md carries the SDK diff', async (t) => {
+  const root = await project(t);
+  const previous = '# Security policy\nReport issues by email.\n';
+  await writeFile(join(root, 'SECURITY.md'), previous);
+  const operations = service(t, root, () =>
+    client({
+      // A hand-built SecurityPolicyDraft: securityPolicyDiff reads only these fields and the disk.
+      generatePolicy: async (repository) => ({
+        ...draft(repository),
+        scope: '.',
+        content: '# Security policy\nReport issues through the private advisory form.\n',
+        previousContent: previous,
+        inheritedPolicySha256: createHash('sha256').update('[]').digest('hex'),
+      }),
+    }),
+  );
+  const { operationId } = await operations.prepare({ kind: 'policy' });
+  await operations.start({ operationId });
+  const done = await operations.wait(operationId);
+  assert.equal(done.status, 'completed', done.error);
+  assert.equal(done.result.replacesExisting, true);
+  assert.match(done.result.diff, /^--- a\/SECURITY\.md/m);
+  assert.match(done.result.diff, /^\+\+\+ b\/SECURITY\.md/m);
+  assert.match(done.result.diff, /^-Report issues by email\.$/m);
+  assert.match(done.result.diff, /^\+Report issues through the private advisory form\.$/m);
+
+  // The SDK refuses a diff against a file that changed after the draft read it.
+  await writeFile(join(root, 'SECURITY.md'), '# Edited meanwhile\n');
+  const second = await operations.prepare({ kind: 'policy' });
+  await operations.start({ operationId: second.operationId });
+  const stale = await operations.wait(second.operationId);
+  assert.equal(stale.status, 'error');
+  assert.match(stale.error, /SECURITY\.md changed/);
 });
 
 test('owner questions pause a policy until the exact batch is answered', async (t) => {
