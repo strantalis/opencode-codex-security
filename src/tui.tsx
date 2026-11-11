@@ -6,6 +6,7 @@ import { asState, type ScanList } from './types';
 import type { ScanInputs, ScanPlan } from './core/scan-plan';
 import {
   describePlan,
+  describeCostLimit,
   describeInferenceRoute,
   isAbsoluteLocalDirectory,
   latestAvailableDraft,
@@ -141,10 +142,7 @@ export default Plugin.define({
                       Repository source and listed context will be sent to{}
                       {describeInferenceRoute(plan.settings)}. Results stay local.
                     </text>
-                    <text>
-                      Estimated stop: USD {plan.settings.scan.maxCostUsd} for this scan. Not a hard
-                      cap; in-flight usage may exceed it.
-                    </text>
+                    <text>{describeCostLimit(plan.settings.scan.maxCostUsd)}</text>
                     <text>
                       Conversation history is not copied. Scope guides the scan; it is not a
                       filesystem sandbox.

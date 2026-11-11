@@ -273,10 +273,12 @@ export class SecurityOperationsService {
       ...scan,
       kind: input.kind,
       ...(input.kind === 'policy' ? { path: scan.scopePaths[0] } : { finding }),
-      costLimitEnforced: input.kind === 'policy',
+      costLimitEnforced: input.kind === 'policy' && scan.settings.scan.maxCostUsd !== undefined,
       costNotice:
         input.kind === 'policy'
-          ? `Model inference uses an estimated USD ${scan.settings.scan.maxCostUsd} SDK limit, not a guaranteed billing cap.`
+          ? scan.settings.scan.maxCostUsd === undefined
+            ? 'No dollar-based stop limit is configured. Provider charges still apply.'
+            : `Model inference uses an estimated USD ${scan.settings.scan.maxCostUsd} SDK limit, not a guaranteed billing cap.`
           : 'Model inference has no SDK cost limit for validation in version 0.9.1. The scan budget does not apply.',
     };
     const entry: Entry = {
@@ -371,7 +373,9 @@ export class SecurityOperationsService {
           auth: sdkAuthentication(plan.settings.codex.auth),
           path: plan.path,
           knowledgeBasePaths: context,
-          maxCostUsd: plan.settings.scan.maxCostUsd,
+          ...(plan.settings.scan.maxCostUsd !== undefined
+            ? { maxCostUsd: plan.settings.scan.maxCostUsd }
+            : {}),
           signal,
           onStage: (stage) => {
             if (!observing()) return;

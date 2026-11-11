@@ -153,7 +153,7 @@ test('exact approved inputs reach mocked SDK once; repeated runs require fresh p
   assert.equal(captured.opts.scanPrompt, 'Check authz only.');
   assert.deepEqual(captured.opts.knowledgeBasePaths, [join(root, 'ARCHITECTURE.md')]);
   assert.equal(captured.opts.auth, 'chatgpt');
-  assert.equal(captured.opts.maxCostUsd, 1);
+  assert.equal(captured.opts.maxCostUsd, undefined);
   await assert.rejects(
     service.start({ planId: state.plan.id, approveOpenAIInference: true }),
     /already used/,

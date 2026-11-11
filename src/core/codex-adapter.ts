@@ -32,7 +32,7 @@ export interface CodexScanApproval {
   approved: true;
   repository: string;
   allowNetworkModelInference: true;
-  maxCostUsd: number;
+  maxCostUsd?: number;
   auth?: 'chatgpt' | 'api-key' | 'aws';
   settings?: ResolvedSdkSettings;
   scopePaths?: string[];
@@ -179,11 +179,11 @@ export class CodexScanService {
       approval.approved !== true ||
       approval.allowNetworkModelInference !== true ||
       approval.repository !== this.root ||
-      !Number.isFinite(approval.maxCostUsd) ||
-      approval.maxCostUsd <= 0
+      (approval.maxCostUsd !== undefined &&
+        (!Number.isFinite(approval.maxCostUsd) || approval.maxCostUsd <= 0))
     ) {
       throw new Error(
-        'Per-scan approval required for this exact repository, network model inference, and positive estimated USD cost limit.',
+        'Per-scan approval required for this exact repository, network model inference, and a positive estimated USD cost limit if supplied.',
       );
     }
     this.#state = {
@@ -196,7 +196,7 @@ export class CodexScanService {
     this.#busy = true;
     this.#controller = new AbortController();
     this.#emit(
-      'Approved SDK scan started. Local runner and artifacts; network model inference. Cost limit is estimated, not a guaranteed billing cap.',
+      'Approved SDK scan started. Local runner and artifacts; network model inference. Any configured cost limit is estimated, not a guaranteed billing cap. No dollar limit applies when omitted.',
     );
     this.#task = this.#run(structuredClone(approval), this.#controller.signal);
     return this.getState();
@@ -226,7 +226,7 @@ export class CodexScanService {
         ...approval.settings?.scan,
         mode: approval.settings?.scan.mode ?? 'standard',
         auth: sdkAuthentication(approval.settings?.codex.auth ?? approval.auth ?? 'chatgpt'),
-        maxCostUsd: approval.maxCostUsd,
+        ...(approval.maxCostUsd !== undefined ? { maxCostUsd: approval.maxCostUsd } : {}),
         ownerSuggestions: false,
         signal,
         onProgress: (progress) => {

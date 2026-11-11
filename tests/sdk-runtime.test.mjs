@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +10,7 @@ import { promisify } from 'node:util';
 const execute = promisify(execFile);
 
 test('SDK and native local helpers work on the selected Node runtime without inference', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'security-runtime-'));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'security-runtime-')));
   t.after(() => rm(root, { recursive: true, force: true }));
   const repository = join(root, 'source');
   const stateDirectory = join(root, 'state');

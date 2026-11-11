@@ -9,7 +9,7 @@ There are **no project overrides**. Session tools provide repository, scoped pat
 
 The file is read whenever a scan is prepared. Changing it invalidates an outstanding preview, so changed settings cannot silently reach an already-approved scan. No application restart is needed for setting changes.
 
-The normal plugin defaults to real SDK mode. At preparation time it discovers the standard Codex configuration unless you explicitly select a provider/authentication route or disable discovery. With no discovered configuration, defaults use dedicated ChatGPT authentication, the SDK model/reasoning settings, and a USD 1 estimated stop threshold:
+The normal plugin defaults to real SDK mode. At preparation time it discovers the standard Codex configuration unless you explicitly select a provider/authentication route or disable discovery. With no discovered configuration, defaults use dedicated ChatGPT authentication, the SDK model/reasoning settings, and no dollar-based stop limit:
 
 ```json
 {
@@ -19,8 +19,7 @@ The normal plugin defaults to real SDK mode. At preparation time it discovers th
     "daybreak": false
   },
   "scan": {
-    "mode": "standard",
-    "maxCostUsd": 1
+    "mode": "standard"
   }
 }
 ```
@@ -37,7 +36,7 @@ The normal plugin defaults to real SDK mode. At preparation time it discovers th
 - `codex.bedrock`: native AWS region and optional profile name; mutually exclusive with a custom provider and explicit config import.
 - `codex.auth`: optional `chatgpt`, `api-key`, or `aws`. Native Bedrock resolves to `aws`. Defaults to `chatgpt` without a custom provider and `api-key` with one. Explicit `api-key` without a custom provider uses OpenAI and its existing environment keys. Contradictory choices fail closed.
 - `scan.mode`: standard or deep, used only when no per-scan mode is supplied. The built-in fallback is standard.
-- `scan.maxCostUsd`: positive estimated stop threshold. This is **not a hard billing cap**; in-flight usage may exceed it.
+- `scan.maxCostUsd`: optional positive estimated stop threshold. Omitted by default; normal provider charges apply without a dollar-based stop. This is **not a hard billing cap**; in-flight usage may exceed it.
 - `scan.maxTimeMinutes`: positive time limit.
 - `scan.cyberAccessProgram`: optional standard, daybreak_blue or daybreak_red.
 - `scan.workers`: positive integer, relevant to deep scans.
@@ -85,7 +84,7 @@ The next source build adds native `amazon-bedrock` routing. It does not replace 
     "model": "openai.gpt-daybreak-blue-5.6-sol",
     "reasoningEffort": "high"
   },
-  "scan": { "maxCostUsd": 1 }
+  "scan": { "mode": "standard" }
 }
 ```
 
@@ -164,7 +163,7 @@ If you do not want to import a file, configure the same non-secret routing field
       "wireApi": "responses"
     }
   },
-  "scan": { "maxCostUsd": 1 }
+  "scan": { "mode": "standard" }
 }
 ```
 
@@ -193,9 +192,9 @@ The preview names every extra header and its variable. Required variables must b
 ### Compatibility and cost limits
 
 - Responses API support alone is insufficient. The gateway/model must support Codex Security's streaming, namespaced/function tools and any required web-search tools. Routing tests use mocks; they do not establish compatibility with any real custom gateway.
-- Model aliases without SDK pricing fail the scan/policy cost guard. This is a local price-table limitation, not a response saying the model is unavailable or retired. For example, SDK 0.9.1 deliberately leaves `gpt-daybreak-blue-latest` unpriced. Keep your gateway alias intact until its actual backend and rates are verified; the native Bedrock ID is not necessarily a valid alias on your gateway. The plugin **does not remove the budget** to make them run. A recognized OpenAI model name's estimate is not proof of the gateway's billing rate or a hard cap. Do not rename a different model merely to obtain an estimate.
+- Model aliases without SDK pricing can run when no cost limit is configured. They fail the scan/policy cost guard only when you explicitly configure `scan.maxCostUsd`. This is a local price-table limitation, not a response saying the model is unavailable or retired. For example, SDK 0.9.1 deliberately leaves `gpt-daybreak-blue-latest` unpriced. Keep your gateway alias intact until its actual backend and rates are verified; the native Bedrock ID is not necessarily a valid alias on your gateway. Existing explicitly configured budgets are preserved; the plugin never silently removes them. A recognized OpenAI model name's estimate is not proof of the gateway's billing rate or a hard cap. Do not rename a different model merely to obtain an estimate.
 - Static finding validation still has **no SDK cost ceiling** and requires separate uncapped approval.
-- The OpenAI Daybreak access-program toggle is not supported for custom providers. Set `daybreak` false and omit `cyberAccessProgram` or use `standard`. A gateway may independently route a model alias to a provisioned Bedrock Daybreak model; this plugin does not verify that upstream route. Some current Codex proxy configurations support the OpenAI program through catalog/capability settings, but those settings are not imported by this bounded implementation. Exact model IDs and aliases have different SDK pricing support; never rename the requested model or disable the cost guard merely to make a run start.
+- The OpenAI Daybreak access-program toggle is not supported for custom providers. Set `daybreak` false and omit `cyberAccessProgram` or use `standard`. A gateway may independently route a model alias to a provisioned Bedrock Daybreak model; this plugin does not verify that upstream route. Some current Codex proxy configurations support the OpenAI program through catalog/capability settings, but those settings are not imported by this bounded implementation. Exact model IDs and aliases have different SDK pricing support; never silently rename the requested model or disable an explicitly configured cost guard to make a run start.
 - Cloud publication, embedding configuration, patching, and fix verification are not enabled by this route. Native analytics are explicitly disabled for custom routes; unrelated telemetry settings are not imported. SDK private runtime state is still created during real operations. No-login does not mean no local state or no network activity.
 - Previews and native permission prompts identify the selected provider/base URL, auth mode, key name, model and source selection. Source/context go to that gateway, which can route onward to its upstream providers. The plugin does not verify those upstream destinations.
 

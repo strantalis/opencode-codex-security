@@ -2,7 +2,12 @@ import { createMemo, createSignal, createEffect, on, For, Show, onCleanup } from
 import { createStore, reconcile } from 'solid-js/store';
 import { asState, type ScanState } from './types';
 import type { ScanInputs, ScanPlan } from './core/scan-plan';
-import { describeInferenceRoute, describePlan, latestAvailableDraft } from './plan-view';
+import {
+  describeCostLimit,
+  describeInferenceRoute,
+  describePlan,
+  latestAvailableDraft,
+} from './plan-view';
 import {
   elapsedLabel,
   findingText,
@@ -568,11 +573,7 @@ export function SecurityPanel(props: {
                                 {describeInferenceRoute(plan().settings)}. Results are stored
                                 locally.
                               </p>
-                              <p>
-                                Estimated cost stop:{' '}
-                                <strong>USD {plan().settings.scan.maxCostUsd}</strong> for this
-                                scan. This is not a hard cap; in-flight usage may exceed it.
-                              </p>
+                              <p>{describeCostLimit(plan().settings.scan.maxCostUsd)}</p>
                               <p>
                                 Only the focus and documents above are added as context, not your
                                 conversation. Scope guides the review; it is not a filesystem

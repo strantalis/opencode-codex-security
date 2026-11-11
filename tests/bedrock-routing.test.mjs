@@ -211,8 +211,8 @@ for (const mode of ['standard', 'deep'])
     }
     assert.equal(captured.length, 6);
     assert.equal(captured[1].options.mode, mode);
-    assert.equal(captured[1].options.maxCostUsd, 1);
-    assert.equal(captured[3].options.maxCostUsd, 1);
+    assert.equal(captured[1].options.maxCostUsd, undefined);
+    assert.equal(captured[3].options.maxCostUsd, undefined);
     assert.equal(
       captured[5].options.maxCostUsd,
       undefined,

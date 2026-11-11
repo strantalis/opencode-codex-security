@@ -306,7 +306,9 @@ export class PlannedScanService {
       approved: true,
       repository: plan.repository,
       allowNetworkModelInference: true,
-      maxCostUsd: plan.settings.scan.maxCostUsd,
+      ...(plan.settings.scan.maxCostUsd !== undefined
+        ? { maxCostUsd: plan.settings.scan.maxCostUsd }
+        : {}),
       auth: plan.settings.codex.auth,
       settings: plan.settings,
       scopePaths: [...plan.scopePaths],

@@ -23,7 +23,7 @@ Patch application and fix verification are not implemented. Findings arrive at s
 - OpenCode V2; 2.2.6 is the original test baseline, not an exact-patch requirement. Verify loading on the installed host. Desktop integration is experimental.
 - For real operations: supported account/model access and an existing private dedicated ChatGPT sign-in, an explicitly selected OpenAI environment API key, a supported custom Responses provider with an existing environment key, or (in the next source build) native Amazon Bedrock with an existing AWS identity. The plugin does not perform login or create/import credentials. See [no-sign-in provider setup](docs/GLOBAL-CONFIG.md#use-an-existing-custom-provider-without-sign-in). Custom-provider routing is available in `0.1.2`, not in `0.1.0`/`0.1.1`.
 
-SDK mode uses `@openai/codex-security` 0.9.1. Repository source and selected context are sent to the provider shown in the approval preview, OpenAI by default or the explicitly selected gateway. Gateway upstream routing is not verified. SDK cost limits are estimates, **not guaranteed billing caps**. Account quota/availability can also limit scans.
+SDK mode uses `@openai/codex-security` 0.9.1. Repository source and selected context are sent to the provider shown in the approval preview, OpenAI by default or the explicitly selected gateway. Gateway upstream routing is not verified. No dollar-based stop limit is set by default. You can explicitly configure `scan.maxCostUsd` when SDK pricing is available. SDK cost limits are estimates, **not guaranteed billing caps**. Account quota/availability can also limit scans.
 
 ## Install a released version
 

@@ -88,12 +88,12 @@ test('preparation is SDK-free, immutable, strict, and separately authorized', as
   assert.equal(state.status, 'prepared');
   assert.equal(state.plan.id, state.operationId);
   assert.equal(state.plan.mock, true);
-  assert.equal(state.plan.costLimitEnforced, true);
-  assert.match(state.plan.costNotice, /estimated.*not a guaranteed/);
+  assert.equal(state.plan.costLimitEnforced, false);
+  assert.match(state.plan.costNotice, /No dollar-based stop limit/);
   state.plan.path = '.';
   state.plan.settings.scan.maxCostUsd = 900;
   assert.equal(operations.getState(state.operationId).plan.path, 'src');
-  assert.equal(operations.getState(state.operationId).plan.settings.scan.maxCostUsd, 1);
+  assert.equal(operations.getState(state.operationId).plan.settings.scan.maxCostUsd, undefined);
   await assert.rejects(operations.start({ operationId: state.operationId }), /authorize/);
   await assert.rejects(
     operations.start({ operationId: 'wrong', approveOpenAIInference: true }),
