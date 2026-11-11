@@ -77,6 +77,7 @@ export function registerTools(
       input,
       async execute(args, context) {
         try {
+          context.signal?.throwIfAborted();
           const result = await run(args, context);
           return { content: typeof result === 'string' ? result : JSON.stringify(result) };
         } catch (error) {
@@ -92,8 +93,9 @@ export function registerTools(
     action: string,
     resources: string[],
     metadata: Record<string, unknown>,
-  ) =>
-    ctx.permission
+  ) => {
+    context.signal?.throwIfAborted();
+    return ctx.permission
       .assert({
         sessionID: context.sessionID,
         agent: context.agent,
@@ -102,10 +104,12 @@ export function registerTools(
         resources,
         metadata,
       })
+      .then(() => context.signal?.throwIfAborted())
       .catch((error: unknown) => {
         if (error && typeof error === 'object') denied.add(error);
         throw error;
       });
+  };
   const run = async (input: { runId: string }) => {
     await scans.ready();
     return scans.getState({ runId: input.runId });
@@ -187,6 +191,7 @@ export function registerTools(
         kind: state.kind,
         repository: state.repository,
         path: state.plan.path ?? null,
+        contextFiles: state.plan.contextFiles.map((file) => file.path),
         sentTo: route,
         cost: state.plan.costNotice,
       },

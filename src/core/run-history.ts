@@ -1,6 +1,7 @@
 import { mkdir, readdir, lstat, readFile, writeFile, rename, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { publicScanPlan } from './scan-plan.ts';
 import type { ScanState } from '../types.ts';
 const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /** One private JSON file per run, so concurrent runs never rewrite each other. */
@@ -30,6 +31,7 @@ export class RunHistory {
           !['running', 'completed', 'cancelled', 'error'].includes(s.status)
         )
           continue;
+        if (s.plan) s.plan = publicScanPlan(s.plan);
         s.archived = true;
         if (s.status === 'running') {
           s.status = 'error';
@@ -48,7 +50,10 @@ export class RunHistory {
   }
   async save(state: ScanState) {
     if (!state.runId || !idPattern.test(state.runId)) throw new Error('Invalid run ID.');
-    const content = JSON.stringify(state);
+    const content = JSON.stringify({
+      ...state,
+      ...(state.plan ? { plan: publicScanPlan(state.plan) } : {}),
+    });
     if (Buffer.byteLength(content) > 4 * 1024 * 1024)
       throw new Error('History record is too large.');
     const target = join(this.directory, `${state.runId}.json`),

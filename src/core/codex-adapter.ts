@@ -18,7 +18,7 @@ import type {
   ScanResult,
   Finding as SdkFinding,
 } from '@openai/codex-security';
-import type { ScanPlan } from './scan-plan.ts';
+import type { PreparedScanPlan } from './scan-plan.ts';
 import { userMessage } from './errors.ts';
 import type { Finding, ScanState } from '../types.js';
 
@@ -142,7 +142,7 @@ export class CodexScanService {
       }
     }
   }
-  start(plan: ScanPlan): ScanState {
+  start(plan: PreparedScanPlan): ScanState {
     if (this.#disposed) throw new Error('Scan service is closed');
     if (this.#busy) return this.getState();
     this.#state = {
@@ -157,7 +157,7 @@ export class CodexScanService {
     this.#task = this.#run(structuredClone(plan), this.#controller.signal);
     return this.getState();
   }
-  async #run(plan: ScanPlan, signal: AbortSignal) {
+  async #run(plan: PreparedScanPlan, signal: AbortSignal) {
     let client: SecurityClient | undefined;
     let observing = true;
     let outcome: 'completed' | 'cancelled' | 'error' = 'error';
