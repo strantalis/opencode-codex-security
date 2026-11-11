@@ -542,7 +542,7 @@ export function SecurityPanel(props: {
                         fallback={
                           <>
                             <p>
-                              Repository source and listed context will be sent to{}
+                              Repository source and listed context will be sent to{' '}
                               {describeInferenceRoute(plan().settings)}. Results are stored locally.
                             </p>
                             <p>{describeCostLimit(plan().settings.scan.maxCostUsd)}</p>
