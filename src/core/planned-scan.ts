@@ -10,20 +10,17 @@ import {
 import { SecurityInputError } from './errors.ts';
 import { RunHistory } from './run-history.ts';
 import type { ScanState, ScanList } from '../types.ts';
-type Draft = {
-  plan: PreparedScanPlan;
-  consumed: boolean;
-  runId?: string;
-  starting?: Promise<ScanState>;
-};
+type Draft = { plan: PreparedScanPlan; consumed: boolean; runId?: string };
 type Run = {
   state: ScanState;
   service: CodexScanService;
   unsubscribe: () => void;
-  cancelled?: boolean;
   lastSavedAt?: number;
 };
-/** Independent approved runs. A draft or another run never mutates a running scan's inputs. */
+/**
+ * Independent approved runs. A draft or another run never mutates a running scan's inputs.
+ * `#runs` holds live runs only; a finished run keeps just its final state in `#archived`.
+ */
 export class PlannedScanService {
   #project: string;
   #factory?: SecurityFactory;
@@ -38,7 +35,9 @@ export class PlannedScanService {
   #latestRun?: string;
   #listeners = new Set<(s: ScanState) => void>();
   #history?: RunHistory;
-  #historyError?: string;
+  #loadError?: string;
+  /** Runs whose latest state is not on disk. Cleared by that run's next successful save. */
+  #unsaved = new Set<string>();
   #ready: Promise<void>;
   #writes = Promise.resolve();
   readonly maxConcurrent = 2;
@@ -59,9 +58,16 @@ export class PlannedScanService {
     try {
       for (const s of await this.#history.load()) this.#archived.set(s.runId!, s);
     } catch {
-      this.#historyError =
-        'Local scan history is unavailable. New scans cannot start until it is writable.';
+      this.#loadError = 'Local scan history could not be read, so earlier runs are not listed.';
     }
+  }
+  get #historyError() {
+    return (
+      this.#loadError ??
+      (this.#unsaved.size
+        ? 'Some scan history could not be saved. Those runs will be missing after a restart.'
+        : undefined)
+    );
   }
   async ready() {
     await this.#ready;
@@ -151,23 +157,40 @@ export class PlannedScanService {
       } catch {}
     }
   }
+  /** History is a record, not a gate: a failed write is reported and never stops a scan. */
   #save(state: ScanState) {
-    if (!this.#history) return Promise.resolve();
-    const snapshot = structuredClone(state);
-    const work = this.#writes.then(() => this.#history!.save(snapshot));
-    this.#writes = work.catch(() => {
-      this.#historyError =
-        'Some local scan history could not be saved. Keep this window open and check local storage.';
-    });
-    return work;
+    if (!this.#history) return;
+    const snapshot = structuredClone(state),
+      runId = state.runId!;
+    this.#writes = this.#writes
+      .then(() => this.#history!.save(snapshot))
+      .then(
+        () => this.#unsaved.delete(runId),
+        () => this.#unsaved.add(runId),
+      )
+      .then(() => {});
+  }
+  /** Keep only the final state of a finished run; drop its service and subscription. */
+  #finish(runId: string, entry: Run) {
+    entry.unsubscribe();
+    this.#runs.delete(runId);
+    this.#archived.set(runId, entry.state);
+    if (this.#archived.size > this.historyLimit) {
+      const oldest = [...this.#archived.values()].reduce((a, b) =>
+        (a.startedAt ?? '') <= (b.startedAt ?? '') ? a : b,
+      );
+      this.#archived.delete(oldest.runId!);
+    }
   }
   async prepare(input: ScanInputs = {}): Promise<ScanState> {
     if (this.#disposed) throw new Error('Scan service is closed');
     await this.#ready;
     const plan = await prepareScan(this.#project, input, this.#mock);
     if (this.#disposed) throw new Error('Scan service is closed');
+    // An expired preview can never start again; keep only those whose run is still live.
     for (const [id, d] of this.#drafts)
-      if (!d.runId && Date.parse(d.plan.expiresAt) <= Date.now()) this.#drafts.delete(id);
+      if (!(d.runId && this.#runs.has(d.runId)) && Date.parse(d.plan.expiresAt) <= Date.now())
+        this.#drafts.delete(id);
     this.#drafts.set(plan.id, { plan, consumed: false });
     this.#latestDraft = plan.id;
     const state = this.#idle(plan);
@@ -178,32 +201,21 @@ export class PlannedScanService {
   async start(input: { planId?: string } = {}): Promise<ScanState> {
     if (this.#disposed) throw new Error('Scan service is closed');
     await this.#ready;
+    if (this.#disposed) throw new Error('Scan service is closed');
     const d = input.planId ? this.#drafts.get(input.planId) : undefined;
     if (!d) throw new SecurityInputError('Prepare a scan preview first.');
-    if (d.starting) return d.starting;
-    if (d.runId && this.getState({ runId: d.runId }).status === 'running')
-      return this.getState({ runId: d.runId });
+    if (d.runId && this.#runs.has(d.runId)) return this.getState({ runId: d.runId });
     if (d.consumed)
       throw new SecurityInputError('This preview is already used. Prepare a new scan.');
     if (Date.now() >= Date.parse(d.plan.expiresAt))
       throw new SecurityInputError('Scan preview expired. Prepare it again.');
-    if (this.#historyError) throw new SecurityInputError(this.#historyError);
-    if (
-      [...this.#drafts.values()].filter(
-        (v) => v.starting || (v.runId && this.#runs.get(v.runId)?.state.status === 'running'),
-      ).length >= this.maxConcurrent
-    )
+    if (this.#runs.size >= this.maxConcurrent)
       throw new SecurityInputError(
         'Two scans are already active in this project. Wait or cancel one before starting another.',
       );
-    d.starting = this.#start(d);
-    try {
-      return await d.starting;
-    } finally {
-      d.starting = undefined;
-    }
+    return this.#start(d);
   }
-  async #start(d: Draft): Promise<ScanState> {
+  #start(d: Draft): ScanState {
     const runId = randomUUID(),
       plan = structuredClone(d.plan),
       service = new CodexScanService(plan.repository, { createClient: this.#factory });
@@ -230,22 +242,7 @@ export class PlannedScanService {
       unsubscribe: () => {},
     };
     this.#runs.set(runId, entry);
-    const stop = async (status: 'error' | 'cancelled', phase: string, error: string | null) => {
-      entry.state = { ...entry.state, status, phase, error, finishedAt: new Date().toISOString() };
-      await this.#save(entry.state).catch(() => {});
-      this.#emit(entry.state);
-      return structuredClone(entry.state);
-    };
-    try {
-      await this.#save(entry.state);
-    } catch {
-      return stop(
-        'error',
-        'Local history unavailable',
-        'Scan did not start because its local history could not be saved.',
-      );
-    }
-    if (this.#disposed || entry.cancelled) return stop('cancelled', 'Cancelled before start', null);
+    this.#save(entry.state);
     entry.unsubscribe = service.subscribe((state) => {
       const previous = entry.state;
       entry.state = decorate(state);
@@ -257,8 +254,9 @@ export class PlannedScanService {
         Date.now() - (entry.lastSavedAt ?? 0) > 10_000
       ) {
         entry.lastSavedAt = Date.now();
-        void this.#save(entry.state).catch(() => {});
+        this.#save(entry.state);
       }
+      if (state.status !== 'running') this.#finish(runId, entry);
     });
     service.start(plan);
     return structuredClone(entry.state);
@@ -272,7 +270,6 @@ export class PlannedScanService {
     }
     const run = this.#runs.get(id);
     if (!run) throw new SecurityInputError('That run is not active.');
-    run.cancelled = true;
     run.service.cancel();
     return structuredClone(run.state);
   }
@@ -286,7 +283,6 @@ export class PlannedScanService {
   }
   async dispose() {
     this.#disposed = true;
-    await Promise.allSettled([...this.#drafts.values()].map((d) => d.starting).filter(Boolean));
     await Promise.all([...this.#runs.values()].map((r) => r.service.dispose()));
     await this.#writes;
     for (const r of this.#runs.values()) r.unsubscribe();

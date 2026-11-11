@@ -1,10 +1,21 @@
 import './helpers/isolated-codex.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, realpath, rm, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import {
+  mkdtemp,
+  mkdir,
+  realpath,
+  rm,
+  readFile,
+  readdir,
+  stat,
+  utimes,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PlannedScanService } from '../src/core/planned-scan.ts';
+import { RunHistory } from '../src/core/run-history.ts';
 const result = (id) => ({ findings: { scanId: id, findings: [] } });
 async function root(t) {
   const p = await realpath(await mkdtemp(join(tmpdir(), 'multi-scan-')));
@@ -178,6 +189,101 @@ test('malformed history record cannot hide valid runs or block new previews', as
   assert.equal(list.runs[0].runId, r.runId);
   assert.equal(list.historyError, undefined);
   assert.equal((await restored.prepare({})).status, 'idle');
+});
+
+test('loading keeps the newest records by modification time and deletes the rest', async (t) => {
+  const p = await root(t),
+    history = join(p, 'history');
+  await mkdir(history);
+  const ids = [];
+  for (let i = 0; i < 55; i++) {
+    const id = `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`;
+    ids.push(id);
+    const file = join(history, `${id}.json`);
+    await writeFile(
+      file,
+      JSON.stringify({
+        runId: id,
+        status: 'completed',
+        startedAt: new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString(),
+        findings: [],
+        events: [],
+      }),
+    );
+    // Record i was last written at minute i.
+    const at = new Date(Date.UTC(2026, 0, 1, 0, i));
+    await utimes(file, at, at);
+  }
+  await writeFile(join(history, 'notes.txt'), 'not a record');
+  const records = await new RunHistory(history, 50).load();
+  assert.equal(records.length, 50);
+  assert.deepEqual(
+    records.map((r) => r.runId),
+    ids.slice(5).reverse(),
+  );
+  const left = await readdir(history);
+  assert.equal(left.filter((n) => n.endsWith('.json')).length, 50);
+  assert.ok(left.includes('notes.txt'));
+  for (const id of ids.slice(0, 5)) assert.ok(!left.includes(`${id}.json`));
+});
+
+test('a failed history write never blocks a scan, and the error clears once writes succeed', async (t) => {
+  const p = await root(t),
+    history = join(p, 'history'),
+    c = controlled();
+  const s = new PlannedScanService(p, {
+    createClient: c.factory,
+    mock: true,
+    historyDirectory: history,
+  });
+  t.after(() => s.dispose());
+  await s.ready();
+  // Replace the directory with a file so every write fails.
+  await rm(history, { recursive: true });
+  await writeFile(history, '');
+  const d = await s.prepare({}),
+    r = await s.start({ planId: d.plan.id });
+  assert.equal(r.status, 'running');
+  await tick();
+  assert.equal(c.calls.length, 1);
+  await s.flushHistory();
+  assert.match((await s.list()).historyError, /could not be saved/);
+  await rm(history);
+  await mkdir(history);
+  c.calls[0].resolve(result('recovered'));
+  await s.wait(r.runId);
+  assert.equal((await s.list()).historyError, undefined);
+  assert.equal(
+    JSON.parse(await readFile(join(history, `${r.runId}.json`), 'utf8')).status,
+    'completed',
+  );
+});
+
+test('finished runs keep their state but release their service and old previews', async (t) => {
+  const p = await root(t),
+    c = controlled();
+  const s = new PlannedScanService(p, { createClient: c.factory, mock: true });
+  t.after(() => s.dispose());
+  const d = await s.prepare({ scanPrompt: 'Released' }),
+    r = await s.start({ planId: d.plan.id });
+  await tick();
+  c.calls[0].resolve(result('released'));
+  await s.wait(r.runId);
+  // Cancelling a finished run reports it is no longer live; its state remains readable.
+  assert.throws(() => s.cancel({ runId: r.runId }), /not active/);
+  assert.equal(s.getState({ runId: r.runId }).status, 'completed');
+  assert.equal((await s.list()).runs[0].plan.scanPrompt, 'Released');
+  await assert.rejects(s.start({ planId: d.plan.id }), /already used/);
+  // After the preview expires, the next prepare drops it; the run is still listed.
+  const realNow = Date.now;
+  Date.now = () => realNow() + 11 * 60_000;
+  try {
+    await s.prepare({});
+  } finally {
+    Date.now = realNow;
+  }
+  assert.throws(() => s.getState({ planId: d.plan.id }), /Unknown scan preview/);
+  assert.equal(s.getState({ runId: r.runId }).status, 'completed');
 });
 
 test('session locations and explicit targets stay distinct even with identical repository names', async (t) => {
