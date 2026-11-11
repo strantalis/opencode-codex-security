@@ -9,7 +9,9 @@ Install the OpenCode plugin opencode-codex-security@VERSION.
 2. Add { "package": "opencode-codex-security@VERSION" } to the "plugins" array of my
    OpenCode config (~/.config/opencode/opencode.json, or under $XDG_CONFIG_HOME).
    Keep everything else in the file as it is.
-3. Tell me to open /security in OpenCode to confirm it loaded.
+3. Tell me to restart OpenCode and open /security to confirm it loaded.
+4. If you are running inside OpenCode, after the restart call security_status and
+   report what it says.
 
 Don't start a scan or change my model provider or credentials. If something is
 missing, tell me what it is.
