@@ -302,8 +302,9 @@ export function createApp(ctx: Plugin.Context) {
     },
     { bind: 'n', key: 'n', label: () => 'new scan', run: newScan, when: () => true },
     {
-      bind: 'i',
-      key: 'i',
+      // Not `i`: a terminal sends Tab as Ctrl+I, so the two collide.
+      bind: 'l',
+      key: 'l',
       label: () => (setup()?.signIn?.pending ? 'cancel sign-in' : 'sign in'),
       run: signIn,
       when: () => listing() && !!setup()?.signIn && setup()?.signIn?.state !== 'signed-in',

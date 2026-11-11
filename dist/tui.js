@@ -1803,8 +1803,8 @@ function Re(t) {
 			when: () => !0
 		},
 		{
-			bind: "i",
-			key: "i",
+			bind: "l",
+			key: "l",
 			label: () => w()?.signIn?.pending ? "cancel sign-in" : "sign in",
 			run: D,
 			when: () => G() && !!w()?.signIn && w()?.signIn?.state !== "signed-in"
