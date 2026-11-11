@@ -88,6 +88,10 @@ export default Plugin.define({
                 <SecurityPanel
                   directory={directory}
                   port={port}
+                  setup={{
+                    load: () => rpc().setup({}, { location }),
+                    setProfile: (input) => rpc().setProfile(input, { location }),
+                  }}
                   operations={
                     capabilities()
                       ? {

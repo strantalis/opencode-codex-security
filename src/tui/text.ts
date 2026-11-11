@@ -1,6 +1,6 @@
 import type { ScanState } from '../types';
 import type { SecurityOperationState } from '../core/security-operations';
-import { elapsedLabel, phaseLabel, projectName } from '../scan-display';
+import { runtimeProblems, elapsedLabel, phaseLabel, projectName } from '../scan-display';
 
 /**
  * Shape of the planned `setup` RPC result. Not called yet: wire it up by fetching
@@ -31,10 +31,8 @@ export function setupLine(setup: SetupInfo): { text: string; warning?: string } 
     route.auth,
     ...(profile ? [`profile ${profile}`] : []),
   ].join(' · ');
-  const missing = [!runtime.node && 'Node', !runtime.python && 'Python'].filter(Boolean);
-  return missing.length
-    ? { text, warning: `${missing.join(' and ')} not found; scans cannot run until installed.` }
-    : { text };
+  const problems = runtimeProblems(runtime);
+  return problems.length ? { text, warning: `Scans need ${problems.join(' and ')}.` } : { text };
 }
 
 export function costLine(limit?: number) {

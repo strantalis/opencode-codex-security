@@ -1,5 +1,5 @@
 import { createSignal, For, onCleanup, Show } from 'solid-js';
-import { userError } from '../scan-display';
+import { runtimeProblems, userError } from '../scan-display';
 
 /** What the server's `setup` RPC returns. */
 export interface SetupInfo {
@@ -69,10 +69,7 @@ export function SetupCard(props: { setup: SetupPort; onChange?: () => void }) {
 
   const missing = () => {
     const runtime = info()?.runtime;
-    return [
-      ...(runtime && !runtime.node ? ['Node.js'] : []),
-      ...(runtime && !runtime.python ? ['Python'] : []),
-    ];
+    return runtime ? runtimeProblems(runtime) : [];
   };
   return (
     <section class="gs-setup" aria-label="Setup">
@@ -89,8 +86,7 @@ export function SetupCard(props: { setup: SetupPort; onChange?: () => void }) {
           <>
             <Show when={missing().length}>
               <p class="gs-alert" role="alert">
-                {missing().join(' and ')} {missing().length === 1 ? 'was' : 'were'} not found. Scans
-                need {missing().length === 1 ? 'it' : 'both'}; install and reopen this panel.
+                Scans need {missing().join(' and ')} on OpenCode's PATH.
               </p>
             </Show>
             <dl class="gs-setup-grid">

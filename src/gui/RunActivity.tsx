@@ -9,6 +9,8 @@ import {
   reconnectLabel,
   scanScope,
   usageContext,
+  trustedAccessLabel,
+  targetChangedLabel,
   usageLabel,
   usageRangeLabel,
   workerActivityRows,
@@ -92,6 +94,16 @@ export function RunInfo(props: { run: ScanState }) {
         <dt>Estimated usage</dt>
         <dd>{usageLabel(run())}</dd>
         <dd class="gs-muted">{usageContext(run())}</dd>
+        <Show when={run().telemetry?.authentication}>
+          <dt>Signed in with</dt>
+          <dd>{run().telemetry?.authentication}</dd>
+        </Show>
+        <Show when={trustedAccessLabel(run()) || targetChangedLabel(run())}>
+          <dt>Notices</dt>
+          <dd>
+            {[trustedAccessLabel(run()), targetChangedLabel(run())].filter(Boolean).join(' · ')}
+          </dd>
+        </Show>
         <Show when={usageRangeLabel(run())}>
           <dt>Range</dt>
           <dd>{usageRangeLabel(run())}</dd>

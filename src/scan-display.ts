@@ -294,3 +294,19 @@ export function userError(error: unknown) {
 export function findingText(finding: Finding) {
   return `${finding.title}\nSeverity: ${finding.severity} · ${finding.cwe}\nLocation: ${finding.path}:${finding.line}\n\n${finding.summary}\n\nEvidence:\n${finding.evidence}\n\nSuggested remediation:\n${finding.remediation}`;
 }
+
+/** What the SDK needs on OpenCode's PATH to run a scan, and what was found instead. */
+export function runtimeProblems(runtime: { node: string | null; python: string | null }) {
+  const parts = (version: string | null) => (version?.match(/\d+/g) ?? []).map(Number);
+  const [nodeMajor = 0, nodeMinor = 0] = parts(runtime.node);
+  const [pythonMajor = 0, pythonMinor = 0] = parts(runtime.python);
+  const found = (version: string | null) => (version ? `found ${version}` : 'not found');
+  return [
+    ...(nodeMajor === 24 || nodeMajor === 26 || (nodeMajor === 22 && nodeMinor >= 20)
+      ? []
+      : [`Node 22.20+, 24 or 26 (${found(runtime.node)})`]),
+    ...(pythonMajor > 3 || (pythonMajor === 3 && pythonMinor >= 10)
+      ? []
+      : [`Python 3.10+ (${found(runtime.python)})`]),
+  ];
+}

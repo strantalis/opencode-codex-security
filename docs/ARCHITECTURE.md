@@ -2,20 +2,20 @@
 
 The plugin runs in the local OpenCode server and wraps three SDK calls: `run`, `generatePolicy` and `validate`. The terminal and Desktop views talk to it over a typed plugin RPC; the session's model talks to it through tools.
 
-| File                                                                 | Role                                                                                                                 |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `src/plugin.ts`                                                      | Registers the RPC, tools and skill, wires events, cleans up.                                                         |
-| `src/tools.ts`                                                       | The model-facing tools, and the notices posted into the session that started a scan or operation.                    |
-| `src/skill.ts`                                                       | The bundled `codex-security` skill: the multi-repository scan workflow.                                              |
-| `src/core/settings.ts`                                               | Merges the user's Codex routing with `codex-security.json`; lists and selects Codex profiles.                        |
-| `src/core/scan-plan.ts`                                              | Builds a preview by calling the SDK's `preflight`, which validates scope, context, mode, cost limit and credentials. |
-| `src/core/status.ts`                                                 | The resolved setup (route, config files, profiles, Node and Python) for `security_status` and the `setup` RPC.       |
-| `src/core/planned-scan.ts`                                           | Previews, runs, the two-run limit, and history.                                                                      |
-| `src/core/codex-adapter.ts`                                          | Runs one scan and projects SDK callbacks into UI state.                                                              |
-| `src/core/security-operations.ts`                                    | Policy drafts (with owner questions) and validation.                                                                 |
-| `src/core/run-history.ts`                                            | One private JSON file per run under `$XDG_STATE_HOME/opencode/codex-security/runs/`.                                 |
-| `src/core/run-telemetry.ts`, `result-summary.ts`, `report-safety.ts` | Projections of SDK activity, usage and results for display.                                                          |
-| `src/tui.tsx`, `src/gui.tsx`, `src/security-*.tsx`                   | Terminal and Desktop views.                                                                                          |
+| File                                                                       | Role                                                                                                                 |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `src/plugin.ts`                                                            | Registers the RPC, tools and skill, wires events, cleans up.                                                         |
+| `src/tools.ts`                                                             | The model-facing tools, and the notices posted into the session that started a scan or operation.                    |
+| `src/skill.ts`                                                             | The bundled `codex-security` skill: the multi-repository scan workflow.                                              |
+| `src/core/settings.ts`                                                     | Merges the user's Codex routing with `codex-security.json`; lists and selects Codex profiles.                        |
+| `src/core/scan-plan.ts`                                                    | Builds a preview by calling the SDK's `preflight`, which validates scope, context, mode, cost limit and credentials. |
+| `src/core/status.ts`                                                       | The resolved setup (route, config files, profiles, Node and Python) for `security_status` and the `setup` RPC.       |
+| `src/core/planned-scan.ts`                                                 | Previews, runs, the two-run limit, and history.                                                                      |
+| `src/core/codex-adapter.ts`                                                | Runs one scan and projects SDK callbacks into UI state.                                                              |
+| `src/core/security-operations.ts`                                          | Policy drafts (with owner questions) and validation.                                                                 |
+| `src/core/run-history.ts`                                                  | One private JSON file per run under `$XDG_STATE_HOME/opencode/codex-security/runs/`.                                 |
+| `src/core/run-telemetry.ts`, `result-summary.ts`, `report-safety.ts`       | Projections of SDK activity, usage and results for display.                                                          |
+| `src/tui.tsx`, `src/tui/`, `src/gui.tsx`, `src/gui/`, `src/security-*.tsx` | Terminal and Desktop views. Both follow server events instead of polling.                                            |
 
 ## How a scan runs
 
