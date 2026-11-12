@@ -89,76 +89,102 @@ export function RunInfo(props: { run: ScanState }) {
   const cost = () => run().telemetry?.measurement?.cost;
   return (
     <details class="gs-section gs-info">
-      <summary>Usage and details</summary>
-      <dl class="gs-facts">
-        <dt>Estimated usage</dt>
-        <dd>{usageLabel(run())}</dd>
-        <dd class="gs-muted">{usageContext(run())}</dd>
-        <Show when={run().telemetry?.authentication}>
-          <dt>Signed in with</dt>
-          <dd>{run().telemetry?.authentication}</dd>
-        </Show>
-        <Show when={trustedAccessLabel(run()) || targetChangedLabel(run())}>
-          <dt>Notices</dt>
+      <summary>
+        Usage and details <span class="gs-summary-note">{usageLabel(run())}</span>
+      </summary>
+      <section class="gs-group">
+        <h4>Usage</h4>
+        <dl class="gs-grid">
+          <dt>Cost</dt>
           <dd>
-            {[trustedAccessLabel(run()), targetChangedLabel(run())].filter(Boolean).join(' · ')}
+            {usageLabel(run())}
+            <span class="gs-muted gs-small gs-block">{usageContext(run())}</span>
           </dd>
-        </Show>
-        <Show when={usageRangeLabel(run())}>
-          <dt>Range</dt>
-          <dd>{usageRangeLabel(run())}</dd>
-        </Show>
-        <Show when={cost()?.model || cost()?.pricingAsOf}>
-          <dt>Pricing</dt>
-          <dd>{[cost()?.model, cost()?.pricingAsOf].filter(Boolean).join(' · ')}</dd>
-        </Show>
-        <Show when={usage()}>
-          {(tokens) => (
-            <>
-              <dt>Tokens</dt>
-              <dd>
-                {tokens().inputTokens.toLocaleString()} input ·{' '}
-                {tokens().cachedInputTokens.toLocaleString()} cached ·{' '}
-                {tokens().outputTokens.toLocaleString()} output
-              </dd>
-            </>
-          )}
-        </Show>
-        <Show when={run().deepProgress}>
-          <dt>Deep review</dt>
-          <dd>{deepProgressLabel(run())}</dd>
-        </Show>
-        <Show when={reconnectLabel(run())}>
-          <dt>Connection</dt>
-          <dd>{reconnectLabel(run())}</dd>
-        </Show>
-        <dt>Repository</dt>
-        <dd class="gs-wrap">{run().repository}</dd>
-        <dt>Scope</dt>
-        <dd>{scanScope(run())}</dd>
-        <Show when={run().model ?? run().plan?.settings.codex.model}>
-          <dt>Model</dt>
-          <dd>{run().model ?? run().plan?.settings.codex.model}</dd>
-        </Show>
-        <Show when={run().plan?.scanPrompt}>
-          <dt>Focus</dt>
-          <dd>{run().plan?.scanPrompt}</dd>
-        </Show>
-        <Show when={run().plan?.contextFiles.length}>
-          <dt>Context files</dt>
-          <dd>
-            {run()
-              .plan?.contextFiles.map((file) => file.path)
-              .join(', ')}
-          </dd>
-        </Show>
-        <dt>Run ID</dt>
-        <dd class="gs-mono">{run().runId}</dd>
-        <Show when={run().scanId}>
-          <dt>SDK scan ID</dt>
-          <dd class="gs-mono">{run().scanId}</dd>
-        </Show>
-      </dl>
+          <Show when={usageRangeLabel(run())}>
+            <dt>Range</dt>
+            <dd>{usageRangeLabel(run())}</dd>
+          </Show>
+          <Show when={usage()}>
+            {(tokens) => (
+              <>
+                <dt>Input tokens</dt>
+                <dd class="gs-tabular">
+                  {tokens().inputTokens.toLocaleString()}{' '}
+                  <span class="gs-muted">
+                    ({tokens().cachedInputTokens.toLocaleString()} cached)
+                  </span>
+                </dd>
+                <dt>Output tokens</dt>
+                <dd class="gs-tabular">{tokens().outputTokens.toLocaleString()}</dd>
+              </>
+            )}
+          </Show>
+          <Show when={cost()?.model || cost()?.pricingAsOf}>
+            <dt>Priced as</dt>
+            <dd>{[cost()?.model, cost()?.pricingAsOf].filter(Boolean).join(', prices of ')}</dd>
+          </Show>
+        </dl>
+      </section>
+      <section class="gs-group">
+        <h4>Scan</h4>
+        <dl class="gs-grid">
+          <dt>Repository</dt>
+          <dd class="gs-mono">{run().repository}</dd>
+          <dt>Scope</dt>
+          <dd>{scanScope(run())}</dd>
+          <Show when={run().model ?? run().plan?.settings.codex.model}>
+            <dt>Model</dt>
+            <dd>{run().model ?? run().plan?.settings.codex.model}</dd>
+          </Show>
+          <Show when={run().telemetry?.authentication}>
+            <dt>Signed in with</dt>
+            <dd>{run().telemetry?.authentication}</dd>
+          </Show>
+          <Show when={run().plan?.scanPrompt}>
+            <dt>Focus</dt>
+            <dd>{run().plan?.scanPrompt}</dd>
+          </Show>
+          <Show when={run().plan?.contextFiles.length}>
+            <dt>Context files</dt>
+            <dd class="gs-mono">
+              <For each={run().plan?.contextFiles}>
+                {(file) => <span class="gs-block">{file.path}</span>}
+              </For>
+            </dd>
+          </Show>
+          <Show when={run().deepProgress}>
+            <dt>Deep review</dt>
+            <dd>{deepProgressLabel(run())}</dd>
+          </Show>
+          <Show when={reconnectLabel(run())}>
+            <dt>Connection</dt>
+            <dd>{reconnectLabel(run())}</dd>
+          </Show>
+          <Show when={trustedAccessLabel(run()) || targetChangedLabel(run())}>
+            <dt>Notices</dt>
+            <dd>
+              <For each={[trustedAccessLabel(run()), targetChangedLabel(run())].filter(Boolean)}>
+                {(notice) => <span class="gs-block">{notice}</span>}
+              </For>
+            </dd>
+          </Show>
+        </dl>
+      </section>
+      <section class="gs-group">
+        <h4>Reference</h4>
+        <dl class="gs-grid">
+          <dt>Run ID</dt>
+          <dd class="gs-mono">{run().runId}</dd>
+          <Show when={run().scanId}>
+            <dt>SDK scan ID</dt>
+            <dd class="gs-mono">{run().scanId}</dd>
+          </Show>
+          <Show when={run().scanDirectory}>
+            <dt>Saved files</dt>
+            <dd class="gs-mono">{run().scanDirectory}</dd>
+          </Show>
+        </dl>
+      </section>
       <Show when={run().archived}>
         <p class="gs-muted">Restored from local history.</p>
       </Show>

@@ -400,6 +400,135 @@ export const securityStyles = `
   padding-left: 12px;
 }
 
+/* ---------- Detail sections: coverage, usage ---------- */
+.gs-summary-note {
+  margin-left: 8px;
+  color: var(--gs-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.gs-section[open] > summary .gs-summary-note {
+  display: none;
+}
+.gs-small {
+  font-size: 12px;
+}
+.gs-group {
+  margin-top: 18px;
+}
+.gs-section > summary + .gs-group {
+  margin-top: 8px;
+}
+.gs-group h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  color: var(--gs-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.gs-count {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--gs-hover);
+  color: var(--gs-fg);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+.gs-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 8px 0 0;
+}
+.gs-stats > div {
+  padding: 10px 12px;
+  border: 1px solid var(--gs-line);
+  border-radius: var(--gs-radius);
+  background: var(--gs-surface);
+}
+.gs-stats dd {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.gs-stats dt {
+  margin-top: 2px;
+  color: var(--gs-muted);
+  font-size: 12px;
+}
+.gs-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--gs-line);
+  border-radius: var(--gs-radius);
+}
+.gs-rows > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  overflow-wrap: anywhere;
+}
+.gs-rows > li + li {
+  border-top: 1px solid var(--gs-line);
+}
+.gs-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.gs-row-title {
+  font-weight: 500;
+}
+.gs-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.gs-chip {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--gs-hover);
+  font-family: var(--gs-font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.gs-grid {
+  display: grid;
+  grid-template-columns: minmax(96px, 30%) minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 0;
+}
+.gs-grid dt {
+  color: var(--gs-muted);
+}
+.gs-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.gs-footnotes {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--gs-line);
+  color: var(--gs-muted);
+  font-size: 12px;
+}
+.gs-footnotes:empty {
+  display: none;
+}
+.gs-footnotes p + p {
+  margin-top: 6px;
+}
+
 /* ---------- Forms ---------- */
 .gs-form fieldset {
   min-width: 0;
