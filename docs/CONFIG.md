@@ -4,7 +4,7 @@ The plugin passes your settings to the Codex Security SDK and lets the SDK valid
 
 ## Where settings come from
 
-1. **Your Codex config**, `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`). The plugin reads only the routing keys: `model`, `model_reasoning_effort`, `model_provider`, `model_providers`, `openai_base_url` and `daybreak`. If the file selects a profile with `profile = "name"`, that `[profiles.name]` table applies on top. MCP servers, hooks and everything else are ignored.
+1. **Your Codex config**, `$CODEX_HOME/config.toml` (default `~/.codex/config.toml`). The plugin reads only the routing keys (`model`, `model_reasoning_effort`, `model_provider`, `model_providers`, `openai_base_url`, `daybreak`) and the model's size limits (`model_context_window`, `model_auto_compact_token_limit`, `model_max_output_tokens`). If the file selects a profile with `profile = "name"`, that `[profiles.name]` table applies on top. MCP servers, hooks and everything else are ignored.
 2. **`codex-security.json`**, in `$XDG_CONFIG_HOME/opencode/` (default `~/.config/opencode/`). Anything here overrides the Codex config. The file is optional.
 
 There are no per-project settings. Each preview is a snapshot: a scan runs with the settings you approved, even if these two files change afterwards. The exception is a `name.config.toml` file profile, which the SDK reads when the scan starts.
@@ -92,6 +92,23 @@ Amazon Bedrock:
 ```
 
 Daybreak on OpenAI is `"daybreak": true` inside `codex`. On Bedrock it is selected by the model ID, as above. Neither setting grants access your account does not have.
+
+## Context window
+
+A long scan fills the model's context window. Codex compacts the conversation before that happens, but only if it knows how large the window is. It knows this for OpenAI's own model names. For a gateway alias or a Bedrock model ID it may not, and the scan then fails with a context-length error from the provider.
+
+Tell it the window your provider gives that model, and when to compact:
+
+```json
+{
+  "codex": {
+    "model_context_window": 400000,
+    "model_auto_compact_token_limit": 320000
+  }
+}
+```
+
+Use the limit your provider reports for the model (the error message states it), and set the compaction limit to roughly 80% of it. These are native Codex settings, so they also work in `~/.codex/config.toml`, including inside a profile.
 
 ## Time limits
 
