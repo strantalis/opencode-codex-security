@@ -152,7 +152,7 @@ function se(e) {
 }
 function ce(e) {
 	let t = (e) => (e?.match(/\d+/g) ?? []).map(Number), [n = 0, r = 0] = t(e.node), [i = 0, a = 0] = t(e.python), o = (e) => e ? `found ${e}` : "not found";
-	return [...n === 24 || n === 26 || n === 22 && r >= 20 ? [] : [`Node 22.20+, 24 or 26 (${o(e.node)})`], ...i > 3 || i === 3 && a >= 10 ? [] : [`Python 3.10+ (${o(e.python)})`]];
+	return [...n === 24 || n === 26 || n === 22 && r >= 13 ? [] : [`Node 22.13 or newer (${o(e.node)})`], ...i > 3 || i === 3 && a >= 10 ? [] : [`Python 3.10 or newer (${o(e.python)})`]];
 }
 function le(e) {
 	return {

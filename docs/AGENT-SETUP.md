@@ -21,7 +21,7 @@ That is the whole install. The plugin takes its model and provider from your exi
 
 Before your first scan:
 
-- OpenCode needs Node 22.20+ (or 24.x, 26.x) and Python 3.10+ on its `PATH`.
+- Scans need Python 3.10 or newer on the `PATH` OpenCode runs with.
 - If you sign in to Codex with ChatGPT, run `npx @openai/codex-security login` once so Codex Security has its own session. See [authentication](CONFIG.md#authentication).
 
 To use a different model, provider or cost limit, see [CONFIG.md](CONFIG.md).
