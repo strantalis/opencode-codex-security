@@ -19,12 +19,4 @@ export function statusLabel(status: string) {
 }
 
 /** SDK validation dispositions: reportable, suppressed, not_applicable, deferred. */
-export function dispositionLabel(disposition: string) {
-  const labels: Record<string, string> = {
-    reportable: 'Confirmed in source',
-    suppressed: 'Not confirmed',
-    not_applicable: 'Not applicable',
-    deferred: 'Undecided: needs more context',
-  };
-  return labels[disposition] ?? disposition.replaceAll('_', ' ');
-}
+export { dispositionLabel } from '../scan-display';

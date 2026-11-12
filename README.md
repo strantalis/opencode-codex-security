@@ -38,7 +38,9 @@ To change the model, provider, scan mode or cost limit, see [docs/CONFIG.md](doc
 
 ## Using it
 
-In the terminal, `/security` opens the view, `/security-scan` starts a new scan, `/security-policy` drafts a policy and `/security-validate` re-checks a finding. Everything else is a key inside the view, listed in its footer: move through scans and findings, open a finding, validate it or propose a fix, answer policy questions, apply or discard a fix, and cancel. The scan review lets you change the target, depth, scope (paths, or a diff), focus and context before you start.
+In the terminal, `/security` opens the view, `/security-scan` starts a new scan, `/security-policy` drafts a policy and `/security-validate` re-checks a finding. Everything else is a key inside the view. The footer shows the keys that matter for what is selected, and `h` lists them all: move through scans and findings, open a finding, validate it, propose a fix, apply or discard the fix, or hand the finding to the conversation you came from. The scan review lets you change the target, depth, scope, focus and context before you start.
+
+Findings are listed most severe first. Each one shows what has been done about it since the scan (confirmed, dismissed, fix ready, fix applied), and that is saved with the scan.
 
 Your session's model can do the same through these tools:
 

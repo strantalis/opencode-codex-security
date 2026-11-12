@@ -22,6 +22,7 @@ import {
   runTitle,
   scanScope,
   usageContext,
+  dispositionLabel,
   diffLines,
   findingStatus,
   severitySummary,
@@ -92,7 +93,7 @@ export function SecurityView(props: Props) {
     const runs = () => props.store.runs();
     const active = () => runs().filter((run) => run.status === 'running').length;
     return (
-      <box flexDirection="column">
+      <box flexDirection="column" flexShrink={0}>
         <text>
           <b>Security</b>
           <span style={{ fg: c.muted() }}> · {props.store.location.directory}</span>
@@ -122,12 +123,13 @@ export function SecurityView(props: Props) {
         {/* Last in the box: OpenTUI blanks a sibling that follows a late-mounted node. */}
         <Show when={props.setup}>
           {(info) => (
-            <text fg={c.muted()}>
-              {setupLine(info()).text}
-              <Show when={setupLine(info()).warning}>
-                {(warning) => <span style={{ fg: c.warning() }}> · {warning()}</span>}
+            <box flexDirection="column" flexShrink={0}>
+              <text fg={c.muted()}>{setupLine(info()).text}</text>
+              {/* One text node: OpenTUI dropped a line when these were separate nodes. */}
+              <Show when={setupLine(info()).warnings.length}>
+                <text fg={c.warning()}>{setupLine(info()).warnings.join('\n')}</text>
               </Show>
-            </text>
+            </box>
           )}
         </Show>
       </box>
@@ -413,7 +415,7 @@ export function SecurityView(props: Props) {
         ) : (
           <box flexDirection="column" gap={1}>
             <text>
-              <b>Assessment: {phaseLabel(r.disposition)}</b>
+              <b>{dispositionLabel(r.disposition)}</b>
             </text>
             <text>{r.report}</text>
             <Show when={r.truncated}>

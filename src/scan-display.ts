@@ -394,3 +394,15 @@ export function diffLines(diff: string) {
               : ('context' as const),
   }));
 }
+
+/** A validation verdict in plain words. */
+export function dispositionLabel(disposition: string) {
+  return (
+    {
+      reportable: 'Confirmed in source',
+      suppressed: 'Not confirmed',
+      not_applicable: 'Not applicable',
+      deferred: 'Undecided: needs more context',
+    }[disposition] ?? disposition.replaceAll('_', ' ')
+  );
+}

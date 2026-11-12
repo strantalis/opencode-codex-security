@@ -32,7 +32,7 @@ export interface SetupInfo {
 }
 
 /** SETUP LINE: "provider · model · credential source", plus a warning when a runtime is missing. */
-export function setupLine(setup: SetupInfo): { text: string; warning?: string } {
+export function setupLine(setup: SetupInfo): { text: string; warnings: string[] } {
   const { route, profile, runtime } = setup;
   const text = [
     route.provider,
@@ -46,11 +46,11 @@ export function setupLine(setup: SetupInfo): { text: string; warning?: string } 
     setup.signIn && (setup.signIn.state === 'needed' || setup.signIn.pending || setup.signIn.error)
       ? signInLabel(setup.signIn)
       : '';
-  const warning = [
-    ...(problems.length ? [`Scans need ${problems.join(' and ')}.`] : []),
-    ...(signIn ? [signIn] : []),
-  ].join(' ');
-  return warning ? { text, warning } : { text };
+  // One short line each, so nothing wraps into a wall of text.
+  return {
+    text,
+    warnings: [...problems.map((problem) => `Scans need ${problem}`), ...(signIn ? [signIn] : [])],
+  };
 }
 
 export function costLine(limit?: number) {
