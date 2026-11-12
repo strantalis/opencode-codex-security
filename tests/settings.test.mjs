@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { codexHome } from './helpers/isolated-codex.mjs';
-import { configure } from './helpers/project.mjs';
+import { configure, project } from './helpers/project.mjs';
+import { prepareScan } from '../src/core/scan-plan.ts';
 import { codexProfiles, loadSettings, saveProfile, settingsPath } from '../src/core/settings.ts';
 
 test('with no files, the SDK defaults apply', async () => {
@@ -126,4 +127,22 @@ test('saveProfile sets and removes codex.profile, keeping every other key', asyn
   assert.deepEqual(await read(), {});
   await writeFile(settingsPath(), '[1]');
   await assert.rejects(saveProfile('x'), /must hold a JSON object/);
+});
+
+test("the model's size limits are inherited from the Codex config", async (t) => {
+  await configure(t, {
+    codex: `
+model = "gateway-alias"
+model_context_window = 400000
+model_auto_compact_token_limit = 320000
+mcp_servers = { ignored = { command = "x" } }
+`,
+  });
+  const { codex } = await loadSettings();
+  assert.equal(codex.model_context_window, 400000);
+  assert.equal(codex.model_auto_compact_token_limit, 320000);
+  assert.equal(codex.mcp_servers, undefined);
+  // The SDK accepts them: a preview with these settings still resolves.
+  const root = await project(t);
+  assert.equal((await prepareScan(root, {})).settings.codex.model, 'gateway-alias');
 });
