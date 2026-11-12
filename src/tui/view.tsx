@@ -105,7 +105,7 @@ export function SecurityView(props: Props) {
           </span>
           <span style={{ fg: props.tab === 'operations' ? c.accent() : c.muted() }}>
             {'   '}
-            {props.tab === 'operations' ? <b>Operations</b> : 'Operations'}{' '}
+            {props.tab === 'operations' ? <b>Activity</b> : 'Activity'}{' '}
             {props.store.operations().length}
           </span>
           <Show when={active()}>

@@ -13,6 +13,7 @@ import {
   progressLabel,
   runPhaseLabel,
   runTitle,
+  scanScope,
   scopeItems,
   timeLimitLabel,
   usageLabel,
@@ -24,7 +25,7 @@ import { Findings } from './Findings';
 import { RunActivity, RunInfo } from './RunActivity';
 import type { OperationPort, SecurityPort, SecurityStore } from './store';
 
-const maxScopeTags = 4;
+const maxPaths = 3;
 
 /** One scan. Mount one instance per run so disclosures reset when the selection changes. */
 export function RunDetail(props: {
@@ -38,6 +39,11 @@ export function RunDetail(props: {
   onReview?(plan: ScanPlan): void;
 }) {
   const run = () => props.run;
+  const paths = () =>
+    scopeItems(run())
+      .filter((item) => item.path)
+      .map((item) => item.text);
+  const [allPaths, setAllPaths] = createSignal(false);
   const [cancelling, setCancelling] = createSignal(false);
   const [error, setError] = createSignal('');
   const cancel = async () => {
@@ -67,35 +73,40 @@ export function RunDetail(props: {
     <article class="gs-detail" aria-label="Selected scan">
       <header class="gs-detail-title">
         <h3>{runTitle(run())}</h3>
-        <p class="gs-tags">
+        <p class="gs-meta">
           <span class="gs-tag" data-kind="depth">
             {depthLabel(run())} scan
           </span>
-          <For each={scopeItems(run()).slice(0, maxScopeTags)}>
-            {(item) => (
-              <span class="gs-tag" classList={{ 'gs-tag-path': item.path }}>
-                {item.text}
-              </span>
-            )}
-          </For>
-          <Show when={scopeItems(run()).length > maxScopeTags}>
-            <span
-              class="gs-tag gs-muted"
-              title={scopeItems(run())
-                .slice(maxScopeTags)
-                .map((item) => item.text)
-                .join('\n')}
-            >
-              +{scopeItems(run()).length - maxScopeTags} more
-            </span>
-          </Show>
-          <Show when={run().model ?? run().plan?.settings.codex.model}>
-            <span class="gs-tag">{run().model ?? run().plan?.settings.codex.model}</span>
-          </Show>
-          <Show when={run().startedAt}>
-            <span class="gs-tag">Started {shortTime(run().startedAt)}</span>
-          </Show>
+          <span>
+            {[
+              paths().length
+                ? `${paths().length} ${paths().length === 1 ? 'path' : 'paths'}`
+                : scanScope(run()),
+              run().model ?? run().plan?.settings.codex.model,
+              run().startedAt ? `started ${shortTime(run().startedAt)}` : '',
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
         </p>
+        <Show when={paths().length}>
+          <ul class="gs-paths" aria-label="Paths in scope">
+            <For each={allPaths() ? paths() : paths().slice(0, maxPaths)}>
+              {(path) => (
+                <li>
+                  <code>{path}</code>
+                </li>
+              )}
+            </For>
+            <Show when={paths().length > maxPaths}>
+              <li>
+                <button class="gs-link" onClick={() => setAllPaths((value) => !value)}>
+                  {allPaths() ? 'Show fewer' : `Show all ${paths().length}`}
+                </button>
+              </li>
+            </Show>
+          </ul>
+        </Show>
         <p class="gs-mono gs-muted">{run().repository}</p>
       </header>
       <div class="gs-progress-heading" role="status" aria-live="polite">

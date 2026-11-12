@@ -1,4 +1,4 @@
-import { createMemo, createSignal, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, Show } from 'solid-js';
 import type { ScanPlan } from './core/scan-plan';
 import { latestAvailableDraft } from './plan-view';
 import { projectName } from './scan-display';
@@ -30,7 +30,8 @@ export function SecurityPanel(props: {
     operations: props.operations,
     fallbackMs: props.fallbackMs,
   });
-  const [view, setView] = createSignal<'scans' | 'operations'>('scans');
+  const [drafting, setDrafting] = createSignal(false);
+  let other: HTMLDetailsElement | undefined;
   const [selectedId, selectRun] = createSignal<string>();
   const [composer, setComposer] = createSignal<Composer>();
 
@@ -41,6 +42,20 @@ export function SecurityPanel(props: {
     composer() ?? (store.loaded() && !runs().length ? blankComposer : undefined);
   const capabilities = () => props.operations?.capabilities;
   const showOperations = () => !!props.operations && store.loaded();
+  // Validations and fixes started from a finding are shown on that finding.
+  const unattached = createMemo(() => store.operations().filter((op) => !op.plan.source));
+  const attention = () =>
+    drafting() ||
+    unattached().some((op) => ['prepared', 'running', 'awaiting_answers'].includes(op.status));
+  const showOther = () => {
+    if (!other) return;
+    other.open = true;
+    other.scrollIntoView({ block: 'nearest' });
+  };
+  // Open on its own only when something there needs the user; otherwise it stays as they left it.
+  createEffect(() => {
+    if (attention() && other) other.open = true;
+  });
   const validation = () =>
     props.operations && (capabilities()?.validation ?? true) ? props.operations : undefined;
   const waiting = () => store.operations().filter((op) => op.status === 'awaiting_answers').length;
@@ -57,35 +72,28 @@ export function SecurityPanel(props: {
               {store.running() ? ` · ${store.running()} running` : ''}
             </p>
           </div>
-          <Show when={view() === 'scans' && !openComposer()}>
-            <button class="gs-button gs-primary" onClick={() => setComposer({})}>
-              New scan
-            </button>
-          </Show>
+          <div class="gs-header-actions">
+            <Show when={showOperations() && (capabilities()?.policy ?? true)}>
+              <button
+                class="gs-button"
+                onClick={() => {
+                  setDrafting(true);
+                  queueMicrotask(showOther);
+                }}
+              >
+                Draft policy
+              </button>
+            </Show>
+            <Show when={!openComposer()}>
+              <button class="gs-button gs-primary" onClick={() => setComposer({})}>
+                New scan
+              </button>
+            </Show>
+          </div>
         </header>
 
         <Show when={props.setup}>
           {(setup) => <SetupCard setup={setup()} onChange={() => void store.refresh()} />}
-        </Show>
-
-        <Show when={showOperations()}>
-          <nav class="gs-tabs" aria-label="Security views">
-            <button
-              aria-current={view() === 'scans' ? 'page' : undefined}
-              onClick={() => setView('scans')}
-            >
-              Scans
-            </button>
-            <button
-              aria-current={view() === 'operations' ? 'page' : undefined}
-              onClick={() => setView('operations')}
-            >
-              Policy and reviews
-              <Show when={waiting()}>
-                <span class="gs-badge">{waiting()}</span>
-              </Show>
-            </button>
-          </nav>
         </Show>
 
         <Show when={store.connectionError()}>
@@ -97,76 +105,82 @@ export function SecurityPanel(props: {
           </p>
         </Show>
 
-        <Show when={view() === 'operations' && props.operations}>
-          {(port) => (
-            <Operations
+        <Show when={waiting() && showOperations()}>
+          <div class="gs-banner">
+            <span>A policy draft is waiting for your answers.</span>
+            <button class="gs-button" onClick={showOther}>
+              Answer
+            </button>
+          </div>
+        </Show>
+        <Show when={store.catalog.historyError}>
+          <p class="gs-alert" role="alert">
+            {store.catalog.historyError}
+          </p>
+        </Show>
+        <Show when={!openComposer() && draft()}>
+          {(plan) => (
+            <div class="gs-banner">
+              <span class="gs-wrap">A prepared scan is ready: {plan().repository}</span>
+              <button class="gs-button" onClick={() => setComposer({ plan: plan() })}>
+                Review
+              </button>
+            </div>
+          )}
+        </Show>
+        <Show when={openComposer()} keyed>
+          {(state) => (
+            <ScanComposer
               directory={props.directory}
-              port={port()}
+              port={props.port}
               store={store}
-              policy={capabilities()?.policy ?? true}
+              plan={state.plan}
+              edit={state.edit}
+              onClose={runs().length ? () => setComposer(undefined) : undefined}
+              onStarted={(runId) => {
+                selectRun(runId);
+                setComposer(undefined);
+              }}
             />
           )}
         </Show>
-
-        <Show when={view() === 'scans'}>
-          <Show when={waiting() && showOperations()}>
-            <div class="gs-banner">
-              <span>A policy draft is waiting for your answers.</span>
-              <button class="gs-button" onClick={() => setView('operations')}>
-                Answer
-              </button>
-            </div>
-          </Show>
-          <Show when={store.catalog.historyError}>
-            <p class="gs-alert" role="alert">
-              {store.catalog.historyError}
-            </p>
-          </Show>
-          <Show when={!openComposer() && draft()}>
-            {(plan) => (
-              <div class="gs-banner">
-                <span class="gs-wrap">A prepared scan is ready: {plan().repository}</span>
-                <button class="gs-button" onClick={() => setComposer({ plan: plan() })}>
-                  Review
-                </button>
-              </div>
-            )}
-          </Show>
-          <Show when={openComposer()} keyed>
-            {(state) => (
-              <ScanComposer
-                directory={props.directory}
-                port={props.port}
-                store={store}
-                plan={state.plan}
-                edit={state.edit}
-                onClose={runs().length ? () => setComposer(undefined) : undefined}
-                onStarted={(runId) => {
-                  selectRun(runId);
-                  setComposer(undefined);
-                }}
-              />
-            )}
-          </Show>
-          <Show when={runs().length}>
-            <RunList runs={runs()} selectedId={current()?.runId} onSelect={selectRun} />
-          </Show>
-          <Show when={current()?.runId} keyed>
-            {(runId) => (
-              <Show when={current()?.runId === runId ? current() : undefined}>
-                {(run) => (
-                  <RunDetail
-                    run={run()}
-                    port={props.port}
-                    store={store}
-                    validation={validation()}
-                    onAgain={(plan) => setComposer({ plan, edit: true })}
-                    onReview={(plan) => setComposer({ plan })}
-                  />
-                )}
+        <Show when={runs().length}>
+          <RunList runs={runs()} selectedId={current()?.runId} onSelect={selectRun} />
+        </Show>
+        <Show when={current()?.runId} keyed>
+          {(runId) => (
+            <Show when={current()?.runId === runId ? current() : undefined}>
+              {(run) => (
+                <RunDetail
+                  run={run()}
+                  port={props.port}
+                  store={store}
+                  validation={validation()}
+                  onAgain={(plan) => setComposer({ plan, edit: true })}
+                  onReview={(plan) => setComposer({ plan })}
+                />
+              )}
+            </Show>
+          )}
+        </Show>
+        <Show when={props.operations && showOperations() && (unattached().length || drafting())}>
+          <details ref={(element) => (other = element)} class="gs-section gs-other">
+            <summary>
+              Policy drafts and other activity
+              <Show when={unattached().length}>
+                <span class="gs-summary-note">{unattached().length}</span>
               </Show>
-            )}
-          </Show>
+            </summary>
+            <Operations
+              directory={props.directory}
+              port={props.operations!}
+              store={store}
+              policy={capabilities()?.policy ?? true}
+              list={unattached()}
+              composing={drafting()}
+              onComposing={setDrafting}
+            />
+          </details>
         </Show>
       </div>
     </section>

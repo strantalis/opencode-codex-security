@@ -393,7 +393,7 @@ try {
   assert.deepEqual(opCalls[1], ['start', { operationId: 'op-validate' }]);
   view = await frame();
   assert.match(view, /Synthetic finding 12/, 'still on the finding');
-  assert.match(view, /Operations 2/);
+  assert.match(view, /Activity 2/);
   await press('escape');
   await press('escape');
   await press('tab');

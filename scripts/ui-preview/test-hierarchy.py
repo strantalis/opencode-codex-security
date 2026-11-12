@@ -25,15 +25,13 @@ async def main():
         async def load(query=''):
             await page.goto(BASE + query)
             await expect(page.locator('.gs-detail')).to_be_visible()
-            await expect(page.locator('.gs-runs')).not_to_have_attribute('open', '')
 
         async def shot(name):
             await page.screenshot(path=str(EVIDENCE / (name + '.png')), full_page=True)
 
         async def select(title):
-            await page.locator('.gs-runs > summary').click()
-            await page.get_by_role('button', name=title).click()
-            await expect(page.locator('.gs-runs')).not_to_have_attribute('open', '')
+            await page.locator('.gs-runs').get_by_role('button', name=title).click()
+            await expect(page.locator('.gs-runs').get_by_role('button', name=title)).to_have_attribute('aria-pressed', 'true')
 
         async def server_event():
             await page.evaluate('window.securityHarness.advance()')

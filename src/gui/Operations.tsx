@@ -10,47 +10,42 @@ const title = (op: SecurityOperationState) =>
     ? (op.plan.finding?.split('\n')[0] ?? 'Finding')
     : `Policy · ${projectName(op.repository)}${op.plan.path && op.plan.path !== '.' ? ` / ${op.plan.path}` : ''}`;
 
-/** Policy drafts and every validation in this session. Validations start from a finding. */
+/** Policy drafts, and validations or fixes that belong to no scan shown above. */
 export function Operations(props: {
   directory: string;
   port: OperationPort;
   store: SecurityStore;
   policy: boolean;
+  /** The operations to list. Defaults to all of them. */
+  list?: SecurityOperationState[];
+  /** Whether the new-policy form is open; the panel's "Draft policy" button opens it. */
+  composing: boolean;
+  onComposing(open: boolean): void;
 }) {
-  const operations = () => props.store.operations();
+  const operations = () => props.list ?? props.store.operations();
   const [selected, select] = createSignal<string>();
-  const [composing, setComposing] = createSignal(false);
+  const composing = () => props.composing;
+  const setComposing = props.onComposing;
   const current = createMemo(
     () =>
       operations().find((op) => op.operationId === selected()) ??
       operations().find((op) => op.status === 'awaiting_answers') ??
       operations()[0],
   );
-  const showForm = () => props.policy && (composing() || operations().length === 0);
+  const showForm = () => props.policy && composing();
   return (
-    <section class="gs-operations" aria-label="Policy and validation">
-      <div class="gs-section-heading">
-        <h3>Policy and validation</h3>
-        <Show when={props.policy && !showForm()}>
-          <button class="gs-button" onClick={() => setComposing(true)}>
-            New policy draft
-          </button>
-        </Show>
-      </div>
+    <section class="gs-operations" aria-label="Policy drafts and other activity">
       <Show when={showForm()}>
         <PolicyForm
           directory={props.directory}
           port={props.port}
           store={props.store}
-          onClose={operations().length ? () => setComposing(false) : undefined}
+          onClose={() => setComposing(false)}
           onPrepared={(id) => {
             select(id);
             setComposing(false);
           }}
         />
-      </Show>
-      <Show when={!operations().length}>
-        <p class="gs-muted">To validate a finding, open it in a completed scan.</p>
       </Show>
       <Show when={operations().length > 1}>
         <ul class="gs-list" aria-label="Recent operations">
@@ -131,7 +126,8 @@ function PolicyForm(props: {
   return (
     <form class="gs-form gs-composer" onSubmit={(e) => void submit(e)}>
       <p class="gs-muted">
-        Drafts a security policy from the repository and asks you about anything it can't infer.
+        Drafts a SECURITY.md that tells future scans what matters in this repository. It asks you
+        about anything it can't infer, and never writes the file for you.
       </p>
       <Show when={error()}>
         <p class="gs-alert" role="alert">

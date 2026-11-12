@@ -241,6 +241,14 @@ export const securityStyles = `
 }
 
 /* ---------- Header and tabs ---------- */
+.gs-header-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+.gs-other {
+  margin-top: 8px;
+}
 .gs-header {
   display: flex;
   align-items: center;
@@ -614,16 +622,45 @@ export const securityStyles = `
 }
 
 /* ---------- Lists (scan history, operations) ---------- */
-.gs-runs > summary {
-  padding-bottom: 10px;
+.gs-runs {
+  padding-bottom: 12px;
   border-bottom: 1px solid var(--gs-line);
-  font-size: 12px;
 }
-.gs-runs[open] > summary {
-  margin-bottom: 6px;
+.gs-runs > .gs-link {
+  margin: 6px 10px 0;
+}
+.gs-list-item.gs-run-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+}
+.gs-run-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.gs-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gs-line-strong);
+}
+.gs-dot[data-status='running'] {
+  background: var(--gs-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gs-accent) 25%, transparent);
+}
+.gs-dot[data-status='completed'] {
+  background: var(--gs-success);
+}
+.gs-dot[data-status='error'] {
+  background: var(--gs-danger);
 }
 .gs-list {
-  max-height: 260px;
+  max-height: 320px;
   overflow: auto;
   padding: 0;
   list-style: none;
@@ -708,10 +745,24 @@ export const securityStyles = `
   margin-top: 6px;
   font-size: 12px;
 }
-.gs-tags {
+.gs-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
+  color: var(--gs-muted);
+}
+.gs-paths {
+  margin: 8px 0 0;
+  padding: 0 0 0 10px;
+  border-left: 2px solid var(--gs-line);
+  list-style: none;
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.gs-paths code {
+  font-family: var(--gs-font-mono);
 }
 .gs-tag {
   padding: 2px 8px;
@@ -720,10 +771,6 @@ export const securityStyles = `
   color: var(--gs-fg);
   font-size: 12px;
   overflow-wrap: anywhere;
-}
-.gs-tag-path {
-  border-radius: 6px;
-  font-family: var(--gs-font-mono);
 }
 .gs-tag[data-kind='depth'] {
   border-color: transparent;
@@ -844,9 +891,6 @@ export const securityStyles = `
 }
 .gs-severity[data-severity='medium'] {
   color: var(--gs-warning-text);
-}
-.gs-runs > summary > .gs-muted {
-  margin-left: auto;
 }
 .gs-finding-validation {
   padding-top: 4px;

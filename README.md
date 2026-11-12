@@ -160,7 +160,8 @@ Everything is in [docs/CONFIG.md](docs/CONFIG.md).
 | `y` / `r` | Apply / discard a proposed fix                         |
 | `g`       | Discuss the finding in the conversation you came from  |
 | `e` / `u` | Run a scan again / resume a stopped Deep scan          |
-| `tab`     | Switch between scans and operations                    |
+| `tab`     | Switch between scans and other activity                |
+| `p`       | Draft a `SECURITY.md` policy                           |
 | `h`       | List every key available right now                     |
 
 <details>
