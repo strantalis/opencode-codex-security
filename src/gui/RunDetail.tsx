@@ -2,6 +2,7 @@ import { createSignal, Show } from 'solid-js';
 import { asState, type ScanState } from '../types';
 import type { ScanPlan } from '../core/scan-plan';
 import {
+  depthLabel,
   elapsedLabel,
   findingsPendingLabel,
   hasDeterminateProgress,
@@ -18,6 +19,7 @@ import {
   userError,
 } from '../scan-display';
 import { Coverage } from './Coverage';
+import { shortTime } from './format';
 import { Findings } from './Findings';
 import { RunActivity, RunInfo } from './RunActivity';
 import type { OperationPort, SecurityPort, SecurityStore } from './store';
@@ -63,10 +65,19 @@ export function RunDetail(props: {
     <article class="gs-detail" aria-label="Selected scan">
       <header class="gs-detail-title">
         <h3>{runTitle(run())}</h3>
-        <p class="gs-muted gs-wrap">{run().repository}</p>
-        <p class="gs-muted">
-          {run().mode ?? run().plan?.settings.scan.mode ?? 'standard'} · {scanScope(run())}
+        <p class="gs-tags">
+          <span class="gs-tag" data-kind="depth">
+            {depthLabel(run())} scan
+          </span>
+          <span class="gs-tag">{scanScope(run())}</span>
+          <Show when={run().model ?? run().plan?.settings.codex.model}>
+            <span class="gs-tag">{run().model ?? run().plan?.settings.codex.model}</span>
+          </Show>
+          <Show when={run().startedAt}>
+            <span class="gs-tag">Started {shortTime(run().startedAt)}</span>
+          </Show>
         </p>
+        <p class="gs-mono gs-muted">{run().repository}</p>
       </header>
       <div class="gs-progress-heading" role="status" aria-live="polite">
         <h3 data-status={run().status}>{runPhaseLabel(run())}</h3>

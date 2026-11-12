@@ -43,7 +43,7 @@ async def main():
         await expect(page.locator('progress')).to_have_attribute('value', '3')
         await expect(page.get_by_text('Partial estimate USD 0.24', exact=True).first).to_be_visible()
         await expect(page.locator('.gs-workers')).not_to_be_visible()
-        await expect(page.get_by_text('3 of 10 reviews in this phase', exact=True)).to_be_visible()
+        await expect(page.get_by_text('3 of 10 reviews', exact=True)).to_be_visible()
         await shot('hierarchy-running-desktop')
 
         # Keyboard disclosure, then a server event: progress updates and the disclosure stays open.
@@ -52,7 +52,7 @@ async def main():
         await expect(page.locator('.gs-workers')).to_be_visible()
         await server_event()
         await expect(page.locator('progress')).to_have_attribute('value', '4')
-        await expect(page.get_by_text('4 of 10 reviews in this phase', exact=True)).to_be_visible()
+        await expect(page.get_by_text('4 of 10 reviews', exact=True)).to_be_visible()
         await expect(page.locator('.gs-workers')).to_be_visible()
         await page.locator('.gs-info > summary').click()
         await expect(page.get_by_text('Measured subtotal only', exact=False)).to_be_visible()
@@ -105,7 +105,7 @@ async def main():
         await expect(page.get_by_text('No findings reported', exact=True)).to_be_visible()
         await load('?scenario=missing-coverage')
         await page.locator('.gs-coverage > summary').click()
-        await expect(page.get_by_text('Coverage details unavailable', exact=True)).to_be_visible()
+        await expect(page.get_by_text('The scan did not report what it reviewed.', exact=True)).to_be_visible()
         assert not errors, errors
         print(json.dumps({'passed': ['running stage and phase progress', 'collapsed diagnostics', 'keyboard disclosure', 'server event updates progress and keeps disclosure', 'selection resets disclosure', 'findings above fold', 'finding evidence', 'coverage details', 'unknown progress', 'new scan dismissal', 'cancel affects selected scan only', 'narrow no overflow', 'finalization', 'deep consolidation', 'failed scan', 'informational-only result', 'missing coverage', 'no browser errors'], 'screenshots': str(EVIDENCE)}))
         await browser.close()
