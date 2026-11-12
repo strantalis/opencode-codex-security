@@ -11,6 +11,7 @@ import type {
 } from '@openai/codex-security';
 import { codexHome, loadSettings } from './settings.ts';
 import { SecurityInputError } from './errors.ts';
+import { storedState } from './sign-in.ts';
 
 export interface ScanInputs {
   mode?: 'standard' | 'deep';
@@ -134,24 +135,53 @@ export async function withSdk<T>(
   }
 }
 
+/** A custom provider that declares no credential, such as a gateway behind a network identity. */
+const keyless = (provider: string, entry: Record<string, unknown> | undefined) =>
+  provider !== 'openai' &&
+  !!entry &&
+  !entry.env_key &&
+  !entry.auth &&
+  !entry.aws &&
+  !entry.experimental_bearer_token &&
+  entry.requires_openai_auth !== true;
+
+/**
+ * The SDK refuses to start without some credential, even for a provider that takes none.
+ * Any key or sign-in satisfies it, and none is sent to such a provider.
+ */
+async function describeKeyless(authentication: ScanAuthentication): Promise<string> {
+  const label = 'No API key (this provider has none configured)';
+  if (authentication.method !== 'stored_credentials' || (await storedState()) !== 'needed')
+    return label;
+  return `${label}. The SDK still needs one to start: set CODEX_API_KEY=unused in OpenCode's environment`;
+}
+
 /** The route a preflight resolved, with the endpoint from the same config merge the SDK runs. */
 export async function routeFrom(
   sdk: typeof import('@openai/codex-security'),
   codexOverrides: JsonObject,
   preflight: Awaited<ReturnType<CodexSecurity['preflight']>>,
-): Promise<Route> {
+): Promise<{ route: Route; signIn: boolean }> {
   // Includes a `<profile>.config.toml` file profile.
   const config = await sdk.mergedCodexConfig({ codexOverrides }, codexHome());
   const provider = preflight.modelProvider ?? 'openai';
-  const providers = config.model_providers as Record<string, { base_url?: string }> | undefined;
-  const baseUrl = provider === 'openai' ? config.openai_base_url : providers?.[provider]?.base_url;
+  const entry = (config.model_providers as Record<string, Record<string, unknown>> | undefined)?.[
+    provider
+  ];
+  const baseUrl = provider === 'openai' ? config.openai_base_url : entry?.base_url;
+  const { authentication } = preflight;
+  const noKey =
+    keyless(provider, entry) && ['stored_credentials', 'api_key'].includes(authentication.method);
   return {
-    provider,
-    ...(typeof baseUrl === 'string' ? { baseUrl } : {}),
-    model: preflight.model,
-    reasoningEffort: preflight.reasoningEffort,
-    daybreak: config.daybreak === true,
-    auth: describeAuthentication(preflight.authentication),
+    route: {
+      provider,
+      ...(typeof baseUrl === 'string' ? { baseUrl } : {}),
+      model: preflight.model,
+      reasoningEffort: preflight.reasoningEffort,
+      daybreak: config.daybreak === true,
+      auth: noKey ? await describeKeyless(authentication) : describeAuthentication(authentication),
+    },
+    signIn: !noKey && authentication.method === 'stored_credentials',
   };
 }
 
@@ -187,7 +217,7 @@ export async function prepareScan(
       scanPrompt: input.scanPrompt ?? '',
       contextFiles: contextFiles.map((path) => ({ path })),
       settings: {
-        codex: await routeFrom(sdk, settings.codex, preflight),
+        codex: (await routeFrom(sdk, settings.codex, preflight)).route,
         scan: { ...scanSettings, mode: preflight.mode },
       },
       globalConfigFile: settings.path,
