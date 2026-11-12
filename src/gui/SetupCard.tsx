@@ -93,8 +93,36 @@ export function SetupCard(props: { setup: SetupPort; onChange?: () => void }) {
     const runtime = info()?.runtime;
     return runtime ? runtimeProblems(runtime) : [];
   };
+  // Collapsed to one line unless something needs attention.
+  const attention = () => {
+    const signIn = info()?.signIn;
+    return (
+      !!error() ||
+      missing().length > 0 ||
+      (!!props.setup.signIn && (signIn?.state === 'needed' || !!signIn?.pending || !!signIn?.error))
+    );
+  };
+  let card: HTMLDetailsElement | undefined;
+  // Open it when something needs attention; otherwise the user decides.
+  createEffect(() => {
+    if (attention() && card) card.open = true;
+  });
+  const line = () => {
+    const route = info()?.route;
+    return route
+      ? [route.provider, route.model, credentialLabels[route.auth] ?? route.auth].join(' · ')
+      : 'Setup';
+  };
   return (
-    <section class="gs-setup" aria-label="Setup">
+    <details ref={(element) => (card = element)} class="gs-setup" aria-label="Setup">
+      <summary>
+        <span class="gs-setup-line">{line()}</span>
+        <Show when={attention()}>
+          <span class="gs-finding-status" data-tone="warn">
+            Needs attention
+          </span>
+        </Show>
+      </summary>
       <Show when={error()}>
         <p class="gs-alert" role="alert">
           {error()}{' '}
@@ -213,6 +241,6 @@ export function SetupCard(props: { setup: SetupPort; onChange?: () => void }) {
           </>
         )}
       </Show>
-    </section>
+    </details>
   );
 }

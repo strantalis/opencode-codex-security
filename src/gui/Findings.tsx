@@ -1,7 +1,13 @@
 import { createMemo, createSignal, For, Show } from 'solid-js';
 import type { Finding, ScanState } from '../types';
 import type { SecurityOperationState } from '../core/security-operations';
-import { findingText, userError } from '../scan-display';
+import {
+  findingStatus,
+  findingText,
+  severitySummary,
+  sortedFindings,
+  userError,
+} from '../scan-display';
 import { OperationDetail } from './OperationDetail';
 import type { OperationPort, SecurityStore } from './store';
 
@@ -10,21 +16,30 @@ export function Findings(props: {
   store: SecurityStore;
   /** Present when the server supports validation. */
   validation?: OperationPort;
+  /** Hands a finding to the session's conversation. */
+  discuss?: (input: { runId: string; findingId: string }) => Promise<unknown>;
 }) {
   return (
     <section class="gs-findings" aria-label="Scan findings">
       <div class="gs-section-heading">
         <h3>Findings</h3>
-        <span class="gs-muted">{props.run.findings.length} to review</span>
+        <span class="gs-muted">{severitySummary(props.run)}</span>
       </div>
-      <For each={props.run.findings}>
+      <For each={sortedFindings(props.run)}>
         {(finding) => (
           <details class="gs-finding">
             <summary>
               <span class="gs-severity" data-severity={finding.severity}>
                 {finding.severity}
               </span>
-              <span>{finding.title}</span>
+              <span class="gs-finding-title">{finding.title}</span>
+              <Show when={findingStatus(props.run, finding.id)}>
+                {(status) => (
+                  <span class="gs-finding-status" data-tone={status().tone}>
+                    {status().label}
+                  </span>
+                )}
+              </Show>
             </summary>
             <div class="gs-finding-body">
               <p class="gs-mono gs-muted">
@@ -36,6 +51,21 @@ export function Findings(props: {
               </Show>
               <h4>Suggested fix</h4>
               <p>{finding.remediation}</p>
+              <Show when={props.discuss}>
+                {(discuss) => (
+                  <div class="gs-actions">
+                    <button
+                      class="gs-button"
+                      onClick={() =>
+                        void discuss()({ runId: props.run.runId!, findingId: finding.id })
+                      }
+                    >
+                      Discuss in chat
+                    </button>
+                    <span class="gs-muted">Asks this session's model to explain it.</span>
+                  </div>
+                )}
+              </Show>
               <Show when={props.validation}>
                 {(port) => (
                   <>
@@ -93,6 +123,7 @@ function FindingAction(props: {
     try {
       await props.port.prepare({
         kind: props.kind,
+        source: { runId: props.run.runId!, findingId: props.finding.id },
         repository: props.run.repository,
         finding: text(),
       });

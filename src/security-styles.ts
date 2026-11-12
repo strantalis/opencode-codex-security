@@ -292,13 +292,32 @@ export const securityStyles = `
 
 /* ---------- Setup card ---------- */
 .gs-setup {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px 14px;
+  padding: 0 14px;
   border: 1px solid var(--gs-line);
   border-radius: var(--gs-radius);
   background: var(--gs-surface);
+}
+.gs-setup > summary {
+  gap: 10px;
+  padding: 8px 0;
+  color: var(--gs-muted);
+  font-size: 12px;
+}
+.gs-setup-line {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gs-setup[open] {
+  padding-bottom: 12px;
+}
+.gs-setup[open] > summary {
+  margin-bottom: 4px;
+}
+.gs-setup > :not(summary) + :not(summary) {
+  margin-top: 10px;
 }
 .gs-setup-grid {
   display: grid;
@@ -855,5 +874,45 @@ export const securityStyles = `
 .gs-code {
   font-family: var(--gs-mono, ui-monospace, monospace);
   letter-spacing: 0.08em;
+}
+
+/* ---------- Finding status and diffs ---------- */
+.gs-finding-title {
+  flex: 1;
+  min-width: 0;
+}
+.gs-finding-status {
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border: 1px solid var(--gs-line-strong);
+  border-radius: 999px;
+  color: var(--gs-muted);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.gs-finding-status[data-tone='good'] {
+  border-color: color-mix(in srgb, var(--gs-success) 50%, transparent);
+  color: var(--gs-success);
+}
+.gs-finding-status[data-tone='warn'] {
+  border-color: color-mix(in srgb, var(--gs-warning) 50%, transparent);
+  color: var(--gs-warning-text);
+}
+.gs-diff {
+  display: block;
+}
+.gs-diff-line {
+  display: block;
+  min-height: 1.5em;
+}
+.gs-diff-line[data-kind='add'] {
+  background: color-mix(in srgb, var(--gs-success) 16%, transparent);
+}
+.gs-diff-line[data-kind='del'] {
+  background: color-mix(in srgb, var(--gs-danger) 16%, transparent);
+}
+.gs-diff-line:is([data-kind='hunk'], [data-kind='meta']) {
+  color: var(--gs-muted);
 }
 `;

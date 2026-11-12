@@ -2,6 +2,7 @@ import { createSignal, For, Show } from 'solid-js';
 import type { SecurityOperationState } from '../core/security-operations';
 import { describeInferenceRoute, inferenceDestination } from '../plan-view';
 import { fixStatusLabel, elapsedLabel, phaseLabel, userError } from '../scan-display';
+import { Diff } from './Diff';
 import { dispositionLabel, statusLabel } from './format';
 import type { OperationPort, SecurityStore } from './store';
 
@@ -161,7 +162,7 @@ export function OperationDetail(props: {
                   <p class="gs-report">{r.report}</p>
                 </Show>
                 <Show when={r.diff} fallback={<p class="gs-muted">No files were changed.</p>}>
-                  <pre aria-label="Proposed change">{r.diff}</pre>
+                  <Diff diff={r.diff} label="Proposed change" />
                 </Show>
                 <Show when={r.truncated}>
                   <p class="gs-note">Diff truncated here; applying uses the whole change.</p>
@@ -217,6 +218,14 @@ export function OperationDetail(props: {
                 fallback={<p class="gs-report">{r.kind === 'validation' ? r.report : ''}</p>}
               >
                 {(content) => <pre>{content()}</pre>}
+              </Show>
+              <Show when={r.kind === 'policy' ? r.diff : undefined}>
+                {(diff) => (
+                  <details class="gs-disclosure">
+                    <summary>Changes to the existing SECURITY.md</summary>
+                    <Diff diff={diff()} label="Policy changes" />
+                  </details>
+                )}
               </Show>
               <Show when={r.kind === 'policy' ? r.reviewNotes : undefined}>
                 {(notes) => <For each={notes()}>{(note) => <p class="gs-muted">{note}</p>}</For>}

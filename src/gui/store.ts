@@ -15,6 +15,8 @@ export interface SecurityPort {
    * update for this workspace. Returns an unsubscribe function.
    */
   subscribe?(listener: (event: 'changed' | 'operationChanged') => void): () => void;
+  /** Hands a finding to this session's conversation. Absent when there is no session. */
+  discuss?(input: { runId: string; findingId: string }): Promise<unknown>;
 }
 export interface OperationPort {
   capabilities?: { policy: boolean; validation: boolean; fix?: boolean };

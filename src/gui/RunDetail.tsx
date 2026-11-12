@@ -5,7 +5,6 @@ import {
   findingsPendingLabel,
   hasDeterminateProgress,
   hasPhaseProgress,
-  phaseContext,
   phaseCounts,
   progressLabel,
   runPhaseLabel,
@@ -68,8 +67,7 @@ export function RunDetail(props: {
       </Show>
       <Show when={hasPhaseProgress(run())}>
         <div class="gs-progress-meta gs-muted">
-          <span>{progressLabel(run())}</span>
-          <span>{phaseContext(run())}</span>
+          <span>{progressLabel(run())} in this phase</span>
         </div>
       </Show>
       <div class="gs-scan-actions">
@@ -98,7 +96,12 @@ export function RunDetail(props: {
         </div>
       </Show>
       <Show when={run().findings.length}>
-        <Findings run={run()} store={props.store} validation={props.validation} />
+        <Findings
+          run={run()}
+          store={props.store}
+          validation={props.validation}
+          discuss={props.port.discuss}
+        />
       </Show>
       <Show when={run().status === 'completed'}>
         <Coverage run={run()} />

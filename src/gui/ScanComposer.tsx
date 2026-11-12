@@ -22,7 +22,19 @@ export function ScanComposer(props: {
   const [mode, setMode] = createSignal<Mode>(initial?.inputs.mode ?? 'default');
   const [focus, setFocus] = createSignal(initial?.scanPrompt ?? '');
   const [paths, setPaths] = createSignal(initial?.scopePaths.join('\n') ?? '');
-  const [changes, setChanges] = createSignal(initial?.changes ?? '');
+  type Scope = 'repository' | 'paths' | 'uncommitted' | 'since';
+  const [scope, setScope] = createSignal<Scope>(
+    initial?.changes
+      ? initial.changes === 'uncommitted'
+        ? 'uncommitted'
+        : 'since'
+      : initial?.scopePaths.length
+        ? 'paths'
+        : 'repository',
+  );
+  const [base, setBase] = createSignal(
+    initial?.changes && initial.changes !== 'uncommitted' ? initial.changes : '',
+  );
   const [documents, setDocuments] = createSignal(
     initial?.contextFiles.map((file) => file.path).join('\n') ?? '',
   );
@@ -48,7 +60,11 @@ export function ScanComposer(props: {
       const input: ScanInputs = {
         repository: repository().trim() || props.directory,
         scanPrompt: focus(),
-        ...(changes().trim() ? { changes: changes().trim() } : { scopePaths: splitPaths(paths()) }),
+        ...(scope() === 'uncommitted'
+          ? { changes: 'uncommitted' }
+          : scope() === 'since'
+            ? { changes: base().trim() }
+            : { scopePaths: scope() === 'paths' ? splitPaths(paths()) : [] }),
         contextFiles: splitPaths(documents()),
         ...(mode() !== 'default' ? { mode: mode() as 'standard' | 'deep' } : {}),
       };
@@ -96,6 +112,7 @@ export function ScanComposer(props: {
                   value={repository()}
                   onInput={(e) => {
                     setRepository(e.currentTarget.value);
+                    setScope('repository');
                     setPaths('');
                     setDocuments('');
                   }}
@@ -128,29 +145,51 @@ export function ScanComposer(props: {
                   aria-label="Scan focus"
                 />
               </label>
-              <details class="gs-disclosure">
-                <summary>Paths and context files</summary>
+              <label>
+                What to scan
+                <select
+                  aria-label="Scope"
+                  value={scope()}
+                  onChange={(e) => setScope(e.currentTarget.value as Scope)}
+                >
+                  <option value="repository">Whole repository</option>
+                  <option value="paths">Selected paths</option>
+                  <option value="uncommitted">Uncommitted changes</option>
+                  <option value="since">Changes since a branch or commit</option>
+                </select>
+              </label>
+              <Show when={scope() === 'paths'}>
                 <label>
-                  Paths to review
+                  Paths
                   <textarea
                     value={paths()}
                     onInput={(e) => setPaths(e.currentTarget.value)}
                     placeholder={'src/auth\nsrc/api'}
                     aria-label="Scope paths"
+                    required
                   />
-                  <span class="gs-help">One path per line. Leave blank for everything.</span>
+                  <span class="gs-help">One path per line, relative to the repository.</span>
                 </label>
+              </Show>
+              <Show when={scope() === 'since'}>
                 <label>
-                  Only changes
+                  Compare with
                   <input
-                    value={changes()}
-                    onInput={(e) => setChanges(e.currentTarget.value)}
-                    placeholder="uncommitted, or a base ref such as origin/main"
-                    aria-label="Changes"
+                    value={base()}
+                    onInput={(e) => setBase(e.currentTarget.value)}
+                    placeholder="origin/main"
+                    aria-label="Base ref"
                     spellcheck={false}
+                    required
                   />
-                  <span class="gs-help">Scans a diff instead of paths. Standard depth only.</span>
+                  <span class="gs-help">Scans what changed between this ref and HEAD.</span>
                 </label>
+              </Show>
+              <Show when={scope() === 'uncommitted' || scope() === 'since'}>
+                <p class="gs-help">Change scans run at Standard depth.</p>
+              </Show>
+              <details class="gs-disclosure">
+                <summary>Context files</summary>
                 <label>
                   Context files
                   <textarea

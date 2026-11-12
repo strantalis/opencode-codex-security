@@ -347,3 +347,50 @@ export function signInLabel(signIn: SignInInfo | undefined) {
   }[signIn.state];
   return [signIn.error, state].filter(Boolean).join(' · ');
 }
+
+const severityOrder = ['critical', 'high', 'medium', 'low'] as const;
+/** Findings with the most severe first; the scan's own order within a severity. */
+export function sortedFindings(run: ScanState) {
+  return [...run.findings].sort(
+    (a, b) => severityOrder.indexOf(a.severity) - severityOrder.indexOf(b.severity),
+  );
+}
+/** "2 high · 3 medium", or '' when there are no findings. */
+export function severitySummary(run: ScanState) {
+  return severityOrder
+    .map((level) => [level, run.findings.filter((f) => f.severity === level).length] as const)
+    .filter(([, count]) => count)
+    .map(([level, count]) => `${count} ${level}`)
+    .join(' · ');
+}
+/** What has been done about a finding since the scan: the fix if there is one, else the verdict. */
+export function findingStatus(
+  run: ScanState,
+  findingId: string,
+): { label: string; tone: 'good' | 'warn' | 'muted' } | undefined {
+  const review = run.reviews?.[findingId];
+  if (review?.fix?.resolution === 'applied') return { label: 'Fix applied', tone: 'good' };
+  if (review?.fix?.resolution === 'pending') return { label: 'Fix ready', tone: 'warn' };
+  const disposition = review?.validation?.disposition;
+  if (disposition === 'reportable') return { label: 'Confirmed', tone: 'warn' };
+  if (disposition === 'suppressed' || disposition === 'not_applicable')
+    return { label: 'Dismissed', tone: 'muted' };
+  if (disposition === 'deferred') return { label: 'Unclear', tone: 'muted' };
+  return undefined;
+}
+/** One line of a unified diff, classified for colouring. */
+export function diffLines(diff: string) {
+  return diff.split('\n').map((text) => ({
+    text,
+    kind:
+      text.startsWith('+++') || text.startsWith('---') || text.startsWith('diff ')
+        ? ('meta' as const)
+        : text.startsWith('@@')
+          ? ('hunk' as const)
+          : text.startsWith('+')
+            ? ('add' as const)
+            : text.startsWith('-')
+              ? ('del' as const)
+              : ('context' as const),
+  }));
+}

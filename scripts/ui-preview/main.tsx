@@ -282,6 +282,7 @@ const drafts = [];
 if (new URLSearchParams(location.search).has('narrow')) document.body.classList.add('narrow');
 const log = (message) => (document.querySelector('#journal').textContent = message);
 const port = {
+  discuss: async (input) => log('Discuss ' + input.findingId + '; mock only'),
   list: async () =>
     structuredClone({
       engine: 'codex-security-sdk',
@@ -384,6 +385,22 @@ const askQuestions = (op) => {
     createdAt: new Date().toISOString(),
   };
 };
+// What the server does: keep a finding's outcome with its scan.
+const recordReview = (op) => {
+  const source = op.plan.source;
+  const target = source && runs.find((item) => item.runId === source.runId);
+  if (!target || !op.result) return;
+  const at = new Date().toISOString();
+  const review =
+    op.result.kind === 'fix'
+      ? { fix: { status: op.result.status, resolution: op.result.resolution, at } }
+      : { validation: { disposition: op.result.disposition, at } };
+  target.reviews = {
+    ...target.reviews,
+    [source.findingId]: { ...target.reviews?.[source.findingId], ...review },
+  };
+  emit('changed');
+};
 const completeValidation = (op) => {
   op.startedAt ??= new Date(Date.now() - 64000).toISOString();
   op.finishedAt = new Date().toISOString();
@@ -424,6 +441,7 @@ const operationPort = {
     op.plan.finding =
       typeof input.finding === 'string' ? input.finding : JSON.stringify(input.finding);
     op.plan.path = input.path;
+    if (input.source) op.plan.source = input.source;
     operationStates.unshift(op);
     log('Prepared ' + op.kind + '; 0 model calls');
     emit('operationChanged');
@@ -454,6 +472,7 @@ const operationPort = {
         truncated: false,
       };
     } else completeValidation(op);
+    recordReview(op);
     log('Started ' + op.kind + '; mock only');
     emit('operationChanged');
     return structuredClone(op);
@@ -482,6 +501,7 @@ const operationPort = {
     const op = operationStates.find((op) => op.operationId === input.operationId);
     op.result.resolution = input.action === 'apply' ? 'applied' : 'discarded';
     op.phase = input.action === 'apply' ? 'Fix applied' : 'Fix discarded';
+    recordReview(op);
     log('Fix ' + op.result.resolution + '; mock only');
     emit('operationChanged');
     return structuredClone(op);

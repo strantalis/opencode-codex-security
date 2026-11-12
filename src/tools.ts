@@ -318,7 +318,7 @@ export function registerTools(
     const found = state.findings.find((f) => f.id === input.findingId);
     if (state.status !== 'completed' || !found)
       throw new SecurityInputError('Choose a finding from a completed scan.');
-    return { repository: state.repository, finding: { ...safeFinding(found) } };
+    return { repository: state.repository, finding: { ...safeFinding(found) }, source: input };
   };
   add(
     'security_fix',

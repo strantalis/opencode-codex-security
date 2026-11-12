@@ -43,7 +43,7 @@ async def main():
         await expect(page.locator('progress')).to_have_attribute('value', '3')
         await expect(page.get_by_text('Partial estimate USD 0.24', exact=True).first).to_be_visible()
         await expect(page.locator('.gs-workers')).not_to_be_visible()
-        await expect(page.get_by_text('3 of 10 reviews', exact=True)).to_be_visible()
+        await expect(page.get_by_text('3 of 10 reviews in this phase', exact=True)).to_be_visible()
         await shot('hierarchy-running-desktop')
 
         # Keyboard disclosure, then a server event: progress updates and the disclosure stays open.
@@ -52,7 +52,7 @@ async def main():
         await expect(page.locator('.gs-workers')).to_be_visible()
         await server_event()
         await expect(page.locator('progress')).to_have_attribute('value', '4')
-        await expect(page.get_by_text('4 of 10 reviews', exact=True)).to_be_visible()
+        await expect(page.get_by_text('4 of 10 reviews in this phase', exact=True)).to_be_visible()
         await expect(page.locator('.gs-workers')).to_be_visible()
         await page.locator('.gs-info > summary').click()
         await expect(page.get_by_text('Measured subtotal only', exact=False)).to_be_visible()

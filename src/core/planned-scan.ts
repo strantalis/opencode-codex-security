@@ -9,7 +9,7 @@ import {
 } from './scan-plan.ts';
 import { SecurityInputError } from './errors.ts';
 import { RunHistory } from './run-history.ts';
-import type { ScanState, ScanList } from '../types.ts';
+import type { FindingReview, ScanState, ScanList } from '../types.ts';
 type Draft = { plan: PreparedScanPlan; consumed: boolean; runId?: string };
 type Run = {
   state: ScanState;
@@ -181,6 +181,14 @@ export class PlannedScanService {
       );
       this.#archived.delete(oldest.runId!);
     }
+  }
+  /** Remember a validation or fix outcome with the finished scan it belongs to. */
+  recordReview(runId: string, findingId: string, review: FindingReview) {
+    const state = this.#archived.get(runId);
+    if (!state || !state.findings.some((finding) => finding.id === findingId)) return;
+    state.reviews = { ...state.reviews, [findingId]: { ...state.reviews?.[findingId], ...review } };
+    this.#save(state);
+    this.#emit(state);
   }
   async prepare(input: ScanInputs = {}): Promise<ScanState> {
     if (this.#disposed) throw new Error('Scan service is closed');

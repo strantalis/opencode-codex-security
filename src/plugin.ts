@@ -11,7 +11,7 @@ import {
   type SecurityOperationInputs,
 } from './core/security-operations.ts';
 import type { SecurityFactory } from './core/codex-adapter.ts';
-import { userMessage } from './core/errors.ts';
+import { SecurityInputError, userMessage } from './core/errors.ts';
 import { saveProfile } from './core/settings.ts';
 import { setupStatus } from './core/status.ts';
 import { SignIn, type LoginFactory } from './core/sign-in.ts';
@@ -118,6 +118,21 @@ export function createSecurityPlugin(
         setup: rpc(() => setupStatus(directory, signIn)),
         signIn: rpc((input: { device?: boolean }) => signIn.start(input)),
         signInCancel: rpc(() => signIn.cancel()),
+        // Hand a finding to the conversation: the session wakes and the model reads it itself.
+        discuss: rpc(async (input: { runId: string; findingId: string; sessionID: string }) => {
+          const finding = scans
+            .getState({ runId: input.runId })
+            .findings.find((item) => item.id === input.findingId);
+          if (!finding) throw new SecurityInputError('That finding is not in this scan.');
+          await ctx.session.synthetic({
+            sessionID: input.sessionID as never,
+            text: `The user wants to discuss a Codex Security finding: "${finding.title}" (${finding.severity}) at ${finding.path}:${finding.line}. Call security_scan_results with runId ${input.runId} and findingId ${input.findingId}, explain it, and suggest what to do next.`,
+            description: 'Codex Security',
+            metadata: { source: 'codex-security', runId: input.runId, findingId: input.findingId },
+            delivery: 'queue',
+          });
+          return {};
+        }),
         setProfile: rpc((input: { profile: string }) => saveProfile(input.profile)),
       });
       const notices = sessionNotices(ctx, scans, operations);
@@ -134,6 +149,17 @@ export function createSecurityPlugin(
           .catch(() => {});
       });
       const unsubscribeOperations = operations?.subscribe((state) => {
+        // Keep what was decided about a finding with its scan, so it survives a restart.
+        const { source } = state.plan;
+        const at = new Date().toISOString();
+        if (source && state.result?.kind === 'validation')
+          scans.recordReview(source.runId, source.findingId, {
+            validation: { disposition: state.result.disposition, at },
+          });
+        if (source && state.result?.kind === 'fix')
+          scans.recordReview(source.runId, source.findingId, {
+            fix: { status: state.result.status, resolution: state.result.resolution, at },
+          });
         pending = pending
           .then(() => registration.events.emit('operationChanged', { ...state }))
           .catch(() => {});

@@ -77,6 +77,8 @@ export default Plugin.define({
                 prepare: (input) => rpc().prepare(input, { location }),
                 start: (input) => rpc().start(input, { location }),
                 cancel: (input) => rpc().cancel(input, { location }),
+                discuss: (input) =>
+                  rpc().discuss({ ...input, sessionID: props.session.id }, { location }),
                 subscribe: (listener) => {
                   const stops = (['changed', 'operationChanged'] as const).map((name) =>
                     follow(name, directory, () => listener(name)),

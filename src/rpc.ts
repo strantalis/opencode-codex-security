@@ -46,6 +46,12 @@ export const operationInputSchema = {
     path: { type: 'string' },
     contextFiles: { type: 'array', items: { type: 'string' } },
     finding: { anyOf: [{ type: 'string' }, { type: 'object' }] },
+    source: {
+      type: 'object',
+      properties: { runId: { type: 'string' }, findingId: { type: 'string' } },
+      required: ['runId', 'findingId'],
+      additionalProperties: false,
+    },
   },
   required: ['kind'],
   additionalProperties: false,
@@ -120,6 +126,16 @@ export const Security = Rpc.define({
       errors,
     },
     signInCancel: { input: empty, output, errors },
+    discuss: {
+      input: {
+        type: 'object',
+        properties: { runId: text, findingId: text, sessionID: text },
+        required: ['runId', 'findingId', 'sessionID'],
+        additionalProperties: false,
+      },
+      output,
+      errors,
+    },
     setProfile: {
       input: {
         type: 'object',

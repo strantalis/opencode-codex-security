@@ -18,6 +18,7 @@ async def main():
 
         # Setup card: profile switch calls setProfile.
         await expect(page.locator('.gs-setup')).to_contain_text('Codex Security sign-in')
+        await page.locator('.gs-setup > summary').click()
         await page.get_by_role('combobox', name='Profile').select_option('work')
         await expect(journal).to_have_text('Profile work')
         await expect(page.get_by_role('combobox', name='Profile')).to_have_value('work')
@@ -41,11 +42,12 @@ async def main():
         # New scan: target defaults to the workspace; changing it clears scope and context.
         await page.get_by_role('button', name='New scan', exact=True).click()
         await expect(page.get_by_role('textbox', name='Repository', exact=True)).to_have_value('/Projects/atlas')
-        await page.get_by_text('Paths and context files', exact=True).click()
+        await page.get_by_role('combobox', name='Scope').select_option('paths')
         await page.get_by_role('textbox', name='Scope paths', exact=True).fill('src/old-target')
+        await page.get_by_text('Context files', exact=True).first.click()
         await page.get_by_role('textbox', name='Context files', exact=True).fill('docs/old-target.md')
         await page.get_by_role('textbox', name='Repository', exact=True).fill('/Projects/other-team/atlas')
-        await expect(page.get_by_role('textbox', name='Scope paths', exact=True)).to_have_value('')
+        await expect(page.get_by_role('combobox', name='Scope')).to_have_value('repository')
         await expect(page.get_by_role('textbox', name='Context files', exact=True)).to_have_value('')
         await page.get_by_role('button', name='Review scan', exact=True).click()
         await expect(page.locator('.gs-review').first).to_contain_text('/Projects/other-team/atlas')
@@ -59,7 +61,7 @@ async def main():
         await page.get_by_role('button', name='Close', exact=True).click()
 
         # Policy and validation area: the validation is listed; a policy draft asks questions.
-        await page.get_by_role('button', name='Policy and validation').click()
+        await page.get_by_role('button', name='Policy and reviews').click()
         await expect(page.get_by_role('article', name='Selected operation')).to_contain_text('Confirmed in source')
         await page.get_by_role('button', name='New policy draft', exact=True).click()
         await page.get_by_role('textbox', name='Operation repository').fill('/Projects/other-team/atlas')

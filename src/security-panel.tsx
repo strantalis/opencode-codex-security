@@ -79,7 +79,7 @@ export function SecurityPanel(props: {
               aria-current={view() === 'operations' ? 'page' : undefined}
               onClick={() => setView('operations')}
             >
-              Policy and validation
+              Policy and reviews
               <Show when={waiting()}>
                 <span class="gs-badge">{waiting()}</span>
               </Show>

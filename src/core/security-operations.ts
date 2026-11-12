@@ -35,6 +35,8 @@ export interface SecurityOperationInputs {
   contextFiles?: string[];
   /** Literal finding text or a JSON object, never a filename. Validation and fix. */
   finding?: string | Record<string, unknown>;
+  /** The scan finding this is about, so the outcome can be shown and saved with it. */
+  source?: { runId: string; findingId: string };
 }
 export interface SecurityOperationPlan extends ScanPlan {
   kind: SecurityOperationKind;
@@ -43,6 +45,7 @@ export interface SecurityOperationPlan extends ScanPlan {
   /** Where an accepted policy draft belongs. The plugin never writes it. */
   targetPath?: string;
   finding?: string;
+  source?: { runId: string; findingId: string };
   costNotice: string;
 }
 export interface SecurityOperationQuestion {
@@ -237,7 +240,7 @@ export class SecurityOperationsService {
             targetPath: target.targetPath,
             ...(target.scope === '.' ? {} : { path: target.scope }),
           }
-        : { finding }),
+        : { finding, ...(input.source ? { source: input.source } : {}) }),
       costNotice:
         input.kind === 'validation'
           ? 'Validation has no cost limit in the SDK; scan.maxCostUsd does not apply.'
