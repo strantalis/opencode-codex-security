@@ -22,6 +22,7 @@ import type {
 } from '@openai/codex-security';
 import { scanTarget, type PreparedScanPlan } from './scan-plan.ts';
 import { userMessage } from './errors.ts';
+import { savedScan } from './partial-results.ts';
 import type { Finding, ScanState } from '../types.js';
 
 export type SecurityClient = Pick<CodexSecurity, 'run' | 'close'>;
@@ -51,22 +52,67 @@ function initial(repository: string, revision = 0, instanceId = ''): ScanState {
 }
 export function mapSdkFinding(finding: SdkFinding): Finding | null {
   // UI contract has four severities. Never silently upgrade informational items.
-  if (finding.severity.level === 'informational') return null;
-  const location = finding.locations[0];
+  // A checkpoint finding has no IDs yet and may be missing fields, so nothing here is assumed.
+  const level = finding.severity?.level;
+  if (level !== 'critical' && level !== 'high' && level !== 'medium' && level !== 'low')
+    return null;
+  const location = finding.locations?.[0];
+  const anchor = (finding as { identity?: { anchor?: string } }).identity?.anchor;
   return safeFinding({
-    id: finding.occurrenceId || finding.findingId,
+    id:
+      finding.occurrenceId ||
+      finding.findingId ||
+      [anchor ?? finding.ruleId ?? finding.title, location?.path, location?.startLine].join(':'),
     title: finding.title,
-    severity: finding.severity.level,
+    severity: level,
     path: location?.path ?? '',
     line: location?.startLine ?? 0,
-    cwe: finding.taxonomy.cwe.join(', '),
+    cwe: (finding.taxonomy?.cwe ?? []).join(', '),
     summary: finding.summary,
     evidence: (finding.codeEvidence ?? finding.code_evidence ?? [])
       .map((item) => item.code)
       .join('\n\n'),
     remediation: finding.remediation,
-    confidence: finding.confidence.level,
+    confidence: finding.confidence?.level,
   });
+}
+
+/**
+ * The harness reports a refused or failed request as its last reconnect notice. Say what the
+ * provider answered, and whether trying again can help.
+ */
+export function providerFailure(message: string, reason?: string): string {
+  const answer = /^Reconnecting\.\.\. \d+\/\d+ \((.*)\)$/s.exec(message.trim())?.[1];
+  if (!answer) return message;
+  const status = /unexpected status (\d{3})/.exec(answer)?.[1];
+  const refused =
+    reason === 'authorization' ||
+    reason === 'authentication' ||
+    status === '401' ||
+    status === '403';
+  return refused
+    ? `The model provider refused the request. This is an access problem, not a network one, so running the scan again will fail until it is fixed. ${answer}`
+    : `The model provider stopped answering and the retries ran out. ${answer}`;
+}
+
+/**
+ * Show what a scan had saved before it stopped. The SDK checkpoints its threat model and
+ * findings as it goes; a stopped scan keeps them in its output directory.
+ */
+export async function recoverPartial(state: ScanState, root: string, directory?: string) {
+  if (!state.scanId || state.status === 'completed' || state.findings.length) return false;
+  const saved = await savedScan(state.scanId, root, directory).catch(() => undefined);
+  if (!saved) return false;
+  const findings = saved.findings as SdkFinding[];
+  state.findings = findings.flatMap((finding) => mapSdkFinding(finding) ?? []);
+  state.skipped = findings.length - state.findings.length;
+  state.assessment = summarizeScanResult(
+    { findings: { findings }, manifest: { scan: saved.scan } } as unknown as ScanResult,
+    root,
+  );
+  state.partial = true;
+  state.scanDirectory ??= saved.directory;
+  return true;
 }
 
 /** Whitelist numeric budget diagnostics; never surface the SDK's raw error text or artifact paths. */
@@ -165,6 +211,7 @@ export class CodexScanService {
     let outcome: 'completed' | 'cancelled' | 'error' = 'error';
     let terminalMessage = '';
     let terminalPhase = 'Codex Security scan failed';
+    let scanDirectory: string | undefined;
     try {
       signal.throwIfAborted();
       client = await this.#factory({ codexOverrides: plan.sdk.codexOverrides });
@@ -176,7 +223,15 @@ export class CodexScanService {
         target: await scanTarget(plan),
         ...(plan.scanPrompt ? { scanPrompt: plan.scanPrompt } : {}),
         knowledgeBasePaths: plan.contextFiles.map((file) => resolve(this.root, file.path)),
+        // Not in the SDK's public types: its CLI resumes a Deep scan with these two options.
+        ...(plan.sdk.resume
+          ? { resumeScanId: plan.sdk.resume.scanId, outputDir: plan.sdk.resume.outputDir }
+          : {}),
         signal,
+        onOutputDirReady: (directory) => {
+          scanDirectory = directory;
+          this.#state.scanDirectory = directory;
+        },
         onProgress: (progress) => {
           if (!observing || signal.aborted) return;
           const detail = phaseSummary(progress);
@@ -349,7 +404,10 @@ export class CodexScanService {
       this.#state.error = signal.aborted
         ? null
         : (budget?.message ??
-          userMessage(error, 'Scan failed. Check the Codex Security logs and runtime setup.'));
+          providerFailure(
+            userMessage(error, 'Scan failed. Check the Codex Security logs and runtime setup.'),
+            this.#state.telemetry?.lastReconnect?.reason,
+          ));
       terminalMessage = signal.aborted
         ? 'Cancellation requested; SDK run stopped. Partial results are not a completed scan.'
         : this.#state.error!;
@@ -370,6 +428,8 @@ export class CodexScanService {
         this.#state.error = null;
       }
       this.#state.status = outcome;
+      if (outcome !== 'completed' && (await recoverPartial(this.#state, this.root, scanDirectory)))
+        terminalMessage += ` ${this.#state.findings.length} findings were saved before it stopped; they are partial results.`;
       this.#state.phase = terminalPhase;
       this.#busy = false;
       this.#state.finishedAt = new Date().toISOString();

@@ -3,12 +3,12 @@ import type { Plugin } from '@opencode/plugin/tui';
 import { createEffect, createSignal, on, onCleanup, onMount } from 'solid-js';
 import { asState } from '../types';
 import type { ScanInputs } from '../core/scan-plan';
-import { isAbsoluteLocalDirectory } from '../plan-view';
+import { describeInferenceRoute, isAbsoluteLocalDirectory } from '../plan-view';
 import { createTuiOperations } from '../security-tui-operations';
-import { reviewScan, validTarget } from './review';
+import { planInputs, reviewScan, validTarget } from './review';
 import { createStore } from './store';
 import { colors } from './theme';
-import { sortedFindings, userError } from '../scan-display';
+import { resumeProblem, sortedFindings, userError } from '../scan-display';
 import type { SecurityOperationState } from '../core/security-operations';
 import { cancellable, type SetupInfo } from './text';
 import { SecurityView, type Key } from './view';
@@ -115,21 +115,22 @@ export function createApp(ctx: Plugin.Context) {
     setDetail(undefined);
   });
 
-  const newScan = () =>
+  /** `again` reopens a finished scan's target and settings for review. */
+  const newScan = (again?: ScanInputs) =>
     store.perform(async () => {
       await store.refreshScans();
       const list = store.catalog();
       const max = list?.maxConcurrent ?? 2;
       if (runs().filter((item) => item.status === 'running').length >= max)
         throw new Error(`All ${max} scan slots are in use. Start another when one finishes.`);
-      const repository = await chooseTarget();
+      const repository = again?.repository ?? (await chooseTarget());
       if (!repository) return;
       const prepare = async (inputs: ScanInputs) => {
         const plan = asState(await store.client.prepare(inputs, { location: store.location })).plan;
         if (!plan) throw new Error('The server returned no preview.');
         return plan;
       };
-      const plan = await reviewScan(ctx, color, prepare, await prepare({ repository }));
+      const plan = await reviewScan(ctx, color, prepare, await prepare(again ?? { repository }));
       if (!plan) return;
       const started = asState(
         await store.client.start({ planId: plan.id }, { location: store.location }),
@@ -141,13 +142,35 @@ export function createApp(ctx: Plugin.Context) {
       await store.refreshScans();
     });
 
+  /** Continue an interrupted Deep scan. The confirmation is the approval. */
+  const resumeScan = () =>
+    store.perform(async () => {
+      const target = run();
+      if (!target?.runId) return;
+      const plan = asState(
+        await store.client.prepare({ resumeRunId: target.runId }, { location: store.location }),
+      ).plan;
+      if (!plan) throw new Error('The server returned no preview.');
+      const confirmed = await ctx.ui.dialog.confirm({
+        title: 'Resume scan',
+        message: `Continue the Deep scan of ${plan.repository} where it stopped? Source is sent over ${describeInferenceRoute(plan.settings)}.`,
+        label: { confirm: 'Resume', cancel: 'Not now' },
+      });
+      if (!confirmed) return;
+      const started = asState(
+        await store.client.start({ planId: plan.id }, { location: store.location }),
+      );
+      setRunId(started.runId);
+      await store.refreshScans();
+    });
+
   const cancelScan = () =>
     store.perform(async () => {
       const target = run();
       if (target?.status !== 'running') return;
       const confirmed = await ctx.ui.dialog.confirm({
         title: 'Cancel scan',
-        message: `Stop the scan of ${target.repository}? A cancelled scan has no results.`,
+        message: `Stop the scan of ${target.repository}? Findings it has already saved are kept as partial results.`,
         label: { confirm: 'Cancel scan', cancel: 'Keep running' },
       });
       if (!confirmed) return;
@@ -350,11 +373,29 @@ export function createApp(ctx: Plugin.Context) {
       bind: 'n',
       key: 'n',
       label: () => 'new scan',
-      run: newScan,
+      run: () => newScan(),
       when: () => true,
       // The way in when there is nothing to look at; otherwise one of many.
       get secondary() {
         return runs().length > 0;
+      },
+    },
+    {
+      bind: 'u',
+      key: 'u',
+      label: () => 'resume',
+      run: resumeScan,
+      when: () => scans() && listing() && !!run() && !resumeProblem(run()!),
+    },
+    {
+      bind: 'e',
+      key: 'e',
+      label: () => 'run again',
+      run: () => newScan(planInputs(run()!.plan!)),
+      when: () => scans() && listing() && !!run()?.plan && run()?.status !== 'running',
+      // Prominent when the scan did not finish.
+      get secondary() {
+        return run()?.status === 'completed';
       },
     },
     {

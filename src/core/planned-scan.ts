@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { CodexScanService, type SecurityFactory } from './codex-adapter.ts';
+import { CodexScanService, recoverPartial, type SecurityFactory } from './codex-adapter.ts';
 import {
   prepareScan,
   publicScanPlan,
@@ -10,6 +10,7 @@ import {
 import { SecurityInputError } from './errors.ts';
 import { RunHistory } from './run-history.ts';
 import type { FindingReview, ScanState, ScanList } from '../types.ts';
+import { resumeProblem } from '../scan-display.ts';
 type Draft = { plan: PreparedScanPlan; consumed: boolean; runId?: string };
 type Run = {
   state: ScanState;
@@ -56,7 +57,11 @@ export class PlannedScanService {
   async #load() {
     if (!this.#history) return;
     try {
-      for (const s of await this.#history.load()) this.#archived.set(s.runId!, s);
+      for (const s of await this.#history.load()) {
+        this.#archived.set(s.runId!, s);
+        // A scan that stopped before this was recorded may still have saved work on disk.
+        if (await recoverPartial(s, s.repository)) this.#save(s);
+      }
     } catch {
       this.#loadError = 'Local scan history could not be read, so earlier runs are not listed.';
     }
@@ -193,7 +198,9 @@ export class PlannedScanService {
   async prepare(input: ScanInputs = {}): Promise<ScanState> {
     if (this.#disposed) throw new Error('Scan service is closed');
     await this.#ready;
-    const plan = await prepareScan(this.#project, input, this.#mock);
+    const plan = input.resumeRunId
+      ? await this.#prepareResume(input.resumeRunId)
+      : await prepareScan(this.#project, input, this.#mock);
     if (this.#disposed) throw new Error('Scan service is closed');
     // An expired preview can never start again; keep only those whose run is still live.
     for (const [id, d] of this.#drafts)
@@ -204,6 +211,27 @@ export class PlannedScanService {
     const state = this.#idle(plan);
     this.#emit(state);
     return state;
+  }
+  /**
+   * A preview that continues an interrupted Deep scan. The SDK resumes only Deep scans, in the
+   * original session and output directory, and compares the target with the one it saved.
+   */
+  async #prepareResume(runId: string): Promise<PreparedScanPlan> {
+    const run = this.#archived.get(runId);
+    const problem = !run?.plan ? 'Unknown scan run.' : resumeProblem(run);
+    if (problem) throw new SecurityInputError(problem);
+    const previous = run!.plan!;
+    const plan = await prepareScan(
+      this.#project,
+      { ...previous.inputs, repository: previous.repository, mode: 'deep' },
+      this.#mock,
+    );
+    return {
+      ...plan,
+      inputs: { ...plan.inputs, resumeRunId: runId },
+      resume: { runId, scanId: run!.scanId! },
+      sdk: { ...plan.sdk, resume: { scanId: run!.scanId!, outputDir: run!.scanDirectory! } },
+    };
   }
   /** Starting a preview is the approval; callers show the preview first. */
   async start(input: { planId?: string } = {}): Promise<ScanState> {

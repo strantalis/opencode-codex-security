@@ -93,6 +93,10 @@ Amazon Bedrock:
 
 Daybreak on OpenAI is `"daybreak": true` inside `codex`. On Bedrock it is selected by the model ID, as above. Neither setting grants access your account does not have.
 
+## Time limits
+
+`scan.maxTimeMinutes` sets how long a scan investigates. A Standard scan has no limit by default and treats the value as a target: the model paces itself, and writing the report can run past it. A Deep scan stops discovery at the limit; without one the SDK's own default applies (96 hours). You can also set it for one scan in the scan review.
+
 ## Cost limits
 
 `scan.maxCostUsd` stops a scan or policy draft when the SDK's estimate passes the limit. Requests already in flight can exceed it. The SDK can only enforce a limit for models it has prices for, so a gateway alias it does not recognise fails at preview; remove the limit to run that model. Validation has no cost limit.
