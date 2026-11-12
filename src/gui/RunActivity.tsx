@@ -89,9 +89,7 @@ export function RunInfo(props: { run: ScanState }) {
   const cost = () => run().telemetry?.measurement?.cost;
   return (
     <details class="gs-section gs-info">
-      <summary>
-        Usage and details <span class="gs-summary-note">{usageLabel(run())}</span>
-      </summary>
+      <summary>Usage and details</summary>
       <section class="gs-group">
         <h4>Usage</h4>
         <dl class="gs-grid">

@@ -18,6 +18,9 @@ export function scopeLabel(plan: { scopePaths: string[]; changes?: string }) {
     return plan.changes === 'uncommitted' ? 'Uncommitted changes' : `Changes since ${plan.changes}`;
   return plan.scopePaths.join(', ') || 'Whole repository';
 }
+export function depthLabel(run: ScanState) {
+  return (run.mode ?? run.plan?.settings.scan.mode) === 'deep' ? 'Deep' : 'Standard';
+}
 export function scanScope(run: ScanState) {
   return run.plan ? scopeLabel(run.plan) : 'Whole repository';
 }

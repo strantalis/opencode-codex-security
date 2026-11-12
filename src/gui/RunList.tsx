@@ -1,6 +1,6 @@
 import { For } from 'solid-js';
 import type { ScanState } from '../types';
-import { runTitle, scanScope } from '../scan-display';
+import { depthLabel, runTitle, scanScope } from '../scan-display';
 import { shortTime, statusLabel } from './format';
 
 /** Collapsed scan history; choosing a run closes it. */
@@ -36,8 +36,7 @@ export function RunList(props: {
                 </span>
                 <span class="gs-list-meta">{run.repository}</span>
                 <span class="gs-list-meta">
-                  {run.mode ?? run.plan?.settings.scan.mode ?? 'standard'} · {scanScope(run)} ·{' '}
-                  {shortTime(run.startedAt)}
+                  {depthLabel(run)} · {scanScope(run)} · {shortTime(run.startedAt)}
                   {run.status === 'completed'
                     ? ` · ${run.findings.length} ${run.findings.length === 1 ? 'finding' : 'findings'}`
                     : ''}

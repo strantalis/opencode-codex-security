@@ -698,13 +698,34 @@ export const securityStyles = `
   margin-bottom: 18px;
 }
 .gs-detail-title h3 {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
   overflow-wrap: anywhere;
 }
 .gs-detail-title p {
-  margin-top: 2px;
+  margin-top: 6px;
   font-size: 12px;
+}
+.gs-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.gs-tag {
+  padding: 2px 8px;
+  border: 1px solid var(--gs-line-strong);
+  border-radius: 999px;
+  color: var(--gs-fg);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.gs-tag[data-kind='depth'] {
+  border-color: transparent;
+  background: var(--gs-accent);
+  color: var(--gs-on-accent);
+  font-weight: 600;
 }
 .gs-progress-heading {
   display: flex;
@@ -712,11 +733,14 @@ export const securityStyles = `
   align-items: baseline;
   gap: 16px;
 }
+.gs-progress-heading {
+  padding-top: 16px;
+  border-top: 1px solid var(--gs-line);
+}
 .gs-progress-heading h3 {
-  font-size: 22px;
+  font-size: 16px;
   font-weight: 600;
   line-height: 1.25;
-  letter-spacing: -0.02em;
 }
 .gs-progress-heading h3[data-status='error'] {
   color: var(--gs-danger);
@@ -967,7 +991,7 @@ export const securityStyles = `
     padding: 16px 16px 24px;
   }
   .gs-progress-heading h3 {
-    font-size: 19px;
+    font-size: 15px;
   }
   .gs-banner {
     flex-direction: column;
