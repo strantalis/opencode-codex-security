@@ -1,15 +1,19 @@
 import { createSignal, Show } from 'solid-js';
-import type { ScanState } from '../types';
+import { asState, type ScanState } from '../types';
+import type { ScanPlan } from '../core/scan-plan';
 import {
   elapsedLabel,
   findingsPendingLabel,
   hasDeterminateProgress,
   hasPhaseProgress,
+  partialLabel,
+  resumeProblem,
   phaseCounts,
   progressLabel,
   runPhaseLabel,
   runTitle,
   scanScope,
+  timeLimitLabel,
   usageLabel,
   userError,
 } from '../scan-display';
@@ -24,6 +28,10 @@ export function RunDetail(props: {
   port: SecurityPort;
   store: SecurityStore;
   validation?: OperationPort;
+  /** Open a new scan filled in with this one's target and settings. */
+  onAgain?(plan: ScanPlan): void;
+  /** Review a prepared plan, such as one that resumes this scan. */
+  onReview?(plan: ScanPlan): void;
 }) {
   const run = () => props.run;
   const [cancelling, setCancelling] = createSignal(false);
@@ -42,6 +50,15 @@ export function RunDetail(props: {
       setCancelling(false);
     }
   };
+  const resume = async () => {
+    setError('');
+    try {
+      const next = asState(await props.port.prepare({ resumeRunId: run().runId }));
+      if (next.plan) props.onReview?.(next.plan);
+    } catch (e) {
+      setError(userError(e));
+    }
+  };
   return (
     <article class="gs-detail" aria-label="Selected scan">
       <header class="gs-detail-title">
@@ -55,6 +72,10 @@ export function RunDetail(props: {
         <h3 data-status={run().status}>{runPhaseLabel(run())}</h3>
         <span class="gs-muted gs-tabular">
           {elapsedLabel(run().startedAt, run().finishedAt, props.store.now())}
+          <Show when={run().plan?.settings.scan.maxTimeMinutes}>
+            {' '}
+            · limit {timeLimitLabel(run().plan?.settings.scan)}
+          </Show>
         </span>
       </div>
       <Show when={hasDeterminateProgress(run())}>
@@ -67,7 +88,7 @@ export function RunDetail(props: {
       </Show>
       <Show when={hasPhaseProgress(run())}>
         <div class="gs-progress-meta gs-muted">
-          <span>{progressLabel(run())} in this phase</span>
+          <span>{progressLabel(run())}</span>
         </div>
       </Show>
       <div class="gs-scan-actions">
@@ -76,6 +97,18 @@ export function RunDetail(props: {
           <button class="gs-link" disabled={cancelling()} onClick={() => void cancel()}>
             {cancelling() ? 'Stopping…' : 'Cancel scan'}
           </button>
+        </Show>
+        <Show when={props.onReview && !resumeProblem(run())}>
+          <button class="gs-link" onClick={() => void resume()}>
+            Resume
+          </button>
+        </Show>
+        <Show when={run().status !== 'running' && props.onAgain && run().plan}>
+          {(plan) => (
+            <button class="gs-link" onClick={() => props.onAgain?.(plan())}>
+              Run again
+            </button>
+          )}
         </Show>
       </div>
       <Show when={error() || run().error}>
@@ -86,8 +119,13 @@ export function RunDetail(props: {
       <Show when={run().status === 'running'}>
         <p class="gs-lede">{findingsPendingLabel(run())}</p>
       </Show>
-      <Show when={run().status === 'cancelled'}>
+      <Show when={run().status === 'cancelled' && !run().partial}>
         <p class="gs-note">Cancelled before it finished, so results are incomplete.</p>
+      </Show>
+      <Show when={partialLabel(run())}>
+        <p class="gs-note" role="status">
+          {partialLabel(run())}
+        </p>
       </Show>
       <Show when={run().status === 'completed' && run().findings.length === 0}>
         <div class="gs-empty">
@@ -103,7 +141,7 @@ export function RunDetail(props: {
           discuss={props.port.discuss}
         />
       </Show>
-      <Show when={run().status === 'completed'}>
+      <Show when={run().status === 'completed' || run().partial}>
         <Coverage run={run()} />
       </Show>
       <RunActivity run={run()} />

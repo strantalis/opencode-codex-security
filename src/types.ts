@@ -29,6 +29,10 @@ export interface ScanState {
   estimatedCostUsd?: number;
   updatedAt?: string;
   archived?: boolean;
+  /** Findings come from the last checkpoint of a scan that did not finish. */
+  partial?: boolean;
+  /** Where the SDK keeps this scan's files. Needed to resume a Deep scan. */
+  scanDirectory?: string;
   workers?: { phase: string; planned: number; started: number };
   deepProgress?: { completed: number; active: number; maximum: number; consolidating?: boolean };
   plan?: ScanPlan;

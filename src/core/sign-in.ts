@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { CodexSecurity, CodexSecurityConfig } from '@openai/codex-security';
 import { userMessage } from './errors.ts';
-import { codexHome, loadSettings } from './settings.ts';
+import { codexHome, loadSettings, stateDirectory } from './settings.ts';
 
 /**
  * Whether Codex Security has a ChatGPT sign-in of its own. Only relevant when the route uses
@@ -26,11 +26,9 @@ const read = (path: string) => readFile(path).catch(() => undefined);
  * Looks at files only. The SDK's own status check would copy the Codex CLI session as a side
  * effect. A copy the SDK already made is byte-identical to the CLI's file, and still shared.
  */
-async function storedState(): Promise<SignInStatus['state']> {
-  const stateDirectory =
-    process.env.CODEX_SECURITY_STATE_DIR || join(codexHome(), 'state', 'plugins', 'codex-security');
+export async function storedState(): Promise<SignInStatus['state']> {
   const [own, cli] = await Promise.all([
-    read(join(stateDirectory, 'codex-home', 'auth.json')),
+    read(join(stateDirectory(), 'codex-home', 'auth.json')),
     read(join(codexHome(), 'auth.json')),
   ]);
   if (own) return cli && own.equals(cli) ? 'shared' : 'signed-in';

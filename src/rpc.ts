@@ -29,6 +29,17 @@ export const scanInputSchema = {
       description:
         'What to focus on, plus architecture or threat assumptions the scan should know.',
     },
+    maxTimeMinutes: {
+      type: 'number',
+      exclusiveMinimum: 0,
+      description:
+        'Minutes to spend investigating. Standard scans have no limit unless this is set, and treat it as a target; Deep scans stop discovery at it.',
+    },
+    resumeRunId: {
+      type: 'string',
+      description:
+        'Continue an interrupted Deep scan from where it stopped, by its runId. Pass nothing else; the original target and settings are reused.',
+    },
     contextFiles: {
       type: 'array',
       items: { type: 'string' },
@@ -66,7 +77,7 @@ const text = { type: 'string' } as const;
 const output = { type: 'object' } as const;
 const errors = setupErrors;
 export const Security = Rpc.define({
-  id: 'gill.security',
+  id: 'opencode-codex-security',
   methods: {
     capabilities: { input: empty, output, errors },
     prepare: { input: scanInputSchema, output, errors },

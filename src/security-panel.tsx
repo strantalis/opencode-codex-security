@@ -13,7 +13,8 @@ import { securityStyles } from './security-styles';
 export type { OperationPort, SecurityPort } from './gui/store';
 export type { SetupInfo, SetupPort } from './gui/SetupCard';
 
-const blankComposer: { plan?: ScanPlan } = {};
+type Composer = { plan?: ScanPlan; edit?: boolean };
+const blankComposer: Composer = {};
 
 /** The Desktop panel: layout and routing. State lives in the store; each area is a component. */
 export function SecurityPanel(props: {
@@ -31,7 +32,7 @@ export function SecurityPanel(props: {
   });
   const [view, setView] = createSignal<'scans' | 'operations'>('scans');
   const [selectedId, selectRun] = createSignal<string>();
-  const [composer, setComposer] = createSignal<{ plan?: ScanPlan }>();
+  const [composer, setComposer] = createSignal<Composer>();
 
   const runs = () => store.catalog.runs;
   const current = createMemo(() => runs().find((run) => run.runId === selectedId()) ?? runs()[0]);
@@ -45,7 +46,7 @@ export function SecurityPanel(props: {
   const waiting = () => store.operations().filter((op) => op.status === 'awaiting_answers').length;
 
   return (
-    <section class="gill-security" aria-label="Security">
+    <section class="codex-security" aria-label="Security">
       <style>{securityStyles}</style>
       <div class="gs-body">
         <header class="gs-header">
@@ -138,6 +139,7 @@ export function SecurityPanel(props: {
                 port={props.port}
                 store={store}
                 plan={state.plan}
+                edit={state.edit}
                 onClose={runs().length ? () => setComposer(undefined) : undefined}
                 onStarted={(runId) => {
                   selectRun(runId);
@@ -158,6 +160,8 @@ export function SecurityPanel(props: {
                     port={props.port}
                     store={store}
                     validation={validation()}
+                    onAgain={(plan) => setComposer({ plan, edit: true })}
+                    onReview={(plan) => setComposer({ plan })}
                   />
                 )}
               </Show>

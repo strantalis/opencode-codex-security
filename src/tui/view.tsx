@@ -15,6 +15,7 @@ import {
   findingsPendingLabel,
   hasPhaseProgress,
   phaseLabel,
+  partialLabel,
   progressLabel,
   repositoryMatchingLabel,
   resultCountsLabel,
@@ -160,8 +161,11 @@ export function SecurityView(props: Props) {
         <Show when={run().error}>
           <text fg={c.error()}>{run().error}</text>
         </Show>
-        <Show when={run().status === 'cancelled'}>
+        <Show when={run().status === 'cancelled' && !run().partial}>
           <text>Cancelled before finishing; this scan has no results.</text>
+        </Show>
+        <Show when={partialLabel(run())}>
+          <text fg={c.warning()}>{partialLabel(run())}</text>
         </Show>
         <Show when={run().status === 'completed'}>
           <text>{resultCountsLabel(run())}</text>
@@ -199,7 +203,7 @@ export function SecurityView(props: Props) {
         <Show when={run().status === 'running' && run().deepProgress}>
           <Label>{deepProgressLabel(run())}</Label>
         </Show>
-        <Show when={run().status === 'completed'}>
+        <Show when={run().status === 'completed' || run().partial}>
           <Label>Coverage: {coverageLabel(run())}</Label>
           <Label>Repository matching: {repositoryMatchingLabel(run())}</Label>
         </Show>

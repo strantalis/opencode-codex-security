@@ -14,6 +14,8 @@ export function ScanComposer(props: {
   store: SecurityStore;
   /** A prepared plan to review, e.g. one a model tool prepared. */
   plan?: ScanPlan;
+  /** Open `plan` in the form to change and prepare again, instead of as a preview to approve. */
+  edit?: boolean;
   onClose?: () => void;
   onStarted(runId?: string): void;
 }) {
@@ -38,7 +40,10 @@ export function ScanComposer(props: {
   const [documents, setDocuments] = createSignal(
     initial?.contextFiles.map((file) => file.path).join('\n') ?? '',
   );
-  const [preview, setPreview] = createSignal<ScanPlan | undefined>(initial);
+  const [minutes, setMinutes] = createSignal(initial?.inputs.maxTimeMinutes?.toString() ?? '');
+  const [preview, setPreview] = createSignal<ScanPlan | undefined>(
+    props.edit ? undefined : initial,
+  );
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal('');
 
@@ -67,6 +72,7 @@ export function ScanComposer(props: {
             : { scopePaths: scope() === 'paths' ? splitPaths(paths()) : [] }),
         contextFiles: splitPaths(documents()),
         ...(mode() !== 'default' ? { mode: mode() as 'standard' | 'deep' } : {}),
+        ...(Number(minutes()) > 0 ? { maxTimeMinutes: Number(minutes()) } : {}),
       };
       const next = asState(await props.port.prepare(input));
       if (!next.plan) throw new Error('The server did not return a scan preview.');
@@ -134,6 +140,21 @@ export function ScanComposer(props: {
                   <option value="deep">Deep</option>
                 </select>
                 <span class="gs-help">Deep takes longer and costs more.</span>
+              </label>
+              <label>
+                Time limit <span class="gs-muted">minutes, optional</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={minutes()}
+                  onInput={(e) => setMinutes(e.currentTarget.value)}
+                  placeholder="No limit"
+                  aria-label="Time limit in minutes"
+                />
+                <span class="gs-help">
+                  A Standard scan has no limit unless you set one, and treats it as a target.
+                </span>
               </label>
               <label>
                 Focus <span class="gs-muted">optional</span>

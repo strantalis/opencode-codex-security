@@ -87,7 +87,7 @@ async def main():
         await page.set_viewport_size({'width': 360, 'height': 844})
         await load('?narrow')
         assert await page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-        assert await page.locator('.gill-security').evaluate('(el) => el.scrollWidth <= el.clientWidth')
+        assert await page.locator('.codex-security').evaluate('(el) => el.scrollWidth <= el.clientWidth')
         await shot('hierarchy-running-narrow')
         await select('Review webhook request validation')
         await shot('hierarchy-findings-narrow')

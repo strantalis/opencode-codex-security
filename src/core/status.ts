@@ -26,13 +26,10 @@ const version = (command: string) =>
 /** Offline: the SDK's preflight resolves the route against the workspace, and nothing runs. */
 export async function setupStatus(workspace: string, signIn?: SignIn): Promise<SetupStatus> {
   const settings = await loadSettings();
-  const [{ route, stored }, profiles, node, python] = await Promise.all([
+  const [{ route, signIn: stored }, profiles, node, python] = await Promise.all([
     withSdk(settings.codex, async (client, sdk) => {
       const preflight = await client.preflight(workspace, { auth: settings.auth });
-      return {
-        route: await routeFrom(sdk, settings.codex, preflight),
-        stored: preflight.authentication.method === 'stored_credentials',
-      };
+      return routeFrom(sdk, settings.codex, preflight);
     }),
     codexProfiles(),
     version('node'),

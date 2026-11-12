@@ -1,12 +1,12 @@
 /**
- * Panel CSS, scoped under `.gill-security` and shipped inside the single-file GUI bundle.
+ * Panel CSS, scoped under `.codex-security` and shipped inside the single-file GUI bundle.
  *
  * Colours come from the OpenCode Desktop v2 tokens (`--v2-*`), which the host defines for both
  * light and dark themes, then the older v1 tokens, then the panel's own fallback set below.
  */
 export const securityStyles = `
 /* ---------- Tokens ---------- */
-.gill-security {
+.codex-security {
   --gs-f-bg: #161616;
   --gs-f-surface: #242424;
   --gs-f-fg: #fafafa;
@@ -43,7 +43,7 @@ export const securityStyles = `
   --gs-radius: 6px;
 }
 @media (prefers-color-scheme: light) {
-  .gill-security {
+  .codex-security {
     --gs-f-bg: #ffffff;
     --gs-f-surface: #fafafa;
     --gs-f-fg: #161616;
@@ -61,7 +61,7 @@ export const securityStyles = `
 }
 
 /* ---------- Base ---------- */
-.gill-security {
+.codex-security {
   height: 100%;
   overflow: auto;
   container-type: inline-size;
@@ -73,41 +73,41 @@ export const securityStyles = `
   scrollbar-width: thin;
   scrollbar-color: var(--gs-line-strong) transparent;
 }
-.gill-security *,
-.gill-security *::before,
-.gill-security *::after {
+.codex-security *,
+.codex-security *::before,
+.codex-security *::after {
   box-sizing: border-box;
 }
-.gill-security :where(h2, h3, h4, p, dl, dd, ol, ul, pre, fieldset) {
+.codex-security :where(h2, h3, h4, p, dl, dd, ol, ul, pre, fieldset) {
   margin: 0;
 }
-.gill-security :where(button, input, select, textarea) {
+.codex-security :where(button, input, select, textarea) {
   font: inherit;
   color: inherit;
 }
-.gill-security button {
+.codex-security button {
   cursor: pointer;
 }
-.gill-security button:disabled {
+.codex-security button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
-.gill-security :focus-visible {
+.codex-security :focus-visible {
   outline: 2px solid var(--gs-focus);
   outline-offset: 2px;
 }
-.gill-security summary {
+.codex-security summary {
   display: flex;
   align-items: baseline;
   gap: 8px;
   cursor: pointer;
   list-style: none;
 }
-.gill-security summary::-webkit-details-marker {
+.codex-security summary::-webkit-details-marker {
   display: none;
 }
 /* One chevron for every disclosure, pointing down when open. */
-.gill-security summary::before {
+.codex-security summary::before {
   content: '';
   flex-shrink: 0;
   align-self: center;
@@ -119,14 +119,14 @@ export const securityStyles = `
   transform: rotate(-45deg);
   opacity: 0.7;
 }
-.gill-security details[open] > summary::before {
+.codex-security details[open] > summary::before {
   transform: rotate(45deg);
 }
 .gs-report {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.gill-security pre {
+.codex-security pre {
   font: 12px/1.6 var(--gs-font-mono);
   white-space: pre-wrap;
   overflow-wrap: anywhere;

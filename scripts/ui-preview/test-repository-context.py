@@ -82,7 +82,7 @@ async def main():
         await page.evaluate("document.body.classList.add('narrow')")
         await page.set_viewport_size({'width': 360, 'height': 844})
         assert await page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-        assert await page.locator('.gill-security').evaluate('(el) => el.scrollWidth <= el.clientWidth')
+        assert await page.locator('.codex-security').evaluate('(el) => el.scrollWidth <= el.clientWidth')
         out = Path(__file__).resolve().parents[2] / 'evidence' / 'run-details'
         out.mkdir(parents=True, exist_ok=True)
         await page.screenshot(path=str(out / 'repository-context-narrow.png'), full_page=True)

@@ -65,7 +65,7 @@ missing, tell me what it is.
 <details>
 <summary><b>Run it from source</b></summary>
 
-Clone this repository, run `npm ci --ignore-scripts`, and set `package` to the checkout's absolute path. The built UI bundles are committed, so there is no build step.
+Clone this repository, run `npm ci --ignore-scripts && npm run build`, and set `package` to the checkout's absolute path. Run `npm run build` again after pulling changes.
 
 </details>
 
@@ -103,7 +103,7 @@ For the multi-repository case the model clones what is not checked out locally, 
 
 **Scan**
 
-Standard or Deep. The whole repository, selected paths, your uncommitted changes, or everything since a branch or commit. Two scans can run at once.
+Standard or Deep. The whole repository, selected paths, your uncommitted changes, or everything since a branch or commit. Set a time limit if you want one. Two scans can run at once.
 
 **Review findings**
 
@@ -159,6 +159,7 @@ Everything is in [docs/CONFIG.md](docs/CONFIG.md).
 | `v` / `x` | Validate the finding / propose a fix                   |
 | `y` / `r` | Apply / discard a proposed fix                         |
 | `g`       | Discuss the finding in the conversation you came from  |
+| `e` / `u` | Run a scan again / resume a stopped Deep scan          |
 | `tab`     | Switch between scans and operations                    |
 | `h`       | List every key available right now                     |
 
@@ -187,7 +188,8 @@ Context files for a scan may be absolute paths in other checkouts. Any UTF-8 tex
 
 - **Your source goes to your model provider.** Every scan, validation, fix and policy draft shows where, and waits for your approval.
 - **Costs are estimates.** `scan.maxCostUsd` stops a scan on the SDK's estimate; it is not a billing cap. Validation and fixes have no cost limit.
-- **Findings arrive when a scan completes**, not while it runs.
+- **Findings arrive when a scan completes**, not while it runs. If a scan fails or is cancelled, whatever it had saved is shown as partial results.
+- **Standard scans have no time limit** unless you set one, and treat it as a target. A stopped Standard scan can be run again; a stopped Deep scan can be resumed where it left off.
 - **A fix is written against your last commit.** It does not see uncommitted work, and applying it fails cleanly if you have since changed the same lines.
 - **Change scans run at Standard depth.**
 - **Restarts.** Scan results and finding status are kept. A scan that was running is marked interrupted, and policy drafts, validations and unapplied fixes in progress are lost.
@@ -198,7 +200,7 @@ Context files for a scan may be absolute paths in other checkouts. Any UTF-8 tex
 
 ```sh
 npm ci --ignore-scripts
-npm run check        # lint, format, types, unit tests, build
+npm run check        # lint, format, types, build, unit tests
 npm run setup:local  # one-time: isolated OpenCode under .runtime/
 npm run test:host    # the plugin inside a real OpenCode server, with a mock SDK
 ```

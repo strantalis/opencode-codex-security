@@ -11,6 +11,7 @@ import type {
 } from '@openai/codex-security';
 import { codexHome, loadSettings } from './settings.ts';
 import { SecurityInputError } from './errors.ts';
+import { storedState } from './sign-in.ts';
 
 export interface ScanInputs {
   mode?: 'standard' | 'deep';
@@ -20,6 +21,10 @@ export interface ScanInputs {
   changes?: string;
   scanPrompt?: string;
   contextFiles?: string[];
+  /** Minutes of investigation. Advisory for Standard; a discovery deadline for Deep. */
+  maxTimeMinutes?: number;
+  /** Continue an interrupted Deep scan instead of starting a new one. Other inputs are ignored. */
+  resumeRunId?: string;
 }
 /** Where inference goes, as the SDK resolved it. For display only. */
 export interface Route {
@@ -44,11 +49,18 @@ export interface ScanPlan {
   expiresAt: string;
   mock: boolean;
   inputs: ScanInputs;
+  /** Set when this continues an interrupted Deep scan in its original session. */
+  resume?: { runId: string; scanId: string };
 }
 
 /** Execution-only configuration. Never serialize this into RPC, events or history. */
 export interface PreparedScanPlan extends ScanPlan {
-  sdk: { codexOverrides: JsonObject; auth: ScanAuthMode };
+  sdk: {
+    codexOverrides: JsonObject;
+    auth: ScanAuthMode;
+    /** The SDK scan to continue and the output directory it must reuse. */
+    resume?: { scanId: string; outputDir: string };
+  };
 }
 export function publicScanPlan(plan: ScanPlan): ScanPlan {
   const copy = structuredClone(plan) as ScanPlan & { sdk?: unknown };
@@ -68,10 +80,14 @@ function parseInputs(value: unknown): ScanInputs {
     !['undefined', 'string'].includes(typeof data.changes) ||
     !strings(data.scopePaths) ||
     !strings(data.contextFiles) ||
-    ![undefined, 'standard', 'deep'].includes(data.mode as string)
+    ![undefined, 'standard', 'deep'].includes(data.mode as string) ||
+    !(
+      data.maxTimeMinutes === undefined ||
+      (typeof data.maxTimeMinutes === 'number' && data.maxTimeMinutes > 0)
+    )
   )
     throw new SecurityInputError(
-      'Scan inputs are repository, scopePaths, changes, scanPrompt, contextFiles and mode (standard or deep).',
+      'Scan inputs are repository, scopePaths, changes, scanPrompt, contextFiles, mode (standard or deep) and maxTimeMinutes.',
     );
   if (data.changes && (data.scopePaths as string[] | undefined)?.length)
     throw new SecurityInputError('Scan either paths or changes, not both.');
@@ -134,24 +150,53 @@ export async function withSdk<T>(
   }
 }
 
+/** A custom provider that declares no credential, such as a gateway behind a network identity. */
+const keyless = (provider: string, entry: Record<string, unknown> | undefined) =>
+  provider !== 'openai' &&
+  !!entry &&
+  !entry.env_key &&
+  !entry.auth &&
+  !entry.aws &&
+  !entry.experimental_bearer_token &&
+  entry.requires_openai_auth !== true;
+
+/**
+ * The SDK refuses to start without some credential, even for a provider that takes none.
+ * Any key or sign-in satisfies it, and none is sent to such a provider.
+ */
+async function describeKeyless(authentication: ScanAuthentication): Promise<string> {
+  const label = 'No API key (this provider has none configured)';
+  if (authentication.method !== 'stored_credentials' || (await storedState()) !== 'needed')
+    return label;
+  return `${label}. The SDK still needs one to start: set CODEX_API_KEY=unused in OpenCode's environment`;
+}
+
 /** The route a preflight resolved, with the endpoint from the same config merge the SDK runs. */
 export async function routeFrom(
   sdk: typeof import('@openai/codex-security'),
   codexOverrides: JsonObject,
   preflight: Awaited<ReturnType<CodexSecurity['preflight']>>,
-): Promise<Route> {
+): Promise<{ route: Route; signIn: boolean }> {
   // Includes a `<profile>.config.toml` file profile.
   const config = await sdk.mergedCodexConfig({ codexOverrides }, codexHome());
   const provider = preflight.modelProvider ?? 'openai';
-  const providers = config.model_providers as Record<string, { base_url?: string }> | undefined;
-  const baseUrl = provider === 'openai' ? config.openai_base_url : providers?.[provider]?.base_url;
+  const entry = (config.model_providers as Record<string, Record<string, unknown>> | undefined)?.[
+    provider
+  ];
+  const baseUrl = provider === 'openai' ? config.openai_base_url : entry?.base_url;
+  const { authentication } = preflight;
+  const noKey =
+    keyless(provider, entry) && ['stored_credentials', 'api_key'].includes(authentication.method);
   return {
-    provider,
-    ...(typeof baseUrl === 'string' ? { baseUrl } : {}),
-    model: preflight.model,
-    reasoningEffort: preflight.reasoningEffort,
-    daybreak: config.daybreak === true,
-    auth: describeAuthentication(preflight.authentication),
+    route: {
+      provider,
+      ...(typeof baseUrl === 'string' ? { baseUrl } : {}),
+      model: preflight.model,
+      reasoningEffort: preflight.reasoningEffort,
+      daybreak: config.daybreak === true,
+      auth: noKey ? await describeKeyless(authentication) : describeAuthentication(authentication),
+    },
+    signIn: !noKey && authentication.method === 'stored_credentials',
   };
 }
 
@@ -166,7 +211,10 @@ export async function prepareScan(
   const repository = await resolveRepository(workspace, input.repository);
   const settings = await loadSettings(input.mode);
   const contextFiles = [...new Set(input.contextFiles ?? [])];
-  const scanSettings = { ...settings.scan };
+  const scanSettings = {
+    ...settings.scan,
+    ...(input.maxTimeMinutes ? { maxTimeMinutes: input.maxTimeMinutes } : {}),
+  };
   if (purpose === 'validation') delete scanSettings.maxCostUsd;
   const changes = input.changes?.trim() || undefined;
   const target = await scanTarget({ scopePaths: input.scopePaths, changes });
@@ -187,7 +235,7 @@ export async function prepareScan(
       scanPrompt: input.scanPrompt ?? '',
       contextFiles: contextFiles.map((path) => ({ path })),
       settings: {
-        codex: await routeFrom(sdk, settings.codex, preflight),
+        codex: (await routeFrom(sdk, settings.codex, preflight)).route,
         scan: { ...scanSettings, mode: preflight.mode },
       },
       globalConfigFile: settings.path,

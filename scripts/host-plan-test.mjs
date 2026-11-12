@@ -18,7 +18,7 @@ async function sampleProject(name) {
 const fixture = await sampleProject('first');
 const secondFixture = await sampleProject('second');
 const TestRpc = Rpc.define({
-  id: 'gill.security.mock-test',
+  id: 'opencode-codex-security.mock-test',
   events: {},
   methods: {
     inspect: { input: { type: 'object' }, output: { type: 'object' } },

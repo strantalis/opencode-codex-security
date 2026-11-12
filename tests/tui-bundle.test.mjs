@@ -20,5 +20,5 @@ test('published TUI exports precompiled ESM and keeps host runtimes external', a
   ]);
   assert.doesNotMatch(bundle, /jsx-runtime|React\.createElement|<\/?(?:box|text|Show|For)\b/);
   assert.match(bundle, /createElement/);
-  assert.match(bundle, /gill\.security\.tui/);
+  assert.match(bundle, /opencode-codex-security\.tui/);
 });
