@@ -1,13 +1,28 @@
-// Offline tests must never discover a developer's real Codex configuration.
+// Offline tests must never read a developer's real Codex or plugin configuration.
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after } from 'node:test';
 const directory = await mkdtemp(join(tmpdir(), 'isolated-codex-'));
-const previous = process.env.CODEX_HOME;
-process.env.CODEX_HOME = directory;
+const isolated = {
+  CODEX_HOME: join(directory, 'codex'),
+  XDG_CONFIG_HOME: join(directory, 'config'),
+  XDG_STATE_HOME: join(directory, 'state'),
+  XDG_CACHE_HOME: join(directory, 'cache'),
+  OPENAI_API_KEY: undefined,
+  CODEX_API_KEY: undefined,
+  OPENAI_BASE_URL: undefined,
+};
+const previous = Object.fromEntries(Object.keys(isolated).map((key) => [key, process.env[key]]));
+const apply = (values) => {
+  for (const [key, value] of Object.entries(values))
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+};
+apply(isolated);
+export const configHome = isolated.XDG_CONFIG_HOME;
+export const codexHome = isolated.CODEX_HOME;
 after(async () => {
-  if (previous === undefined) delete process.env.CODEX_HOME;
-  else process.env.CODEX_HOME = previous;
+  apply(previous);
   await rm(directory, { recursive: true, force: true });
 });

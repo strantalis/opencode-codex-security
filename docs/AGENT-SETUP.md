@@ -1,89 +1,27 @@
 # Install with an agent
 
-Copy this into your coding agent on the machine where you use OpenCode:
+Paste this into your coding agent on the machine where you use OpenCode, replacing `VERSION`:
 
 ```text
-Install opencode-codex-security@0.1.4 through my existing OpenCode V2 plugin configuration after verifying that exact release is available (project: https://github.com/strantalis/opencode-codex-security). Follow its agent setup guide, preserve unrelated settings and use real SDK mode with my existing approved provider configuration when supported. Never substitute fixture mode for a setup blocker. Verify loading without a scan. Do not require a separate Node/npm install for this setup check. Do not switch providers, request sign-in or secrets, interrupt active work, or send source or run paid operations without approval. Ask only when blocked or permission is needed, then give a brief status.
+Install the OpenCode plugin opencode-codex-security@VERSION.
+
+1. Check that the version exists: npm view opencode-codex-security@VERSION version
+2. Add { "package": "opencode-codex-security@VERSION" } to the "plugins" array of my
+   OpenCode config (~/.config/opencode/opencode.json, or under $XDG_CONFIG_HOME).
+   Keep everything else in the file as it is.
+3. Tell me to restart OpenCode and open /security to confirm it loaded.
+4. If you are running inside OpenCode, after the restart call security_status and
+   report what it says.
+
+Don't start a scan or change my model provider or credentials. If something is
+missing, tell me what it is.
 ```
 
-**Release status:** verified November 10, 2026, exact `0.1.3` is public. Source `0.1.4` adds real-by-default onboarding and prepare-time Codex configuration discovery. Verify that `0.1.4` is published before following its install example; a source version alone is not a release. If unavailable, use only an explicitly supplied tested build or report the release blocker. If installing public `0.1.3`, explicitly set `options.engine` to `codex`; it does not have automatic configuration discovery. Public npm package installation needs no npm login.
+That is the whole install. The plugin takes its model and provider from your existing Codex config, and nothing runs until you approve a scan preview.
 
-The setup is provider-neutral. Discover an existing supported Codex configuration, use an explicit supported custom provider, or keep an already configured dedicated ChatGPT route. No particular gateway is required, and arbitrary OpenCode provider settings are not automatically inherited. If the user's configuration is unsupported or ambiguous, explain the specific limitation rather than inventing settings or switching routes.
+Before your first scan:
 
-## What you need
+- OpenCode needs Node 22.20+ (or 24.x, 26.x) and Python 3.10+ on its `PATH`.
+- If you sign in to Codex with ChatGPT, run `npx @openai/codex-security login` once so Codex Security has its own session. See [authentication](CONFIG.md#authentication).
 
-- **Install and check loading:** an existing packaged OpenCode V2 host and access to the public npm registry. Add the npm package entry below; OpenCode downloads dependencies and runs the plugin using its bundled runtime. You do **not** need to install Node, npm, Bun or a separate Codex CLI just to load the plugin or use its bundled fixture. Do not make terminal `node --version` a gate for this step.
-- **Run real SDK operations:** a supported Node runtime must be on the OpenCode process's trusted `PATH`; SDK 0.9.1 calls external Node helpers when hosted by Bun. Use Node 22.20+ within 22.x, 24.x or 26.x for the plugin's current supported range. Real scans also require Python 3.10+ (`tomli` for Python 3.10), supported provider/model access, and permission for source transfer and usage. Reuse existing compatible runtimes; install or change them only when actually needed and approved. npm is not needed to run those helpers.
-- **Host compatibility:** use OpenCode V2. Version 2.2.6 is the original test baseline, not an exact-patch requirement; verify the installed host before recommending an update. macOS/Linux are the tested host platforms. The ChatGPT credential guard rejects Windows; custom-provider key checks are platform-neutral, but a complete Windows SDK operation has not been verified.
-
-The plugin package includes its Desktop bundle and depends on the pinned Codex Security SDK, its bundled Codex runtime, OpenCode plugin API and Solid. OpenTUI is an optional peer supplied by terminal integration. Repository development/TUI tests use Node 26.4+ and Bun; those are **contributor tools**, not prerequisites for the normal plugin installation above. Installing OpenCode itself through npm is a separate workflow with its own prerequisites.
-
-**Node 22:** use 22.20 or later within the 22.x line. The older 22.14 release fails an SDK dependency import; that is not a reason to reject all Node 22 installations. Runtime checks cover SDK loading, local scope inventory, and the SQLite findings helpers without model calls. OpenCode loads the plugin using its own runtime; external Node is needed by SDK helpers, not by the plugin UI itself.
-
-## Installation reference
-
-Find the effective OpenCode configuration rather than creating a competing file. Standard locations are `$XDG_CONFIG_HOME/opencode/opencode.json` or `~/.config/opencode/opencode.json`, with JSONC and explicit host overrides also supported. Preserve comments, unrelated settings and existing plugins. Keep a private backup outside repositories with restrictive permissions; show only plugin-specific changes, not the full configuration.
-
-Check for active scans, approvals or policy forms **before editing watched settings or reloading**. Ask if their status is unknown. Offline installation can continue separately. Open `/security` to verify loading in real SDK mode. Do not run a scan as an installation or authentication test. A missing real prerequisite is a setup blocker, not a reason to switch to fixture mode. Keep the old consumer for rollback.
-
-[OpenCode supports npm package entries](https://opencode.ai/docs/plugins) in its V2 `plugins` array. Its [2.2.7 installer disables lifecycle scripts](https://github.com/anomalyco/opencode/blob/v2.2.7/packages/util/src/npm.ts). Add this object to the existing array:
-
-```json
-{
-  "package": "opencode-codex-security@0.1.4"
-}
-```
-
-### Optional: manage npm installation yourself
-
-Skip this for the ordinary OpenCode-managed install above. This alternative needs Node 22.20+ within 22.x, 24.x or 26.x and npm. For explicit installation/audit control, use a dedicated consumer outside source repositories and active installations:
-
-```sh
-mkdir security-plugin && cd security-plugin
-npm init -y
-npm view opencode-codex-security@0.1.4 version &&
-  npm install --save-exact --ignore-scripts opencode-codex-security@0.1.4
-npm audit --omit=dev --audit-level=high
-```
-
-For that route, replace `package` with the absolute installed directory, such as `/absolute/path/to/security-plugin/node_modules/opencode-codex-security`. Keep its lockfile for repeat installs. Report audit findings; do not force dependency fixes or enable lifecycle scripts as a workaround.
-
-## Use your existing provider configuration
-
-With no explicit provider/authentication choice, the plugin discovers the standard Codex configuration when a scan or operation is prepared, not when it loads. A supported selected custom Responses provider is reused automatically. To require a standard config file even when none exists, set the following in global `codex-security.json`, preserving unrelated settings:
-
-```json
-{
-  "codex": {
-    "useCodexConfig": true
-  }
-}
-```
-
-This reads `$CODEX_HOME/config.toml`, or `~/.codex/config.toml` when `CODEX_HOME` is unset or empty. For a different approved TOML file, add `"configFile": "/approved/path/config.toml"`; that path takes precedence. Add `"profile": "work"` inside `codex` only to select an existing `[profiles.work]`; otherwise the file's root profile selection is honored. A standalone `work.config.toml` belongs in `configFile`, not `profile`. Existing explicit plugin model/reasoning/Daybreak settings override imports, so remove only overrides the user wants to inherit.
-
-The plugin currently supports custom providers with an approved HTTPS `base_url` and `env_key` and support the Responses API. Its named key must already be available to the OpenCode service process; GUI launches and restarted services may not inherit terminal exports. `env_key` names an existing environment variable; it does not mean creating a second key. A missing variable is a local setup blocker, not a request to display or copy its value. This route uses API-key authentication without sign-in or a dedicated `auth.json`; a missing key fails rather than falling back to ChatGPT. Never paste key values into chat or settings. The plugin imports only validated selected fields, not arbitrary Codex options or OpenCode provider settings.
-
-For an explicit `codex.provider` alternative and full restrictions, see [global provider settings](GLOBAL-CONFIG.md#use-an-existing-custom-provider-without-sign-in). Literal secret headers, auth commands and custom-provider Daybreak are unsupported. Named environment headers are supported only alongside the existing custom environment-key route. Keyless network identity is also blocked by SDK 0.9.1's credential gate; do not request a dummy or second key, change network security settings, switch providers or install fixtures to disguise that limitation. See [keyless network identity](GLOBAL-CONFIG.md#keyless-network-identity). Unknown model aliases can fail the SDK cost guard; do not remove the guard or relabel a different model to get an estimate. Responses support alone does not establish tool compatibility. Routing tests use mocks and do not establish compatibility with a real gateway.
-
-Real SDK mode is the default. Remove an old explicit `engine: fixture` setting only while the host is idle; this preserves existing users' intentional test setups until they choose to change them. Never add fixture mode to work around a real setup error. Loading starts no scan. The global settings file uses `XDG_CONFIG_HOME`, not the host's `OPENCODE_CONFIG_DIR` override.
-
-## Optional OpenAI API-key route
-
-For users explicitly choosing OpenAI API-key usage, set `codex.auth` to `api-key` without a custom provider. Reuse `OPENAI_API_KEY` or `CODEX_API_KEY` already available to the OpenCode service, in that SDK precedence order. Never request, print, copy or save a key. Missing keys and ambient endpoint overrides are setup blockers, not permission to switch routes. See the [authentication compatibility matrix](GLOBAL-CONFIG.md#authentication-compatibility).
-
-## Optional dedicated ChatGPT route
-
-The existing default ChatGPT route remains available separately; it is not a fallback for a workplace gateway. It requires private dedicated file-backed credentials. Check metadata only, never read or copy token files, and do not run SDK `login status`/account helpers when credentials are missing because they can import ambient authentication. Keyring-only credentials do not satisfy the file guard.
-
-When automatic discovery finds no config, or selects the built-in OpenAI route, dedicated ChatGPT authentication remains required before a real operation. Existing ordinary Codex login tokens are not copied. Explicit `codex.auth: "chatgpt"` or `codex.useCodexConfig: false` disables automatic discovery. Only users explicitly choosing this route should follow [dedicated ChatGPT authentication](SDK.md#default-dedicated-chatgpt-authentication). Do not request a new sign-in when the user wants their existing provider configuration.
-
-## Before a real operation
-
-Get approval for the target, source/context destination and expected usage. Previews identify the selected gateway, which may route onward to upstream services; this configuration is not a guarantee of gateway-only network traffic. Scope is not filesystem isolation, and SDK subprocesses can inherit environment credentials. Use an approved environment without unrelated secrets.
-
-Scan cost thresholds are estimates, not hard caps or verified gateway prices. Finding validation has no SDK cost ceiling and needs separate approval. Respect native permissions and do not use scans as authentication tests. See [SDK boundaries](SDK.md) and [local-scan permissions](https://learn.chatgpt.com/docs/security/cli/reference#local-scan-permissions).
-
-Verified November 10, 2026: the native OpenCode 2.2.7 server installed exact public `0.1.2` from empty caches with (a) Node 22.14 on `PATH` and no npm, and (b) neither Node nor npm on `PATH`. Both registered the backend, completed the bundled fixture with four seeded findings, preserved repeat-start behavior, served the Desktop GUI bundle, and rejected an unapproved SDK start. The host never invoked shell Node/npm. An actual terminal check then caught `0.1.2`'s missing TSX compilation, which those backend checks did not cover.
-
-The corrected `0.1.3` tarball passed separate native OpenCode 2.2.6 and 2.2.7 TUI tests from an installed `node_modules` consumer: `/security` rendered, the terminal fixture showed four findings, and the app exited cleanly, with no Node/npm/Bun on its `PATH`. This is not direct Desktop rendering or a successful real SDK operation.
+To use a different model, provider or cost limit, see [CONFIG.md](CONFIG.md).

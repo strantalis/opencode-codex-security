@@ -13,12 +13,9 @@
     "test": "node --test tests/*.test.mjs",
     "typecheck": "tsc --noEmit",
     "build": "vite build && vite build --config vite.tui.config.ts",
-    "demo": "node scripts/demo.mjs",
-    "preview": "node scripts/preview-server.mjs",
     "check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run build",
     "setup:local": "node scripts/setup-local.mjs",
-    "test:host": "node scripts/host-test.mjs && node scripts/host-test.mjs --codex-gate",
-    "test:plan-host": "node scripts/host-plan-test.mjs",
+    "test:host": "node scripts/host-test.mjs && node scripts/host-plan-test.mjs",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -32,8 +29,7 @@
   "dependencies": {
     "@openai/codex-security": "0.9.1",
     "@opencode/plugin": "2.2.6",
-    "smol-toml": "1.9.1",
-    "solid-js": "^1.9.0"
+    "smol-toml": "1.9.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -44,6 +40,7 @@
     "eslint": "^10.14.0",
     "globals": "^17.14.0",
     "prettier": "^3.9.10",
+    "solid-js": "^1.9.0",
     "typescript": "^5.9.0",
     "typescript-eslint": "^8.72.2",
     "vite": "^8.3.6",
@@ -62,18 +59,13 @@
     "src/",
     "dist/gui-experimental.cjs",
     "dist/tui.js",
-    "fixtures/vulnerable/",
     "LICENSE",
     "DISCLOSURE",
     "README.md",
     "CONTRIBUTING.md",
     "SECURITY.md",
     "docs/AGENT-SETUP.md",
-    "docs/GLOBAL-CONFIG.md",
-    "docs/MULTI-SCAN.md",
-    "docs/SDK.md",
-    "docs/PUBLISHING.md",
-    "docs/RELEASING.md"
+    "docs/CONFIG.md"
   ],
   "contentPolicy": {
     "class": "dual-use"

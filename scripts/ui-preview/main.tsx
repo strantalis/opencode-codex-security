@@ -1,12 +1,28 @@
 import { render } from 'solid-js/web';
 import { SecurityPanel } from '../../src/security-panel';
+import { findingText } from '../../src/scan-display';
 import { emptyState } from '../../src/types';
 const repository = '/Projects/atlas';
 const params = new URLSearchParams(location.search);
+document.documentElement.dataset.theme = params.get('theme') === 'light' ? 'light' : 'dark';
+
+// Events: the fake ports notify subscribers after each change, as the server's RPC events do.
+const listeners = new Set();
+const emit = (event) => queueMicrotask(() => listeners.forEach((listener) => listener(event)));
+const subscribe = (listener) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+};
 const list = (items = []) => ({ total: items.length, items, omitted: 0 });
 const unavailable = () => ({ total: null, items: [], omitted: 0 });
 const settings = {
-  codex: { model: 'gpt-5.6-sol', reasoningEffort: 'xhigh', daybreak: false },
+  codex: {
+    provider: 'openai',
+    model: 'gpt-5.6-sol',
+    reasoningEffort: 'xhigh',
+    daybreak: false,
+    auth: 'Codex Security sign-in',
+  },
   scan: { mode: 'standard', maxCostUsd: 1 },
 };
 let revision = 1,
@@ -16,24 +32,20 @@ const plan = (id, inputs = {}) => ({
   repository: inputs.repository ?? repository,
   scopePaths: inputs.scopePaths ?? ['src/api'],
   scanPrompt: inputs.scanPrompt ?? 'Review authorization and tenant isolation',
-  contextFiles: (inputs.contextFiles ?? []).map((path) => ({
-    path,
-    bytes: 100,
-    sha256: 'fixture',
-  })),
+  contextFiles: (inputs.contextFiles ?? []).map((path) => ({ path })),
   expiresAt: new Date(Date.now() + 600000).toISOString(),
   mock: true,
   inputs,
   settings: { ...settings, scan: { ...settings.scan, mode: inputs.mode ?? 'standard' } },
   globalConfigFile: '~/.config/opencode/codex-security.json',
-  globalConfigDigest: 'fixture',
+  sdk: { codexOverrides: {}, auth: 'auto' },
 });
 const t = Date.now();
 const run = (id, status, focus) => ({
   ...emptyState(),
   runId: id,
   scanId: 'sdk-' + id,
-  instanceId: 'fixture-ui',
+  instanceId: 'preview-ui',
   revision,
   repository,
   engine: 'codex-security-sdk',
@@ -219,6 +231,13 @@ if (scenario && runs[0]) {
     selected.mode = 'deep';
     selected.deepProgress = { completed: 3, active: 0, maximum: 8, consolidating: true };
   }
+  if (scenario === 'failed') {
+    selected.status = 'error';
+    selected.phase = 'Scan stopped';
+    selected.finishedAt = new Date(t - 20000).toISOString();
+    selected.error =
+      'The model provider rejected the request: the account has no access to gpt-5.6-sol.';
+  }
   if (scenario === 'informational' || scenario === 'missing-coverage') {
     const completed = run(selected.runId, 'completed', 'Review webhook request validation');
     Object.assign(selected, completed);
@@ -263,10 +282,11 @@ const drafts = [];
 if (new URLSearchParams(location.search).has('narrow')) document.body.classList.add('narrow');
 const log = (message) => (document.querySelector('#journal').textContent = message);
 const port = {
+  discuss: async (input) => log('Discuss ' + input.findingId + '; mock only'),
   list: async () =>
     structuredClone({
       engine: 'codex-security-sdk',
-      instanceId: 'fixture-ui',
+      instanceId: 'preview-ui',
       revision,
       runs,
       drafts,
@@ -279,6 +299,7 @@ const port = {
     const s = { ...emptyState(), engine: 'codex-security-sdk', plan: p };
     drafts.unshift(s);
     log('Prepared ' + p.id + '; 0 model calls');
+    emit('changed');
     return structuredClone(s);
   },
   start: async (input) => {
@@ -297,6 +318,7 @@ const port = {
     runs.unshift(r);
     revision++;
     log('Started ' + r.runId + '; mock only');
+    emit('changed');
     return structuredClone(r);
   },
   cancel: async (input) => {
@@ -307,9 +329,21 @@ const port = {
     r.events.push({ time: r.finishedAt, message: 'Cancellation completed for this run.' });
     revision++;
     log('Cancelled ' + input.runId + ' only');
+    emit('changed');
     return structuredClone(r);
   },
+  subscribe,
 };
+/** Advances the first running scan by one review, as a server progress event would. */
+const advance = () => {
+  const r = runs.find((r) => r.status === 'running' && r.telemetry?.phaseProgress);
+  if (!r) return;
+  const reviews = r.telemetry.phaseProgress.reviews;
+  reviews.done = Math.min(reviews.total, reviews.done + 1);
+  revision++;
+  emit('changed');
+};
+if (params.has('live')) setInterval(advance, 2000);
 let operationSequence = 1;
 const operation = (kind, id) => ({
   operationId: id,
@@ -323,8 +357,8 @@ const operation = (kind, id) => ({
     costLimitEnforced: kind === 'policy',
     costNotice:
       kind === 'policy'
-        ? 'Estimated stop USD 1, not a hard cap.'
-        : 'Validation has no cost ceiling.',
+        ? 'Stops at an estimated USD 1. This is an estimate, not a billing cap.'
+        : 'Validation has no cost limit in the SDK; scan.maxCostUsd does not apply.',
     finding: kind === 'validation' ? 'Missing tenant membership check.' : undefined,
   },
   question: null,
@@ -337,45 +371,110 @@ const operation = (kind, id) => ({
   revision: 1,
 });
 const operationStates = [];
+const askQuestions = (op) => {
+  op.startedAt ??= new Date(Date.now() - 41000).toISOString();
+  op.status = 'awaiting_answers';
+  op.phase = 'Waiting for project context';
+  op.estimatedCostUsd = 0.08;
+  op.question = {
+    id: 'question-' + op.operationId,
+    questions: [
+      'Which users may invite teammates into a workspace?',
+      'Are uploaded files ever accessible without signing in?',
+    ],
+    createdAt: new Date().toISOString(),
+  };
+};
+// What the server does: keep a finding's outcome with its scan.
+const recordReview = (op) => {
+  const source = op.plan.source;
+  const target = source && runs.find((item) => item.runId === source.runId);
+  if (!target || !op.result) return;
+  const at = new Date().toISOString();
+  const review =
+    op.result.kind === 'fix'
+      ? { fix: { status: op.result.status, resolution: op.result.resolution, at } }
+      : { validation: { disposition: op.result.disposition, at } };
+  target.reviews = {
+    ...target.reviews,
+    [source.findingId]: { ...target.reviews?.[source.findingId], ...review },
+  };
+  emit('changed');
+};
+const completeValidation = (op) => {
+  op.startedAt ??= new Date(Date.now() - 64000).toISOString();
+  op.finishedAt = new Date().toISOString();
+  op.status = 'completed';
+  op.phase = 'Source assessment complete';
+  op.result = {
+    kind: 'validation',
+    disposition: 'reportable',
+    report:
+      'The handler reads the project by ID and returns it without checking that the signed-in user belongs to the project tenant. A user in tenant A can read tenant B projects by changing the ID.',
+    truncated: false,
+  };
+};
+// Seeded operation scenarios.
+if (scenario === 'policy-waiting') {
+  const op = operation('policy', 'op-policy');
+  op.plan.path = 'src/api';
+  op.plan.finding = undefined;
+  askQuestions(op);
+  operationStates.unshift(op);
+}
+if (scenario === 'validation') {
+  const finding = runs[2].findings[0];
+  const op = operation('validation', 'op-validation');
+  op.plan.finding = findingText(finding);
+  completeValidation(op);
+  operationStates.unshift(op);
+}
 const operationPort = {
-  capabilities: { policy: true, validation: true, questionAnswers: true },
+  capabilities: { policy: true, validation: true, fix: true },
   list: async () => structuredClone({ operations: operationStates, maxConcurrent: 2 }),
   prepare: async (input) => {
     const op = operation(input.kind, 'op-' + ++operationSequence);
     op.repository = input.repository ?? repository;
-    if (input.kind === 'validation' && new URLSearchParams(location.search).has('uncapped'))
+    if (input.kind === 'validation' && new URLSearchParams(location.search).has('real'))
       op.plan.mock = false;
     op.plan.repository = op.repository;
     op.plan.finding =
       typeof input.finding === 'string' ? input.finding : JSON.stringify(input.finding);
     op.plan.path = input.path;
+    if (input.source) op.plan.source = input.source;
     operationStates.unshift(op);
     log('Prepared ' + op.kind + '; 0 model calls');
+    emit('operationChanged');
     return structuredClone(op);
   },
   start: async (input) => {
     const op = operationStates.find((op) => op.operationId === input.operationId);
     op.startedAt = new Date().toISOString();
-    op.status = op.kind === 'policy' ? 'awaiting_answers' : 'completed';
-    op.phase = op.kind === 'policy' ? 'Waiting for project context' : 'Source assessment complete';
-    if (op.kind === 'policy')
-      op.question = {
-        id: 'question-' + op.operationId,
-        questions: [
-          'Which users may invite teammates into a workspace?',
-          'Are uploaded files ever accessible without signing in?',
-        ],
-        createdAt: new Date().toISOString(),
-      };
-    else
+    if (op.kind === 'policy') askQuestions(op);
+    else if (op.kind === 'fix') {
+      op.status = 'completed';
+      op.phase = 'Fix ready to review';
+      op.finishedAt = new Date().toISOString();
       op.result = {
-        kind: 'validation',
-        disposition: 'reportable',
-        report:
-          'The membership check is absent before returning the requested project. This static assessment supports the reported access-control issue; no runtime exploit was executed.',
+        kind: 'fix',
+        status: 'verified',
+        report: 'The tenant check now runs before the lookup; the existing tests pass.',
+        diff: [
+          'diff --git a/src/api/projects.ts b/src/api/projects.ts',
+          '--- a/src/api/projects.ts',
+          '+++ b/src/api/projects.ts',
+          '@@ -44,6 +44,7 @@ export async function getProject(req) {',
+          '   const { id } = req.params;',
+          '+  await requireTenantMember(req.user, req.tenantId);',
+          '   const project = await db.project.findUnique({ where: { id } });',
+        ].join('\n'),
+        resolution: 'pending',
         truncated: false,
       };
+    } else completeValidation(op);
+    recordReview(op);
     log('Started ' + op.kind + '; mock only');
+    emit('operationChanged');
     return structuredClone(op);
   },
   answer: async (input) => {
@@ -395,6 +494,16 @@ const operationPort = {
       truncated: false,
     };
     log('Answered ' + input.questionId + '; mock only');
+    emit('operationChanged');
+    return structuredClone(op);
+  },
+  resolve: async (input) => {
+    const op = operationStates.find((op) => op.operationId === input.operationId);
+    op.result.resolution = input.action === 'apply' ? 'applied' : 'discarded';
+    op.phase = input.action === 'apply' ? 'Fix applied' : 'Fix discarded';
+    recordReview(op);
+    log('Fix ' + op.result.resolution + '; mock only');
+    emit('operationChanged');
     return structuredClone(op);
   },
   cancel: async (input) => {
@@ -402,12 +511,64 @@ const operationPort = {
     op.status = 'cancelled';
     op.question = null;
     op.phase = 'Cancelled';
+    emit('operationChanged');
     return structuredClone(op);
   },
 };
+
+// The `setup` RPC is not in this branch yet; this matches its planned shape.
+const setupState = {
+  route: {
+    provider: params.get('setup') === 'gateway' ? 'acme-gateway' : 'openai',
+    ...(params.get('setup') === 'gateway' ? { baseUrl: 'https://llm.acme.internal/v1' } : {}),
+    model: settings.codex.model,
+    reasoningEffort: settings.codex.reasoningEffort,
+    daybreak: false,
+    auth:
+      params.get('setup') === 'gateway' ? 'API key from ACME_API_KEY' : 'Codex Security sign-in',
+  },
+  configFile: '~/.config/opencode/codex-security.json',
+  codexConfigFile: '~/.codex/config.toml',
+  profile: 'default',
+  profiles: params.get('setup') === 'single' ? ['default'] : ['default', 'work', 'bedrock'],
+  runtime: { node: 'v22.20.0', python: params.get('setup') === 'missing' ? null : '3.12.4' },
+  // ?signin=needed|shared shows the ChatGPT sign-in; gateway routes never have it.
+  ...(params.get('signin') && params.get('setup') !== 'gateway'
+    ? { signIn: { state: params.get('signin') } }
+    : {}),
+};
+const setup = params.has('no-setup')
+  ? undefined
+  : {
+      load: async () => structuredClone(setupState),
+      setProfile: async (input) => {
+        setupState.profile = input.profile;
+        log('Profile ' + input.profile);
+        return structuredClone(setupState);
+      },
+      signIn: async (input) => {
+        setupState.signIn = {
+          state: setupState.signIn.state,
+          pending: input.device
+            ? { url: 'https://auth.openai.com/codex/device', code: 'ABCD-12345' }
+            : { url: 'https://auth.openai.com/oauth/authorize?client_id=synthetic' },
+        };
+        log('Sign-in started; mock only');
+        // The harness "finishes" the sign-in on its own after a moment.
+        setTimeout(() => (setupState.signIn = { state: 'signed-in' }), 2500);
+        return structuredClone(setupState.signIn);
+      },
+      signInCancel: async () => {
+        setupState.signIn = { state: setupState.signIn.state };
+        return structuredClone(setupState.signIn);
+      },
+    };
+
+// Lets the Python tests drive server events directly.
+Object.assign(window, { securityHarness: { emit, advance } });
 render(
   () => (
-    <SecurityPanel directory={repository} port={port} operations={operationPort} pollMs={1000} />
+    <SecurityPanel directory={repository} port={port} operations={operationPort} setup={setup} />
   ),
   document.querySelector('#root'),
 );

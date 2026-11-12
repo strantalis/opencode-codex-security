@@ -20,7 +20,7 @@ for (const path of [
   await mkdir(path, { recursive: true });
 await writeFile(
   env.XDG_CONFIG_HOME + '/opencode/opencode.json',
-  JSON.stringify({ plugins: [{ package: root, options: { engine: 'fixture' } }] }, null, 2),
+  JSON.stringify({ plugins: [{ package: root }] }, null, 2),
 );
 const child = spawnSync(process.execPath, ['node_modules/@opencode/cli/postinstall.mjs'], {
   cwd: root,
@@ -29,5 +29,5 @@ const child = spawnSync(process.execPath, ['node_modules/@opencode/cli/postinsta
 });
 if (child.status !== 0) process.exit(child.status ?? 1);
 console.log(
-  'Isolated OpenCode fixture configuration ready. Your normal settings and credentials are unchanged.',
+  'Isolated OpenCode configuration ready. Your normal settings and credentials are unchanged.',
 );

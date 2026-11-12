@@ -13,7 +13,14 @@ export interface Finding {
   remediation: string;
   confidence: string;
 }
+/** What has been done about one finding since the scan. Saved with the scan. */
+export interface FindingReview {
+  validation?: { disposition: string; at: string };
+  fix?: { status: string; resolution: 'pending' | 'applied' | 'discarded' | 'none'; at: string };
+}
 export interface ScanState {
+  /** Keyed by finding ID. */
+  reviews?: Record<string, FindingReview>;
   telemetry?: ScanTelemetry;
   assessment?: ScanOutcomeSummary;
   runId?: string;
@@ -64,8 +71,8 @@ export function emptyState(): ScanState {
     error: null,
     startedAt: null,
     finishedAt: null,
-    repository: 'vulnerable (synthetic fixture)',
-    engine: 'local-patterns (prototype)',
+    repository: '',
+    engine: 'codex-security-sdk',
     skipped: 0,
     revision: 0,
   };

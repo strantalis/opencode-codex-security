@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
-import type { ScanOptions } from '@openai/codex-security';
+import type {
+  ScanAuthentication,
+  ScanOptions,
+  ScanTrustedAccessStatus,
+} from '@openai/codex-security';
 import { safeReportText } from './report-safety.ts';
 
 type CallbackValue<K extends keyof ScanOptions> = Parameters<
@@ -59,6 +63,12 @@ export interface ScanTelemetry {
     retryAfterSeconds?: number;
     at: string;
   };
+  /** The authentication the SDK actually used, described without secrets. */
+  authentication?: string;
+  /** Trusted Access for Cyber, as the SDK observed it. Not reported for Bedrock routes. */
+  trustedAccess?: ScanTrustedAccessStatus;
+  /** SDK warnings. Their text is not kept: it can carry raw error output. */
+  warnings?: { count: number; targetChanged: boolean };
 }
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0;
 export const count = (n: unknown) =>
@@ -217,6 +227,30 @@ export function lifecycleSummary(value: CallbackValue<'onLifecycle'>): ScanTelem
     finishedAt: value.finishedAt ? timestamp(value.finishedAt, '') || null : null,
   };
 }
+/**
+ * Same wording as the preview's route description (scan-plan.ts), minus its preflight-only
+ * "not set" note: by now the SDK has resolved the credential it will use.
+ */
+export function authenticationSummary(authentication: ScanAuthentication): string {
+  switch (authentication.method) {
+    case 'api_key':
+      return `API key from ${authentication.source}`;
+    case 'aws_credentials':
+      return `AWS credentials (${authentication.source.replaceAll('_', ' ')})`;
+    case 'stored_credentials':
+      return 'Codex Security sign-in';
+    default:
+      return `provider ${authentication.method} authentication`;
+  }
+}
+export function recordWarning(
+  telemetry: ScanTelemetry,
+  details: Parameters<NonNullable<ScanOptions['onWarning']>>[1],
+): void {
+  const warnings = (telemetry.warnings ??= { count: 0, targetChanged: false });
+  warnings.count = count(warnings.count + 1);
+  if (details?.kind === 'target_changed') warnings.targetChanged = true;
+}
 export function phaseSummary(
   value: CallbackValue<'onProgress'>,
 ): NonNullable<ScanTelemetry['phaseProgress']> {
@@ -241,119 +275,4 @@ export function phaseSummary(
         }
       : {}),
   };
-}
-
-/** Restore only our projected schema, never arbitrary extra fields from a local JSON record. */
-export function sanitizeStoredTelemetry(
-  value: unknown,
-  repository: string,
-): ScanTelemetry | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return;
-  const stored = value as Partial<ScanTelemetry>,
-    output = emptyTelemetry();
-  const labels = [
-    'Analysis update',
-    'Scan update',
-    'Searching source',
-    'Reading source',
-    'Listing files',
-    'Repository command',
-    'Tool call',
-    'Command',
-  ];
-  for (const item of Array.isArray(stored.activity) ? stored.activity.slice(-100) : []) {
-    if (
-      !item ||
-      !/^[a-f0-9]{24}$/.test(item.id) ||
-      !['command', 'tool', 'reasoning', 'message'].includes(item.kind) ||
-      !['running', 'completed', 'failed'].includes(item.status)
-    )
-      continue;
-    const startedAt = timestamp(item.startedAt, '');
-    const updatedAt = timestamp(item.updatedAt, '');
-    if (!startedAt || !updatedAt) continue;
-    output.activity.push({
-      id: item.id,
-      kind: item.kind,
-      status: item.status,
-      label: labels.includes(item.label) ? item.label : activityLabel(item.kind, ''),
-      paths: safeActivityPaths(item.paths, repository),
-      ...(finite(item.worker) ? { worker: count(item.worker) } : {}),
-      startedAt,
-      updatedAt,
-    });
-  }
-  output.observedWorkers = [
-    ...new Set(
-      (Array.isArray(stored.observedWorkers) ? stored.observedWorkers : [])
-        .filter(finite)
-        .map(count),
-    ),
-  ].slice(0, 128);
-  if (stored.lifecycle)
-    output.lifecycle = lifecycleSummary(stored.lifecycle as CallbackValue<'onLifecycle'>);
-  const progress = stored.phaseProgress;
-  if (progress && typeof progress === 'object')
-    output.phaseProgress = phaseSummary({
-      phase: progress.phase,
-      filesCompleted: progress.files?.done,
-      filesTotal: progress.files?.total,
-      ...(progress.reviews
-        ? { reviewItems: { completed: progress.reviews.done, total: progress.reviews.total } }
-        : {}),
-    } as CallbackValue<'onProgress'>);
-  const m = stored.measurement;
-  if (
-    m &&
-    ['complete', 'partial', 'unavailable'].includes(m.coverage) &&
-    timestamp(m.observedAt, '')
-  ) {
-    const c = m.cost;
-    const cost =
-      c && typeof c === 'object'
-        ? costSummary({
-            estimatedUsd: c.baselineUsd,
-            model: c.model,
-            estimatedUsdRange: c.range,
-            pricing: { asOf: c.pricingAsOf, source: c.pricingSource },
-          } as CallbackValue<'onCost'>)
-        : undefined;
-    output.measurement = {
-      coverage: m.coverage,
-      observedAt: timestamp(m.observedAt, ''),
-      ...(finite(m.threadCount) ? { threadCount: count(m.threadCount) } : {}),
-      ...(finite(m.missingThreadCount) ? { missingThreadCount: count(m.missingThreadCount) } : {}),
-      ...(cost ? { cost } : {}),
-      ...(m.usage &&
-      [
-        m.usage.inputTokens,
-        m.usage.cachedInputTokens,
-        m.usage.outputTokens,
-        m.usage.reasoningOutputTokens,
-        m.usage.totalTokens,
-      ].every(finite)
-        ? {
-            usage: {
-              inputTokens: count(m.usage.inputTokens),
-              cachedInputTokens: count(m.usage.cachedInputTokens),
-              outputTokens: count(m.usage.outputTokens),
-              reasoningOutputTokens: count(m.usage.reasoningOutputTokens),
-              totalTokens: count(m.usage.totalTokens),
-            },
-          }
-        : {}),
-    };
-  }
-  const r = stored.lastReconnect;
-  if (r && finite(r.attempt) && finite(r.maxAttempts) && timestamp(r.at, ''))
-    output.lastReconnect = {
-      attempt: count(r.attempt),
-      maxAttempts: count(r.maxAttempts),
-      at: timestamp(r.at, ''),
-      ...(['rate_limit', 'network', 'authentication', 'authorization'].includes(r.reason ?? '')
-        ? { reason: r.reason }
-        : {}),
-      ...(finite(r.retryAfterSeconds) ? { retryAfterSeconds: r.retryAfterSeconds } : {}),
-    };
-  return output;
 }

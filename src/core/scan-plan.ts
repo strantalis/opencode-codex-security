@@ -1,183 +1,207 @@
-import { loadGlobalSettings, resolveSettings, type ResolvedSdkSettings } from './sdk-settings.ts';
-import { realpath, stat, open } from 'node:fs/promises';
-import { constants } from 'node:fs';
+import { realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { isAbsolute, relative, resolve, sep, extname } from 'node:path';
-import { createHash, randomUUID } from 'node:crypto';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import type {
+  CodexSecurity,
+  JsonObject,
+  ScanAuthMode,
+  ScanAuthentication,
+  ScanSettings,
+} from '@openai/codex-security';
+import { codexHome, loadSettings } from './settings.ts';
+import { SecurityInputError } from './errors.ts';
 
 export interface ScanInputs {
   mode?: 'standard' | 'deep';
   repository?: string;
   scopePaths?: string[];
+  /** Scan a diff instead: "uncommitted", or a base ref to compare with HEAD. */
+  changes?: string;
   scanPrompt?: string;
   contextFiles?: string[];
 }
+/** Where inference goes, as the SDK resolved it. For display only. */
+export interface Route {
+  provider: string;
+  baseUrl?: string;
+  model: string;
+  reasoningEffort: string;
+  daybreak: boolean;
+  auth: string;
+}
+/** An immutable preview. A run executes exactly this, whatever changes on disk afterwards. */
 export interface ScanPlan {
-  settings: ResolvedSdkSettings;
-  globalConfigFile: string;
-  globalConfigDigest: string | null;
   id: string;
   repository: string;
   scopePaths: string[];
+  /** Set for a diff scan: "uncommitted" or the base ref. */
+  changes?: string;
   scanPrompt: string;
-  contextFiles: { path: string; bytes: number; sha256: string }[];
+  contextFiles: { path: string }[];
+  settings: { codex: Route; scan: ScanSettings & { mode: 'standard' | 'deep' } };
+  globalConfigFile: string;
   expiresAt: string;
   mock: boolean;
   inputs: ScanInputs;
 }
-const hash = (s: Buffer | string) => createHash('sha256').update(s).digest('hex');
-const inside = (root: string, path: string) => {
-  const r = relative(root, path);
-  return r !== '..' && !r.startsWith('..' + sep) && !isAbsolute(r);
-};
-const denied = new Set(['.git', '.ssh', '.aws', '.codex', '.runtime', 'node_modules']);
-function validateRelative(path: string) {
-  if (
-    !path ||
-    isAbsolute(path) ||
-    path.includes('\\') ||
-    path.split('/').some((p) => p === '..' || denied.has(p)) ||
-    /[\x00-\x1f*?[\]{}]/.test(path)
-  )
-    throw new Error(
-      'Use existing repository-relative paths without traversal, globs, credentials, or runtime directories.',
-    );
-  if (
-    path
-      .split('/')
-      .some(
-        (p) =>
-          /^\.env(?:\.|$)/.test(p) ||
-          /^(auth\.json|credentials(?:\.json)?|id_rsa|id_ed25519)$/.test(p),
-      )
-  )
-    throw new Error('Credential files cannot be supplied as scan context or scope.');
+
+/** Execution-only configuration. Never serialize this into RPC, events or history. */
+export interface PreparedScanPlan extends ScanPlan {
+  sdk: { codexOverrides: JsonObject; auth: ScanAuthMode };
 }
-async function checkedPath(root: string, path: string) {
-  validateRelative(path);
-  const canonical = await realpath(resolve(root, path));
-  if (!inside(root, canonical)) throw new Error('Path escapes the selected repository.');
-  validateRelative(relative(root, canonical) || '.');
-  return canonical;
+export function publicScanPlan(plan: ScanPlan): ScanPlan {
+  const copy = structuredClone(plan) as ScanPlan & { sdk?: unknown };
+  delete copy.sdk;
+  return copy;
 }
-async function contextInfo(root: string, path: string) {
-  const canonical = await checkedPath(root, path);
-  if (!['.md', '.txt', '.rst', '.json', '.yaml', '.yml'].includes(extname(path).toLowerCase()))
-    throw new Error(
-      'Context files must be text documentation (.md, .txt, .rst, .json, .yaml, .yml).',
-    );
-  const file = await open(canonical, constants.O_RDONLY | constants.O_NOFOLLOW);
-  try {
-    const info = await file.stat();
-    if (!info.isFile() || info.size > 64 * 1024)
-      throw new Error('Each context file must be a regular file of at most 64 KiB.');
-    const bytes = Buffer.alloc(64 * 1024 + 1);
-    const result = await file.read(bytes, 0, bytes.length, 0);
-    const content = bytes.subarray(0, result.bytesRead);
-    if (content.length > 64 * 1024 || content.includes(0))
-      throw new Error('Context file must be bounded text.');
-    return {
-      path: relative(root, canonical).split(sep).join('/'),
-      bytes: content.length,
-      sha256: hash(content),
-    };
-  } finally {
-    await file.close();
-  }
-}
+
 function parseInputs(value: unknown): ScanInputs {
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw new Error('Scan inputs must be an object.');
-  const data = value as Record<string, unknown>;
-  const allowed = ['repository', 'scopePaths', 'scanPrompt', 'contextFiles', 'mode'];
-  for (const key of Object.keys(data))
-    if (!allowed.includes(key))
-      throw new Error(
-        `Unsupported scan input: ${key}. Approval, auth and SDK settings cannot come from model tool input.`,
-      );
-  for (const key of ['repository', 'scanPrompt'])
-    if (
-      data[key] !== undefined &&
-      (typeof data[key] !== 'string' ||
-        (data[key] as string).length > (key === 'scanPrompt' ? 8000 : 4096))
-    )
-      throw new Error(`Invalid ${key}.`);
-  for (const key of ['scopePaths', 'contextFiles'])
-    if (
-      data[key] !== undefined &&
-      (!Array.isArray(data[key]) ||
-        data[key].length > (key === 'scopePaths' ? 32 : 8) ||
-        data[key].some((p: unknown) => typeof p !== 'string' || p.length > 4096))
-    )
-      throw new Error(`Invalid ${key}.`);
-  if (data.mode !== undefined && data.mode !== 'standard' && data.mode !== 'deep')
-    throw new Error('mode must be standard or deep.');
+  const data = (value ?? {}) as Record<string, unknown>;
+  const strings = (list: unknown) =>
+    list === undefined || (Array.isArray(list) && list.every((item) => typeof item === 'string'));
+  if (
+    typeof data !== 'object' ||
+    Array.isArray(data) ||
+    !['undefined', 'string'].includes(typeof data.repository) ||
+    !['undefined', 'string'].includes(typeof data.scanPrompt) ||
+    !['undefined', 'string'].includes(typeof data.changes) ||
+    !strings(data.scopePaths) ||
+    !strings(data.contextFiles) ||
+    ![undefined, 'standard', 'deep'].includes(data.mode as string)
+  )
+    throw new SecurityInputError(
+      'Scan inputs are repository, scopePaths, changes, scanPrompt, contextFiles and mode (standard or deep).',
+    );
+  if (data.changes && (data.scopePaths as string[] | undefined)?.length)
+    throw new SecurityInputError('Scan either paths or changes, not both.');
   return data as ScanInputs;
 }
-export async function prepareScan(
-  currentProject: string,
-  raw: unknown = {},
-  mock = false,
-): Promise<ScanPlan> {
-  const input = parseInputs(raw);
-  // Never let node:path fall back to the plugin process's working directory.
-  // A verified session location or an explicit absolute target must anchor the request.
-  const target = input.repository || '.';
-  if (!isAbsolute(target) && (!currentProject || !isAbsolute(currentProject)))
-    throw new Error('No local project is selected. Choose an absolute repository path explicitly.');
-  const repository = await realpath(isAbsolute(target) ? target : resolve(currentProject, target));
-  if (!(await stat(repository)).isDirectory()) throw new Error('Repository must be a directory.');
-  const home = await realpath(homedir());
-  if (inside(repository, home))
-    throw new Error(
-      'Choose a specific project repository explicitly. Your home folder and its parent directories cannot be scan targets.',
-    );
-  const global = await loadGlobalSettings();
-  const settings = await resolveSettings(global.settings, input.mode);
-  const merged = input;
-  const scopePaths: string[] = [];
-  for (const path of merged.scopePaths ?? [])
-    scopePaths.push(
-      relative(repository, await checkedPath(repository, path))
-        .split(sep)
-        .join('/') || '.',
-    );
-  const contextFiles = [];
-  for (const path of merged.contextFiles ?? [])
-    contextFiles.push(await contextInfo(repository, path));
-  if (contextFiles.reduce((n, f) => n + f.bytes, 0) > 128 * 1024)
-    throw new Error('Combined context is limited to 128 KiB.');
-  const scanPrompt = merged.scanPrompt ?? '';
-  const normalized = {
-    ...(input.mode ? { mode: input.mode } : {}),
-    repository,
-    scopePaths: [...new Set(scopePaths)],
-    scanPrompt,
-    contextFiles: [...new Set(contextFiles.map((f) => f.path))],
-  };
+
+/** The SDK target for a plan: the whole repository, paths, or a diff. */
+export async function scanTarget(input: Pick<ScanInputs, 'scopePaths' | 'changes'>) {
+  if (input.changes) {
+    const { DiffTarget } = await import('@openai/codex-security');
+    return input.changes === 'uncommitted'
+      ? DiffTarget.workingTree()
+      : DiffTarget.refs({ base: input.changes });
+  }
+  return input.scopePaths?.length ? [...input.scopePaths] : ('repository' as const);
+}
+
+async function resolveRepository(workspace: string, requested = '.') {
+  // Anchor on the session workspace or an explicit path, never the plugin's own cwd.
+  if (!isAbsolute(requested) && !isAbsolute(workspace ?? ''))
+    throw new SecurityInputError('No local project is selected. Give an absolute repository path.');
+  let repository: string;
+  try {
+    repository = await realpath(resolve(workspace ?? '', requested));
+    if (!(await stat(repository)).isDirectory()) throw new Error();
+  } catch {
+    throw new SecurityInputError(`Repository is not a directory: ${requested}`);
+  }
+  const fromRepository = relative(repository, await realpath(homedir()));
+  if (!fromRepository.startsWith('..' + sep) && fromRepository !== '..')
+    throw new SecurityInputError('Choose a project, not your home folder or one of its parents.');
+  return repository;
+}
+
+function describeAuthentication(authentication: ScanAuthentication): string {
+  switch (authentication.method) {
+    case 'api_key':
+      // Preflight names the key without checking it; say so now rather than at run time.
+      return `API key from ${authentication.source}${process.env[authentication.source] ? '' : " (not set in OpenCode's environment)"}`;
+    case 'aws_credentials':
+      return `AWS credentials (${authentication.source.replaceAll('_', ' ')})`;
+    case 'stored_credentials':
+      return 'Codex Security sign-in';
+    default:
+      return `provider ${authentication.method} authentication`;
+  }
+}
+
+/** Run one offline SDK call. Creating a client starts nothing and reads no credentials. */
+export async function withSdk<T>(
+  codexOverrides: JsonObject,
+  use: (client: CodexSecurity, sdk: typeof import('@openai/codex-security')) => Promise<T>,
+): Promise<T> {
+  const sdk = await import('@openai/codex-security');
+  const client = new sdk.CodexSecurity({ codexOverrides });
+  try {
+    return await use(client, sdk);
+  } finally {
+    await client.close();
+  }
+}
+
+/** The route a preflight resolved, with the endpoint from the same config merge the SDK runs. */
+export async function routeFrom(
+  sdk: typeof import('@openai/codex-security'),
+  codexOverrides: JsonObject,
+  preflight: Awaited<ReturnType<CodexSecurity['preflight']>>,
+): Promise<Route> {
+  // Includes a `<profile>.config.toml` file profile.
+  const config = await sdk.mergedCodexConfig({ codexOverrides }, codexHome());
+  const provider = preflight.modelProvider ?? 'openai';
+  const providers = config.model_providers as Record<string, { base_url?: string }> | undefined;
+  const baseUrl = provider === 'openai' ? config.openai_base_url : providers?.[provider]?.base_url;
   return {
-    settings,
-    globalConfigFile: global.path,
-    globalConfigDigest: global.digest,
-    id: randomUUID(),
-    ...normalized,
-    contextFiles,
-    expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
-    mock,
-    inputs: normalized,
+    provider,
+    ...(typeof baseUrl === 'string' ? { baseUrl } : {}),
+    model: preflight.model,
+    reasoningEffort: preflight.reasoningEffort,
+    daybreak: config.daybreak === true,
+    auth: describeAuthentication(preflight.authentication),
   };
 }
-export async function validatePlan(plan: ScanPlan) {
-  if (Date.now() >= Date.parse(plan.expiresAt))
-    throw new Error('Scan preview expired. Prepare and review it again.');
-  const current = await prepareScan(plan.repository, plan.inputs, plan.mock);
-  if (
-    current.repository !== plan.repository ||
-    current.globalConfigFile !== plan.globalConfigFile ||
-    current.globalConfigDigest !== plan.globalConfigDigest ||
-    JSON.stringify(current.settings) !== JSON.stringify(plan.settings) ||
-    JSON.stringify(current.contextFiles) !== JSON.stringify(plan.contextFiles) ||
-    JSON.stringify(current.scopePaths) !== JSON.stringify(plan.scopePaths)
-  )
-    throw new Error('Target or context changed after preview. Prepare and review it again.');
+
+/** Resolve inputs and settings through the SDK's own preflight. No inference, no network. */
+export async function prepareScan(
+  workspace: string,
+  raw: unknown = {},
+  mock = false,
+  purpose: 'scan' | 'validation' = 'scan',
+): Promise<PreparedScanPlan> {
+  const input = parseInputs(raw);
+  const repository = await resolveRepository(workspace, input.repository);
+  const settings = await loadSettings(input.mode);
+  const contextFiles = [...new Set(input.contextFiles ?? [])];
+  const scanSettings = { ...settings.scan };
+  if (purpose === 'validation') delete scanSettings.maxCostUsd;
+  const changes = input.changes?.trim() || undefined;
+  const target = await scanTarget({ scopePaths: input.scopePaths, changes });
+  return withSdk(settings.codex, async (client, sdk) => {
+    const preflight = await client.preflight(repository, {
+      ...scanSettings,
+      auth: settings.auth,
+      target,
+      // Relative to the repository; absolute paths may name files in other checkouts.
+      knowledgeBasePaths: contextFiles.map((path) => resolve(repository, path)),
+    });
+    const scopePaths = preflight.target.kind === 'paths' ? [...preflight.target.paths] : [];
+    return {
+      id: randomUUID(),
+      repository: preflight.repository,
+      scopePaths,
+      ...(changes ? { changes } : {}),
+      scanPrompt: input.scanPrompt ?? '',
+      contextFiles: contextFiles.map((path) => ({ path })),
+      settings: {
+        codex: await routeFrom(sdk, settings.codex, preflight),
+        scan: { ...scanSettings, mode: preflight.mode },
+      },
+      globalConfigFile: settings.path,
+      sdk: { codexOverrides: settings.codex, auth: settings.auth },
+      expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+      mock,
+      // No undefined members: the host only carries JSON values over RPC.
+      inputs: {
+        ...input,
+        repository: preflight.repository,
+        scopePaths,
+        ...(changes ? { changes } : {}),
+        contextFiles,
+      },
+    };
+  });
 }

@@ -52,24 +52,13 @@ try {
   // The consumer resolves transitive dependencies afresh; audit that tree too.
   run('npm', ['audit', '--prefix', consumer, '--omit=dev', '--audit-level=high']);
   const packageRoot = join(consumer, 'node_modules', 'opencode-codex-security');
-  for (const extra of [[], ['--codex-gate']]) {
-    process.stdout.write(
-      run(process.execPath, ['scripts/host-test.mjs', '--package', packageRoot, ...extra]),
-    );
-  }
-  for (const mode of [
-    [],
-    ['--real-default'],
-    ['--keyless-config'],
-    ['--openai-key'],
-    ['--header-config'],
-    ['--bedrock-config'],
-  ])
+  process.stdout.write(run(process.execPath, ['scripts/host-test.mjs', '--package', packageRoot]));
+  for (const mode of [[], ['--openai-key']])
     process.stdout.write(
       run('python3', ['scripts/packed-tui-test.py', '--package', packageRoot, ...mode]),
     );
   console.log(
-    'Exact packed artifact passed fixture, unapproved-SDK and native TUI tests in OpenCode. Nothing published.',
+    'Exact packed artifact passed host and native TUI preview tests in OpenCode. Nothing published.',
   );
 } finally {
   // These tarball/consumer files are disposable; never remove the supplied archive.

@@ -1,4 +1,5 @@
 import {
+  authenticationSummary,
   costSummary,
   count,
   emptyTelemetry,
@@ -6,13 +7,9 @@ import {
   measurementSummary,
   phaseSummary,
   recordActivity,
+  recordWarning,
 } from './run-telemetry.ts';
 import { summarizeScanResult } from './result-summary.ts';
-import {
-  requireSdkCredentials,
-  ProviderCredentialsRequiredError,
-  DedicatedSecurityCredentialsRequiredError,
-} from './credential-guard.ts';
 import { safeFinding } from './report-safety.ts';
 import { randomUUID } from 'node:crypto';
 import { basename, resolve } from 'node:path';
@@ -23,39 +20,23 @@ import type {
   ScanResult,
   Finding as SdkFinding,
 } from '@openai/codex-security';
-import { sdkConfiguration, sdkAuthentication, type ResolvedSdkSettings } from './sdk-settings.ts';
-import { ProviderConfigurationError } from './provider-config.ts';
+import { scanTarget, type PreparedScanPlan } from './scan-plan.ts';
+import { userMessage } from './errors.ts';
 import type { Finding, ScanState } from '../types.js';
 
-/** Per-run consent, never persisted. The caller must obtain this from the user. */
-export interface CodexScanApproval {
-  approved: true;
-  repository: string;
-  allowNetworkModelInference: true;
-  maxCostUsd?: number;
-  auth?: 'chatgpt' | 'api-key' | 'aws';
-  settings?: ResolvedSdkSettings;
-  scopePaths?: string[];
-  scanPrompt?: string;
-  contextFiles?: string[];
-}
 export type SecurityClient = Pick<CodexSecurity, 'run' | 'close'>;
 export type SecurityFactory = (
-  config?: CodexSecurityConfig,
-  auth?: 'chatgpt' | 'api-key' | 'aws',
+  config: CodexSecurityConfig,
 ) => SecurityClient | Promise<SecurityClient>;
-const realClient: SecurityFactory = async (config, auth) => {
-  await requireSdkCredentials(config, process.env, auth);
-  const { CodexSecurity } = await import('@openai/codex-security');
-  return new CodexSecurity(config ?? sdkConfiguration());
-};
+const realClient: SecurityFactory = async (config) =>
+  new (await import('@openai/codex-security')).CodexSecurity(config);
 function initial(repository: string, revision = 0, instanceId = ''): ScanState {
   return {
     telemetry: emptyTelemetry(),
     instanceId,
     status: 'idle',
     scanId: null,
-    phase: 'Awaiting per-scan approval',
+    phase: 'Ready',
     progress: { done: 0, total: 0 },
     findings: [],
     events: [],
@@ -124,15 +105,7 @@ export function scanBudgetFailure(
   };
 }
 
-export function unsupportedPricingMessage(error: unknown): string | undefined {
-  if (
-    error instanceof Error &&
-    error.message.startsWith('A scan cost limit is not available for the configured model:')
-  )
-    return 'The SDK cannot estimate costs for this model or gateway alias, so the operation stopped without removing its cost limit. This is a missing price entry, not evidence that the model is unavailable or retired. The configured model and provider were not changed. Verify which backend the alias routes to and its pricing before choosing a supported route; do not substitute a different model ID or remove the guard automatically. Estimates are not gateway billing totals or hard caps.';
-}
-
-/** Local coordinator; SDK inference is network-backed, not an offline scanner. */
+/** Runs one approved plan through the SDK and projects its callbacks into scan state. */
 export class CodexScanService {
   readonly root: string;
   #instanceId = randomUUID();
@@ -171,37 +144,22 @@ export class CodexScanService {
       }
     }
   }
-  start(approval?: CodexScanApproval): ScanState {
+  start(plan: PreparedScanPlan): ScanState {
     if (this.#disposed) throw new Error('Scan service is closed');
     if (this.#busy) return this.getState();
-    if (
-      !approval ||
-      approval.approved !== true ||
-      approval.allowNetworkModelInference !== true ||
-      approval.repository !== this.root ||
-      (approval.maxCostUsd !== undefined &&
-        (!Number.isFinite(approval.maxCostUsd) || approval.maxCostUsd <= 0))
-    ) {
-      throw new Error(
-        'Per-scan approval required for this exact repository, network model inference, and a positive estimated USD cost limit if supplied.',
-      );
-    }
     this.#state = {
       ...initial(basename(this.root), this.#state.revision, this.#instanceId),
       status: 'running',
-      scanId: null,
       startedAt: new Date().toISOString(),
       phase: 'Starting Codex Security',
     };
     this.#busy = true;
     this.#controller = new AbortController();
-    this.#emit(
-      'Approved SDK scan started. Local runner and artifacts; network model inference. Any configured cost limit is estimated, not a guaranteed billing cap. No dollar limit applies when omitted.',
-    );
-    this.#task = this.#run(structuredClone(approval), this.#controller.signal);
+    this.#emit('Scan started.');
+    this.#task = this.#run(structuredClone(plan), this.#controller.signal);
     return this.getState();
   }
-  async #run(approval: CodexScanApproval, signal: AbortSignal) {
+  async #run(plan: PreparedScanPlan, signal: AbortSignal) {
     let client: SecurityClient | undefined;
     let observing = true;
     let outcome: 'completed' | 'cancelled' | 'error' = 'error';
@@ -209,25 +167,15 @@ export class CodexScanService {
     let terminalPhase = 'Codex Security scan failed';
     try {
       signal.throwIfAborted();
-      if (approval.settings && approval.auth && approval.auth !== approval.settings.codex.auth)
-        throw new ProviderConfigurationError(
-          'Approved authentication does not match the selected provider.',
-        );
-      client = await this.#factory(
-        sdkConfiguration(approval.settings, approval.auth),
-        approval.settings?.codex.auth ?? approval.auth ?? 'chatgpt',
-      );
+      client = await this.#factory({ codexOverrides: plan.sdk.codexOverrides });
       signal.throwIfAborted();
       const telemetry = (this.#state.telemetry ??= emptyTelemetry());
       const options: ScanOptions = {
-        target: approval.scopePaths?.length ? [...approval.scopePaths] : 'repository',
-        scanPrompt: approval.scanPrompt ?? '',
-        knowledgeBasePaths: [...(approval.contextFiles ?? [])],
-        ...approval.settings?.scan,
-        mode: approval.settings?.scan.mode ?? 'standard',
-        auth: sdkAuthentication(approval.settings?.codex.auth ?? approval.auth ?? 'chatgpt'),
-        ...(approval.maxCostUsd !== undefined ? { maxCostUsd: approval.maxCostUsd } : {}),
-        ownerSuggestions: false,
+        ...plan.settings.scan,
+        auth: plan.sdk.auth,
+        target: await scanTarget(plan),
+        ...(plan.scanPrompt ? { scanPrompt: plan.scanPrompt } : {}),
+        knowledgeBasePaths: plan.contextFiles.map((file) => resolve(this.root, file.path)),
         signal,
         onProgress: (progress) => {
           if (!observing || signal.aborted) return;
@@ -340,11 +288,26 @@ export class CodexScanService {
             this.#emit();
           }
         },
-        onWarning: () => {
-          if (observing && !signal.aborted)
-            this.#emit(
-              'SDK reported a warning; inspect local SDK artifacts before relying on results.',
-            );
+        onAuthentication: (authentication) => {
+          if (!observing || signal.aborted) return;
+          telemetry.authentication = authenticationSummary(authentication);
+          this.#emit();
+        },
+        onTrustedAccessStatus: (status) => {
+          if (!observing || signal.aborted) return;
+          telemetry.trustedAccess = status;
+          this.#emit();
+        },
+        // Warning text can quote raw error output (SDK api.js formats caught errors into it), so
+        // only the structured kind is kept.
+        onWarning: (_warning, details) => {
+          if (!observing || signal.aborted) return;
+          recordWarning(telemetry, details);
+          this.#emit(
+            details?.kind === 'target_changed'
+              ? 'The repository changed while the scan was running.'
+              : 'SDK reported a warning; inspect local SDK artifacts before relying on results.',
+          );
         },
       };
       const result: ScanResult = await client.run(this.root, options);
@@ -372,7 +335,6 @@ export class CodexScanService {
       terminalPhase = signal.aborted
         ? 'Cancelled; results incomplete'
         : 'Codex Security scan failed';
-      // SDK errors can contain source, credentials, or command output. Do not send raw details to views.
       const budget = signal.aborted ? undefined : scanBudgetFailure(error);
       if (budget) {
         this.#state.estimatedCostUsd = budget.estimatedCostUsd;
@@ -387,12 +349,7 @@ export class CodexScanService {
       this.#state.error = signal.aborted
         ? null
         : (budget?.message ??
-          (error instanceof DedicatedSecurityCredentialsRequiredError ||
-          error instanceof ProviderCredentialsRequiredError ||
-          error instanceof ProviderConfigurationError
-            ? error.message
-            : (unsupportedPricingMessage(error) ??
-              'SDK scan failed. Check authentication, runtime prerequisites, and local SDK diagnostics.')));
+          userMessage(error, 'Scan failed. Check the Codex Security logs and runtime setup.'));
       terminalMessage = signal.aborted
         ? 'Cancellation requested; SDK run stopped. Partial results are not a completed scan.'
         : this.#state.error!;

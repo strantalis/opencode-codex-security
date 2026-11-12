@@ -3,7 +3,16 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['node_modules/**', '.runtime/**', 'dist/**', 'evidence/**', 'coverage/**'] },
+  {
+    ignores: [
+      '.claude/**',
+      'node_modules/**',
+      '.runtime/**',
+      'dist/**',
+      'evidence/**',
+      'coverage/**',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -24,12 +33,7 @@ export default tseslint.config(
     },
   },
   {
-    files: [
-      'src/core/report-safety.ts',
-      'src/core/scan-plan.ts',
-      'src/core/sdk-settings.ts',
-      'src/core/provider-config.ts',
-    ],
+    files: ['src/core/report-safety.ts'],
     rules: { 'no-control-regex': 'off' },
   },
   { files: ['**/*.cjs'], rules: { '@typescript-eslint/no-require-imports': 'off' } },

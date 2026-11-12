@@ -1,227 +1,24 @@
-import { createComponent as e, createElement as t, createTextNode as n, effect as r, insert as i, insertNode as a, memo as o, setProp as s } from "@opentui/solid";
-import { Plugin as c } from "@opencode/plugin/tui";
-import { For as l, Show as u, createEffect as d, createSignal as f, on as p } from "solid-js";
-import { Rpc as m } from "@opencode/plugin/rpc";
-// src/rpc.ts
-var h = {
-	type: "object",
-	additionalProperties: !1
-}, g = { "security.setup": h }, _ = {
-	type: "object",
-	properties: {
-		mode: {
-			type: "string",
-			enum: ["standard", "deep"],
-			description: "Optional mode for this scan. Explicit user request wins; otherwise omit to use global mode (standard by default). Do not ask when the request is clear."
-		},
-		repository: {
-			type: "string",
-			description: "Optional local repository path. Defaults to the known current OpenCode workspace; use an absolute path when session context is unknown. This request only, never a global target."
-		},
-		scopePaths: {
-			type: "array",
-			items: { type: "string" },
-			maxItems: 32,
-			description: "Existing paths relative to repository. Omit or use [] for whole repository. No globs or traversal."
-		},
-		scanPrompt: {
-			type: "string",
-			maxLength: 8e3,
-			description: "Focused security instructions and relevant architecture/threat assumptions. Ask the user for missing material context. Never copy whole conversation or include secrets."
-		},
-		contextFiles: {
-			type: "array",
-			items: { type: "string" },
-			maxItems: 8,
-			description: "Repository-relative text documentation to add as supporting context. No credentials or files outside repository."
-		}
-	},
-	additionalProperties: !1
-}, v = {
-	type: "object",
-	properties: {
-		kind: {
-			type: "string",
-			enum: ["policy", "validation"]
-		},
-		repository: { type: "string" },
-		path: { type: "string" },
-		contextFiles: {
-			type: "array",
-			items: { type: "string" },
-			maxItems: 8
-		},
-		finding: { anyOf: [{ type: "string" }, { type: "object" }] }
-	},
-	required: ["kind"],
-	additionalProperties: !1
-}, y = {
-	type: "object",
-	properties: { operationId: { type: "string" } },
-	required: ["operationId"],
-	additionalProperties: !1
-}, b = m.define({
-	id: "gill.security",
-	methods: {
-		capabilities: {
-			input: h,
-			output: { type: "object" }
-		},
-		operationPrepare: {
-			input: v,
-			output: { type: "object" },
-			errors: g
-		},
-		operationStart: {
-			errors: g,
-			input: {
-				type: "object",
-				properties: {
-					operationId: { type: "string" },
-					approveOpenAIInference: { type: "boolean" },
-					approveUncappedValidation: { type: "boolean" }
-				},
-				required: ["operationId"],
-				additionalProperties: !1
-			},
-			output: { type: "object" }
-		},
-		operationStatus: {
-			input: y,
-			output: { type: "object" }
-		},
-		operationList: {
-			input: h,
-			output: { type: "object" }
-		},
-		operationAnswer: {
-			input: {
-				type: "object",
-				properties: {
-					operationId: { type: "string" },
-					questionId: { type: "string" },
-					answer: {
-						type: "string",
-						maxLength: 16384
-					}
-				},
-				required: [
-					"operationId",
-					"questionId",
-					"answer"
-				],
-				additionalProperties: !1
-			},
-			output: { type: "object" }
-		},
-		operationCancel: {
-			input: y,
-			output: { type: "object" }
-		},
-		prepare: {
-			input: _,
-			output: { type: "object" },
-			errors: g
-		},
-		start: {
-			errors: g,
-			input: {
-				type: "object",
-				properties: {
-					planId: { type: "string" },
-					approveOpenAIInference: { type: "boolean" }
-				},
-				additionalProperties: !1
-			},
-			output: { type: "object" }
-		},
-		list: {
-			input: h,
-			output: { type: "object" }
-		},
-		status: {
-			input: {
-				type: "object",
-				properties: {
-					runId: { type: "string" },
-					planId: { type: "string" }
-				},
-				additionalProperties: !1
-			},
-			output: { type: "object" }
-		},
-		cancel: {
-			input: {
-				type: "object",
-				properties: { runId: { type: "string" } },
-				additionalProperties: !1
-			},
-			output: { type: "object" }
-		}
-	},
-	events: {
-		changed: { schema: { type: "object" } },
-		operationChanged: { schema: { type: "object" } }
-	}
-});
+import { createComponent as e, createElement as t, createTextNode as n, effect as r, insert as i, insertNode as a, memo as o, setProp as s, use as c, useTerminalDimensions as l } from "@opentui/solid";
+import { Plugin as u } from "@opencode/plugin/tui";
+import { For as d, Show as f, createEffect as p, createSignal as m, on as h, onCleanup as g, onMount as _ } from "solid-js";
+import { Rpc as v } from "@opencode/plugin/rpc";
 // src/types.ts
-function x(e) {
+function y(e) {
 	if (!e || typeof e != "object" || !("status" in e) || !("findings" in e) || !Array.isArray(e.findings)) throw Error("Invalid security state");
 	return e;
 }
-// src/core/provider-validation.ts
-var S = class extends Error {
-	constructor(e) {
-		super(e), this.name = "ProviderConfigurationError";
-	}
-}, C = (e) => typeof e == "object" && !!e && !Array.isArray(e);
-// src/core/bedrock-config.ts
-function w(e) {
-	if (!C(e) || Object.keys(e).some((e) => !["region", "profile"].includes(e)) || typeof e.region != "string" || !/^(?:(?:af|ap|ca|eu|il|me|mx|sa|us)-[a-z]+|us-gov-(?:east|west))-[1-9][0-9]?$/.test(e.region) || e.profile !== void 0 && (typeof e.profile != "string" || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(e.profile))) throw new S("codex.bedrock accepts an explicit AWS region in the commercial or GovCloud partition and an optional profile name only. China and isolated partitions are unsupported. Credential values, endpoint overrides, and arbitrary AWS options are not accepted.");
-	return {
-		region: e.region,
-		...e.profile === void 0 ? {} : { profile: e.profile }
-	};
-}
-function T(e) {
-	let { region: t } = w(e);
-	return `https://bedrock-mantle.${t}.api.aws/openai/v1`;
-}
-// src/plan-view.ts
-function E(e) {
-	return e === void 0 ? "No dollar-based stop limit is configured. Provider charges still apply." : `USD ${e} estimated stop threshold, not a hard cap; in-flight usage may exceed it.`;
-}
-function D(e) {
-	let { provider: t, bedrock: n, auth: r, source: i, model: a } = e.codex, o = n ? `Amazon Bedrock (${T(n)}, region ${n.region})` : t ? `${t.id} (${t.baseUrl})` : r === "api-key" ? "OpenAI (https://api.openai.com/v1)" : "OpenAI", s = n ? `existing AWS ${n.profile ? `profile ${n.profile}` : "credential chain"} (access unverified; may use existing AWS credential helpers and identity services); no OpenAI sign-in or key` : r === "api-key" ? t ? `API key from environment variable ${t.envKey} (name only)` : "OpenAI API key from OPENAI_API_KEY, otherwise CODEX_API_KEY (names only; no sign-in or credential import)" : "dedicated ChatGPT sign-in", c = t?.envHttpHeaders && Object.keys(t.envHttpHeaders).length ? `; additional request headers from environment (names only): ${Object.entries(t.envHttpHeaders).map(([e, t]) => `${e} ← ${t}`).join(", ")}` : "", l = c && e.scan.mode === "deep" ? "; Deep workers may use private temporary credential files; interrupted runs may leave them" : "";
-	return `${o}; auth: ${s}${c}; model: ${a}${i ? `; config ${i.path}${i.profile ? `, profile ${i.profile}` : ""}, SHA-256 ${i.digest}` : ""}${t ? "; gateway upstream routing is not verified" : ""}${l}`;
-}
-function O(e) {
-	return `${e.mock ? "MOCK SDK TEST: no model calls or uploads.\n" : ""}Repository: ${e.repository}\nScope: ${e.scopePaths.join(", ") || "whole repository"}\nScan prompt:\n${e.scanPrompt || "(none)"}\nContext files: ${e.contextFiles.map((e) => `${e.path} (${e.bytes} bytes, SHA-256 ${e.sha256})`).join("; ") || "(none)"}\nSDK settings: model ${e.settings.codex.model}, reasoning ${e.settings.codex.reasoningEffort}, Daybreak ${e.settings.codex.daybreak ? "on" : "off"}; mode ${e.settings.scan.mode} (${e.inputs.mode ? "per-scan choice" : "global default"}), access program ${e.settings.scan.cyberAccessProgram ?? "Codex default"}, ${E(e.settings.scan.maxCostUsd)} Account/model/Daybreak access is not verified by these settings.\nGlobal config: ${e.globalConfigFile}${e.globalConfigDigest ? "" : " (not present)"}\nOnly this explicit prompt and these files are added as context; conversation history is not copied. Scoped paths guide the scan, not a filesystem sandbox.\n${e.mock ? "Synthetic SDK responses only." : `Repository source and listed context go to ${D(e.settings)}. Local results. ${E(e.settings.scan.maxCostUsd)}`}`;
-}
-function k(e, t) {
-	let { mode: n, ...r } = e;
-	return t === "default" ? r : {
-		...r,
-		mode: t
-	};
-}
-function A(e) {
-	return !!e && (e.startsWith("/") || /^[A-Za-z]:[\\/]/.test(e));
-}
-function j(e, t = Date.now(), n) {
-	let r = (e) => !!e?.plan && !e.planConsumed && Date.parse(e.plan.expiresAt) > t;
-	if (n) return e?.drafts.find((e) => e.plan?.id === n && r(e));
-	if (r(e?.preview)) return e.preview;
-}
 // src/scan-display.ts
-var M = (e) => e.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1) || e || "Project";
-function N(e) {
-	return e.plan?.scanPrompt?.split("\n")[0].slice(0, 72) || (e.plan?.scopePaths.length ? e.plan.scopePaths.join(", ") : M(e.repository));
+var b = (e) => e.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1) || e || "Project";
+function x(e) {
+	return e.plan?.scanPrompt?.split("\n")[0].slice(0, 72) || (e.plan?.scopePaths.length ? e.plan.scopePaths.join(", ") : b(e.repository));
 }
-function P(e) {
-	return e.plan?.scopePaths.join(", ") || "Whole repository";
+function S(e) {
+	return e.changes ? e.changes === "uncommitted" ? "Uncommitted changes" : `Changes since ${e.changes}` : e.scopePaths.join(", ") || "Whole repository";
 }
-function F(e) {
+function C(e) {
+	return e.plan ? S(e.plan) : "Whole repository";
+}
+function w(e) {
 	let t = e.replace(/\s*\((files|reviews)\)$/, "").replaceAll("_", " "), n = {
 		preflight: "Preparing scan",
 		discovery: "Reviewing source",
@@ -233,7 +30,7 @@ function F(e) {
 	};
 	return n[t] ? n[t] : t ? t[0].toUpperCase() + t.slice(1) : "Starting scan";
 }
-function I(e) {
+function T(e) {
 	let t = e.telemetry?.phaseProgress, n = t ? t.reviews && t.reviews.total > 0 ? {
 		...t.reviews,
 		unit: "reviews"
@@ -250,76 +47,79 @@ function I(e) {
 		total: Number.isFinite(n.total) ? Math.max(0, n.total) : 0
 	};
 }
-function L(e) {
+function E(e) {
 	return e.status === "running" && e.telemetry?.lifecycle?.status === "completed";
 }
-function R(e) {
+function D(e) {
 	let t = e.telemetry?.lifecycle?.status;
 	return e.status === "running" && t !== void 0 && t !== "running";
 }
 function ee(e) {
-	return e.status === "cancelled" ? "Scan cancelled" : e.status === "error" ? "Scan stopped" : e.status === "completed" ? "Scan complete" : L(e) ? "Finalizing results" : R(e) ? e.telemetry?.lifecycle?.status === "failed" ? "Finishing failed scan" : "Finishing cancelled scan" : e.deepProgress?.consolidating ? "Consolidating deep review" : F(e.telemetry?.phaseProgress?.phase ?? e.phase);
+	return e.status === "cancelled" ? "Scan cancelled" : e.status === "error" ? "Scan stopped" : e.status === "completed" ? "Scan complete" : E(e) ? "Finalizing results" : D(e) ? e.telemetry?.lifecycle?.status === "failed" ? "Finishing failed scan" : "Finishing cancelled scan" : e.deepProgress?.consolidating ? "Consolidating deep review" : w(e.telemetry?.phaseProgress?.phase ?? e.phase);
 }
 function te(e) {
-	return e.status === "running" && !R(e) && !e.deepProgress?.consolidating;
+	return e.status === "running" && !D(e) && !e.deepProgress?.consolidating;
 }
-function ne(e) {
-	let { done: t, total: n, unit: r } = I(e);
+function O(e) {
+	let { done: t, total: n, unit: r } = T(e);
 	return n > 0 ? `${t} of ${n} ${r}` : t > 0 ? `${t} ${r} completed` : "Waiting for progress details";
 }
-function re(e) {
-	let t = e.telemetry?.phaseProgress;
-	return t?.reviews && t.reviews.total > 0 && t.files.total > 0 ? `Current phase only · ${t.files.done} of ${t.files.total} files` : "Current phase only";
-}
-function ie(e) {
+function ne(e) {
 	let t = e.deepProgress;
 	return t ? `${t.completed} deep ${t.completed === 1 ? "pass" : "passes"} complete · ${t.active} active · cap ${t.maximum}` : "";
 }
-function ae(e) {
-	return R(e) && !L(e) ? `The SDK reported ${e.telemetry?.lifecycle?.status === "failed" ? "a scan failure" : "cancellation"}. Waiting for the final result; this is not a completed assessment.` : L(e) ? "Analysis complete. Waiting for the SDK’s final result and findings." : "Findings will appear when the scan finishes.";
+function k(e) {
+	return D(e) && !E(e) ? `The SDK reported ${e.telemetry?.lifecycle?.status === "failed" ? "a scan failure" : "cancellation"}. Waiting for the final result; this is not a completed assessment.` : E(e) ? "Analysis complete. Waiting for the SDK’s final result and findings." : "Findings will appear when the scan finishes.";
 }
-var z = (e) => e > 0 && e < .01 ? "<0.01" : e.toFixed(2);
-function oe(e) {
+var A = (e) => e > 0 && e < .01 ? "<0.01" : e.toFixed(2);
+function j(e) {
 	let t = e.telemetry?.measurement;
 	if (t) {
 		let e = t.cost;
 		if (!e || !Number.isFinite(e.baselineUsd)) return "Cost estimate unavailable";
-		let n = `USD ${z(e.baselineUsd)}`;
+		let n = `USD ${A(e.baselineUsd)}`;
 		return t.coverage === "partial" ? `Partial estimate ${n}` : t.coverage === "unavailable" ? `Last estimate ${n} · coverage unavailable` : `Estimated usage ${n}`;
 	}
-	return e.estimatedCostUsd !== void 0 && Number.isFinite(e.estimatedCostUsd) ? `Estimated usage USD ${z(e.estimatedCostUsd)} · coverage unknown` : "Cost estimate unavailable";
+	return e.estimatedCostUsd !== void 0 && Number.isFinite(e.estimatedCostUsd) ? `Estimated usage USD ${A(e.estimatedCostUsd)} · coverage unknown` : "Cost estimate unavailable";
 }
-function se(e) {
+function M(e) {
 	let t = e.telemetry?.measurement;
 	if (!t) return "Usage coverage was not reported. Estimates are not invoices.";
 	let n = t.missingThreadCount;
 	return t.coverage === "partial" ? `Measured subtotal only${n ? `; ${n} ${n === 1 ? "session is" : "sessions are"} missing` : ""}. The full estimate may be higher.` : t.coverage === "unavailable" ? "The SDK could not establish usage coverage." : "All reported sessions are included. This is a usage estimate, not an invoice.";
 }
-function B(e) {
+function N(e) {
 	return [...e.telemetry?.activity ?? []].sort((e, t) => t.updatedAt.localeCompare(e.updatedAt));
 }
-function ce(e) {
+function P(e) {
 	let t = /* @__PURE__ */ new Set();
-	return B(e).filter((e) => {
+	return N(e).filter((e) => {
 		let n = e.worker ?? "coordinator";
 		return !t.has(n) && (t.add(n), !0);
 	});
 }
-function le(e) {
+function re(e) {
 	return e === void 0 ? "Coordinator" : `Worker ${e}`;
 }
-function ue(e, t) {
-	return e === "running" && (t.status !== "running" || R(t) || t.deepProgress?.consolidating) ? "Last reported running" : e === "running" ? "Working" : e === "failed" ? "Failed" : "Done";
+function ie(e, t) {
+	return e === "running" && (t.status !== "running" || D(t) || t.deepProgress?.consolidating) ? "Last reported running" : e === "running" ? "Working" : e === "failed" ? "Failed" : "Done";
 }
-function de(e) {
+function F(e) {
 	let t = e.telemetry?.observedWorkers.length;
 	return t ? `${t} worker ${t === 1 ? "session" : "sessions"} observed` : "";
 }
-function fe(e) {
+function I(e) {
 	let t = e.workers;
-	return t ? `${F(t.phase)}: ${t.started} started · ${t.planned} planned` : "";
+	return t ? `${w(t.phase)}: ${t.started} started · ${t.planned} planned` : "";
 }
-function pe(e) {
+function L(e) {
+	let t = e.telemetry?.trustedAccess;
+	return t === "not_granted" ? "Trusted Access for Cyber: not granted" : t === "unknown" ? "Trusted Access for Cyber: not verified" : "";
+}
+function R(e) {
+	return e.telemetry?.warnings?.targetChanged ? "The repository changed during the scan" : "";
+}
+function ae(e) {
 	let t = e.assessment?.returnedFindings;
 	return t ? t.total === null ? "Returned finding counts unavailable" : [
 		`${t.reportable ?? "Unknown"} reportable`,
@@ -327,7 +127,7 @@ function pe(e) {
 		...t.unclassified ? [`${t.unclassified} unclassified`] : []
 	].join(" · ") : `${e.findings.length} ${e.findings.length === 1 ? "finding" : "findings"} shown${e.skipped ? ` · ${e.skipped} other items omitted` : ""}`;
 }
-function me(e) {
+function oe(e) {
 	let t = e.assessment?.coverage;
 	return !t || t.source === "unavailable" ? "Coverage details unavailable" : [
 		t.surfaces.total === null ? "Surfaces unavailable" : `${t.surfaces.total} review ${t.surfaces.total === 1 ? "surface" : "surfaces"}`,
@@ -335,11 +135,11 @@ function me(e) {
 		t.openQuestions.total === null ? "Open questions unavailable" : `${t.openQuestions.total} open ${t.openQuestions.total === 1 ? "question" : "questions"}`
 	].join(" · ");
 }
-function he(e) {
+function z(e) {
 	let t = e.assessment?.repositoryFindings;
 	return t?.available ? `${t.open ?? "Unknown"} open · ${t.closed ?? "Unknown"} closed · ${t.confirmedInLatestScan ?? "Unknown"} confirmed in this scan` : "Repository matching unavailable";
 }
-function ge(e, t, n = Date.now()) {
+function B(e, t, n = Date.now()) {
 	if (!e) return "";
 	let r = Math.max(0, Math.floor(((t ? Date.parse(t) : n) - Date.parse(e)) / 1e3));
 	return Number.isFinite(r) ? r < 60 ? `${r}s` : r < 3600 ? `${Math.floor(r / 60)}m ${r % 60}s` : `${Math.floor(r / 3600)}h ${Math.floor(r % 3600 / 60)}m` : "";
@@ -347,940 +147,1990 @@ function ge(e, t, n = Date.now()) {
 function V(e) {
 	return e && typeof e == "object" && "message" in e ? String(e.message) : String(e);
 }
-function H(e) {
+function se(e) {
 	return `${e.title}\nSeverity: ${e.severity} · ${e.cwe}\nLocation: ${e.path}:${e.line}\n\n${e.summary}\n\nEvidence:\n${e.evidence}\n\nSuggested remediation:\n${e.remediation}`;
 }
-// src/security-tui-operations.tsx
-function _e(r, o, c, d, p) {
-	let m = r.client.rpc(b), [h, g] = f([]), [_, v] = f(), [y, x] = f(!1), [S, C] = f(!1), [w, T] = f(""), [E, O] = f({
-		policy: !1,
-		validation: !1,
-		questionAnswers: !1
-	}), k = !1, A = () => h().find((e) => e.operationId === _()) ?? h()[0], j = async () => {
-		if (!(k || !E().policy && !E().validation)) try {
-			let e = await m.operationList({}, { location: o });
-			k || g(e.operations);
-		} catch (e) {
-			!k && y() && T(V(e));
-		}
+function ce(e) {
+	let t = (e) => (e?.match(/\d+/g) ?? []).map(Number), [n = 0, r = 0] = t(e.node), [i = 0, a = 0] = t(e.python), o = (e) => e ? `found ${e}` : "not found";
+	return [...n === 24 || n === 26 || n === 22 && r >= 20 ? [] : [`Node 22.20+, 24 or 26 (${o(e.node)})`], ...i > 3 || i === 3 && a >= 10 ? [] : [`Python 3.10+ (${o(e.python)})`]];
+}
+function le(e) {
+	return {
+		verified: "Fix verified",
+		no_change: "No change needed",
+		blocked: "Fix blocked",
+		failed: "Fix failed verification"
+	}[e] ?? "Fix";
+}
+function H(e) {
+	if (!e) return "";
+	if (e.pending) return e.pending.code ? `Enter code ${e.pending.code} at ${e.pending.url}` : `Finish signing in in your browser: ${e.pending.url}`;
+	let t = {
+		"signed-in": "",
+		shared: "Using your Codex CLI sign-in; sign in here to keep the two separate",
+		needed: "Not signed in to Codex Security"
+	}[e.state];
+	return [e.error, t].filter(Boolean).join(" · ");
+}
+var U = [
+	"critical",
+	"high",
+	"medium",
+	"low"
+];
+function ue(e) {
+	return [...e.findings].sort((e, t) => U.indexOf(e.severity) - U.indexOf(t.severity));
+}
+function W(e) {
+	return U.map((t) => [t, e.findings.filter((e) => e.severity === t).length]).filter(([, e]) => e).map(([e, t]) => `${t} ${e}`).join(" · ");
+}
+function de(e, t) {
+	let n = e.reviews?.[t];
+	if (n?.fix?.resolution === "applied") return {
+		label: "Fix applied",
+		tone: "good"
 	};
-	m.capabilities({}, { location: o }).then((e) => {
-		k || O(e);
-	}).catch(() => {});
-	let M = async (e) => {
-		if (!(k || S())) {
-			C(!0), T("");
-			try {
-				await e(), k || await j();
-			} catch (e) {
-				k || T(V(e));
-			} finally {
-				k || C(!1);
-			}
-		}
-	}, N = () => {
-		x(!0), d();
-	}, P = async (e) => {
-		await r.ui.dialog.confirm({
-			title: e.kind === "policy" ? "Review policy generation" : "Review source validation",
-			message: `Repository: ${e.repository}\n${e.plan.path ? "Component: " + e.plan.path + "\n" : ""}Context: ${e.plan.contextFiles.map((e) => e.path).join(", ") || "No additional documents"}\n\n${e.plan.mock ? "Mock operation: no model calls or uploads." : `Repository source, the selected finding if any, and listed context go to ${D(e.plan.settings)}.\n${e.plan.costNotice}`}\n\n${e.kind === "policy" ? "Returns a draft only. Existing files stay unchanged." : "Static source assessment only. No exploit execution or patch application."}\n\nModel: ${e.plan.settings.codex.model} · ${e.plan.settings.codex.reasoningEffort} reasoning`,
+	if (n?.fix?.resolution === "pending") return {
+		label: "Fix ready",
+		tone: "warn"
+	};
+	let r = n?.validation?.disposition;
+	if (r === "reportable") return {
+		label: "Confirmed",
+		tone: "warn"
+	};
+	if (r === "suppressed" || r === "not_applicable") return {
+		label: "Dismissed",
+		tone: "muted"
+	};
+	if (r === "deferred") return {
+		label: "Unclear",
+		tone: "muted"
+	};
+}
+function G(e) {
+	return e.split("\n").map((e) => ({
+		text: e,
+		kind: e.startsWith("+++") || e.startsWith("---") || e.startsWith("diff ") ? "meta" : e.startsWith("@@") ? "hunk" : e.startsWith("+") ? "add" : e.startsWith("-") ? "del" : "context"
+	}));
+}
+function fe(e) {
+	return {
+		reportable: "Confirmed in source",
+		suppressed: "Not confirmed",
+		not_applicable: "Not applicable",
+		deferred: "Undecided: needs more context"
+	}[e] ?? e.replaceAll("_", " ");
+}
+// src/plan-view.ts
+function pe(e) {
+	return e === void 0 ? "No cost limit is configured." : `Stops at an estimated USD ${e}. This is an estimate, not a billing cap.`;
+}
+function K(e) {
+	let { provider: t, baseUrl: n, auth: r, model: i, reasoningEffort: a } = e.codex;
+	return `${t}${n ? ` (${n})` : ""} · ${i}, ${a} reasoning · ${r}`;
+}
+function q(e) {
+	return [
+		...e.mock ? ["MOCK SDK TEST: no model calls or uploads."] : [],
+		`Repository: ${e.repository}`,
+		`Scope: ${S(e)}`,
+		`Mode: ${e.settings.scan.mode}`,
+		...e.scanPrompt ? [`Instructions: ${e.scanPrompt}`] : [],
+		...e.contextFiles.length ? [`Context: ${e.contextFiles.map((e) => e.path).join(", ")}`] : [],
+		`Sent to: ${K(e.settings)}`,
+		pe(e.settings.scan.maxCostUsd)
+	].join("\n");
+}
+function me(e) {
+	return !!e && (e.startsWith("/") || /^[A-Za-z]:[\\/]/.test(e));
+}
+// src/tui/text.ts
+function J(e) {
+	let { route: t, profile: n, runtime: r } = e, i = [
+		t.provider,
+		`${t.model} (${t.reasoningEffort})`,
+		t.auth,
+		...n ? [`profile ${n}`] : []
+	].join(" · "), a = ce(r), o = e.signIn && (e.signIn.state === "needed" || e.signIn.pending || e.signIn.error) ? H(e.signIn) : "";
+	return {
+		text: i,
+		warnings: [...a.map((e) => `Scans need ${e}`), ...o ? [o] : []]
+	};
+}
+function he(e) {
+	return e === void 0 ? "No cost limit set. Usage shown is an estimate." : `Stops near USD ${e} (estimated; in-flight work can go over).`;
+}
+function ge(e) {
+	return e.status === "running" ? "Running" : e.status === "completed" ? "Done" : e.status === "cancelled" ? "Cancelled" : e.status === "error" ? "Failed" : "Idle";
+}
+function _e(e, t) {
+	let n = [
+		ge(e),
+		b(e.repository),
+		C(e),
+		e.mode ?? "standard"
+	];
+	return e.status === "running" ? n.push(B(e.startedAt, null, t)) : e.status === "completed" && n.push(`${e.findings.length} ${e.findings.length === 1 ? "finding" : "findings"}`), n.filter(Boolean).join(" · ");
+}
+function ve(e) {
+	return {
+		policy: "Policy draft",
+		validation: "Validation",
+		fix: "Fix"
+	}[e.kind];
+}
+function ye(e) {
+	return [
+		ve(e),
+		w(e.status),
+		b(e.repository),
+		...e.kind === "policy" && e.plan.path ? [e.plan.path] : []
+	].join(" · ");
+}
+var be = (e) => !!e && [
+	"prepared",
+	"running",
+	"awaiting_answers"
+].includes(e.status);
+function xe(e, t) {
+	let n = e.replace(/\s+/g, " ");
+	return n.length <= t ? n : n.slice(0, Math.max(0, t - 1)) + "…";
+}
+function Se(e, t, n) {
+	let r = Math.max(0, Math.min(t - Math.floor(n / 2), e.length - n));
+	return {
+		start: r,
+		items: e.slice(r, r + n)
+	};
+}
+function Ce(e) {
+	return e.split(/[,\n]/).map((e) => e.trim()).filter(Boolean);
+}
+// src/security-tui-operations.tsx
+function we(e, t, n, r) {
+	let { client: i, location: a } = t, o = async (n) => {
+		let r = n.plan, o = n.kind === "policy" ? `Component: ${r.path ?? "."}` : `Finding: ${(r.finding ?? "").split("\n")[0]}`, s = r.mock ? "Mock SDK responses; no model calls." : `Sends source${n.kind === "policy" ? "" : ", the finding"} and context to ${K(r.settings)}.`, c = n.kind === "policy" ? he(r.settings.scan.maxCostUsd) : r.costNotice, l = {
+			policy: "Produces a draft for you to review; no files are written.",
+			validation: "Reads source only; nothing is executed or patched.",
+			fix: "Writes the fix in a copy of the last commit. Your files change only if you apply the diff."
+		}[n.kind];
+		await e.ui.dialog.confirm({
+			title: {
+				policy: "Draft a policy",
+				validation: "Validate a finding",
+				fix: "Propose a fix"
+			}[n.kind],
+			message: [
+				`Repository: ${n.repository}`,
+				o,
+				"",
+				s,
+				c,
+				l
+			].join("\n"),
 			label: {
-				confirm: e.plan.mock ? "Start mock operation" : e.kind === "validation" ? "Approve without cost ceiling" : "Approve and start",
+				confirm: "Start",
 				cancel: "Back"
 			}
-		}) && !k && await m.operationStart({
-			operationId: e.operationId,
-			approveOpenAIInference: !0,
-			...e.kind === "validation" ? { approveUncappedValidation: !0 } : {}
-		}, { location: o });
-	};
+		}) && !t.isDisposed() && (await i.operationStart({ operationId: n.operationId }, { location: a }), await t.refreshOperations());
+	}, s = async (e) => {
+		let n = await i.operationPrepare(e, { location: a });
+		await t.refreshOperations(), e.source || r(n.operationId), await o(n);
+	}, c = (e, t) => ({
+		repository: e.repository,
+		finding: se(t),
+		source: {
+			runId: e.runId,
+			findingId: t.id
+		}
+	});
 	return {
+		draftPolicy: () => t.perform(async () => {
+			let t = await n();
+			if (!t) return;
+			let r = await e.ui.dialog.prompt({
+				title: "Draft a policy",
+				description: `Directory in ${t} to cover. Leave empty for the whole project.`,
+				placeholder: "src/api"
+			});
+			r !== void 0 && await s({
+				kind: "policy",
+				repository: t,
+				...r.trim() ? { path: r.trim() } : {}
+			});
+		}),
+		validate: (e, n) => t.perform(() => s({
+			kind: "validation",
+			...c(e, n)
+		})),
+		validateText: () => t.perform(async () => {
+			let t = await n();
+			if (!t) return;
+			let r = await e.ui.dialog.prompt({
+				title: "Validate a finding",
+				description: `Describe the suspected issue in ${t}: location and evidence. Leave out secrets.`
+			});
+			r?.trim() && await s({
+				kind: "validation",
+				repository: t,
+				finding: r
+			});
+		}),
+		fix: (e, n) => t.perform(() => s({
+			kind: "fix",
+			...c(e, n)
+		})),
+		resolve: (n, r) => t.perform(async () => {
+			(r !== "apply" || await e.ui.dialog.confirm({
+				title: "Apply this fix",
+				message: `Applies the diff to ${n.repository}. Nothing is committed.`,
+				label: {
+					confirm: "Apply",
+					cancel: "Back"
+				}
+			}) && !t.isDisposed()) && (await i.operationResolve({
+				operationId: n.operationId,
+				action: r
+			}, { location: a }), await t.refreshOperations());
+		}),
+		start: (e) => t.perform(() => o(e)),
+		answer: (n) => t.perform(async () => {
+			let r = n.question;
+			if (!r) return;
+			let o = await e.ui.dialog.prompt({
+				title: "Answer policy questions",
+				description: r.questions.map((e, t) => `${t + 1}. ${e}`).join("\n") + "\n\nAnswer each one, or say what you do not know. Leave out secrets."
+			});
+			o?.trim() && (await i.operationAnswer({
+				operationId: n.operationId,
+				questionId: r.id,
+				answer: o
+			}, { location: a }), await t.refreshOperations());
+		}),
+		cancel: (e) => t.perform(async () => {
+			await i.operationCancel({ operationId: e.operationId }, { location: a }), await t.refreshOperations();
+		})
+	};
+}
+// src/tui/review.tsx
+var Te = {
+	default: "standard",
+	standard: "deep",
+	deep: "default"
+}, Ee = (e) => ({
+	...e.inputs,
+	repository: e.repository
+});
+function De(e, t) {
+	let { mode: n, ...r } = e;
+	return t === "default" ? r : {
+		...r,
+		mode: t
+	};
+}
+async function Oe(t, n, r, i) {
+	let [a, o] = m(i), [s, c] = m(""), [l, u] = m(!1), [d, f] = m(!1), p = async (e) => {
+		u(!0), c("");
+		try {
+			o(await r(e));
+		} catch (e) {
+			c(V(e));
+		} finally {
+			u(!1);
+		}
+	}, h = () => {
+		let e = a().inputs.mode ?? "default";
+		p(De(Ee(a()), Te[e]));
+	}, g = () => new Promise((r) => {
+		let i = !1, o = (e) => {
+			i || (i = !0, r(e));
+		};
+		t.ui.dialog.show(() => e(je, {
+			ctx: t,
+			color: n,
+			get plan() {
+				return a();
+			},
+			get error() {
+				return s();
+			},
+			get preparing() {
+				return l();
+			},
+			get settings() {
+				return d();
+			},
+			onDepth: h,
+			onSettings: () => f((e) => !e),
+			onAction: o
+		}), () => o("back")), t.ui.dialog.set({ size: "xlarge" });
+	});
+	for (;;) {
+		let e = await g();
+		if (e === "back") return;
+		if (e === "start") return t.ui.dialog.clear(), a();
+		try {
+			let n = await ke(t, e, a());
+			n && await p(n);
+		} catch (e) {
+			c(V(e));
+		}
+	}
+}
+async function ke(e, t, n) {
+	let r = Ee(n);
+	if (t === "target") {
+		let t = await e.ui.dialog.prompt({
+			title: "Target repository",
+			description: "Absolute path to a local repository.",
+			value: n.repository,
+			placeholder: "/path/to/project"
+		});
+		return t === void 0 || t.trim() === n.repository ? void 0 : {
+			repository: Ae(t.trim()),
+			...r.mode ? { mode: r.mode } : {},
+			...r.scanPrompt ? { scanPrompt: r.scanPrompt } : {}
+		};
+	}
+	if (t === "scope") {
+		let { scopePaths: t, changes: i, ...a } = r, o = await e.ui.dialog.select({
+			title: "What to scan",
+			current: n.changes ? n.changes === "uncommitted" ? "uncommitted" : "since" : n.scopePaths.length ? "paths" : "repository",
+			options: [
+				{
+					title: "Whole repository",
+					value: "repository"
+				},
+				{
+					title: "Selected paths",
+					description: "Choose folders or files.",
+					value: "paths"
+				},
+				{
+					title: "Uncommitted changes",
+					description: "Staged and unstaged work. Standard depth.",
+					value: "uncommitted"
+				},
+				{
+					title: "Changes since a branch or commit",
+					description: "What changed between a ref and HEAD. Standard depth.",
+					value: "since"
+				}
+			]
+		});
+		if (o === void 0) return;
+		if (o === "repository") return a;
+		if (o === "uncommitted") return {
+			...a,
+			changes: "uncommitted"
+		};
+		let s = await e.ui.dialog.prompt(o === "paths" ? {
+			title: "Paths",
+			description: "Relative to the repository, separated by commas.",
+			value: n.scopePaths.join(", "),
+			placeholder: "src/api, src/auth"
+		} : {
+			title: "Compare with",
+			description: "A branch, tag or commit. The scan covers what changed since then.",
+			value: n.changes && n.changes !== "uncommitted" ? n.changes : "",
+			placeholder: "origin/main"
+		});
+		return s?.trim() ? o === "paths" ? {
+			...a,
+			scopePaths: Ce(s)
+		} : {
+			...a,
+			changes: s.trim()
+		} : void 0;
+	}
+	if (t === "focus") {
+		let t = await e.ui.dialog.prompt({
+			title: "Focus",
+			description: "What the scan should concentrate on, and any threat assumptions.",
+			value: n.scanPrompt,
+			placeholder: "Tenant isolation in the billing API"
+		});
+		if (t === void 0) return;
+		let { scanPrompt: i, ...a } = r;
+		return t.trim() ? {
+			...a,
+			scanPrompt: t.trim()
+		} : a;
+	}
+	let i = await e.ui.dialog.prompt({
+		title: "Context files",
+		description: "Repository-relative docs to include, separated by commas.",
+		value: n.contextFiles.map((e) => e.path).join(", "),
+		placeholder: "docs/threat-model.md"
+	});
+	return i === void 0 ? void 0 : {
+		...r,
+		contextFiles: Ce(i)
+	};
+}
+function Ae(e) {
+	if (!me(e)) throw Error("Use an absolute repository path.");
+	return e;
+}
+function je(o) {
+	let c = () => !o.preparing;
+	o.ctx.keymap.layer(() => ({
+		mode: "modal",
+		priority: 100,
 		commands: [
 			{
-				id: "security.policy",
-				title: "Security: draft a policy",
-				group: "Security",
-				palette: !0,
-				enabled: () => E().policy,
-				slash: { name: "security-policy" },
-				run: async () => {
-					N(), await M(async () => {
-						let e = await p();
-						if (!e || k) return;
-						let t = await r.ui.dialog.prompt({
-							title: "Policy component",
-							description: `Target: ${e}. Repository-relative directory, or leave blank for the whole project. Preparation makes no model calls.`,
-							placeholder: "src/api"
-						});
-						if (t === void 0 || k) return;
-						let n = await m.operationPrepare({
-							kind: "policy",
-							repository: e,
-							...t.trim() ? { path: t.trim() } : {}
-						}, { location: o });
-						v(n.operationId), await j(), await P(n);
-					});
-				}
+				bind: "y",
+				title: "Start scan",
+				enabled: c,
+				run: () => o.onAction("start")
 			},
 			{
-				id: "security.validate",
-				title: "Security: validate a finding",
-				group: "Security",
-				palette: !0,
-				enabled: () => E().validation,
-				slash: { name: "security-validate" },
-				run: async () => {
-					N(), await M(async () => {
-						let e = c(), t, n;
-						if (e?.findings.length) {
-							let i = await r.ui.dialog.select({
-								title: `Finding to validate · ${e.repository}`,
-								options: e.findings.map((e) => ({
-									title: `${e.severity.toUpperCase()} ${e.title}`,
-									description: `${e.path}:${e.line}`,
-									value: e.id
-								}))
-							});
-							if (!i) return;
-							t = H(e.findings.find((e) => e.id === i)), n = e.repository;
-						} else {
-							if (n = await p(), !n || k) return;
-							t = await r.ui.dialog.prompt({
-								title: "Finding to validate",
-								description: `Target: ${n}. Describe the suspected issue, source location and evidence. Do not include secrets. Validation has no SDK cost ceiling.`
-							});
-						}
-						if (!t?.trim() || k) return;
-						let i = await m.operationPrepare({
-							kind: "validation",
-							repository: n,
-							finding: t
-						}, { location: o });
-						v(i.operationId), await j(), await P(i);
-					});
-				}
+				bind: "t",
+				title: "Change target",
+				enabled: c,
+				run: () => o.onAction("target")
 			},
 			{
-				id: "security.operations",
-				title: "Security: choose policy or validation work",
-				group: "Security",
-				palette: !0,
-				enabled: () => E().policy || E().validation,
-				slash: { name: "security-operations" },
-				run: async () => {
-					if (N(), await j(), !h().length) {
-						await r.ui.dialog.alert({
-							title: "Security operations",
-							message: "No policy or validation work yet. Use /security-policy or /security-validate to prepare one."
-						});
-						return;
+				bind: "d",
+				title: "Change depth",
+				enabled: c,
+				run: o.onDepth
+			},
+			{
+				bind: "s",
+				title: "Change scope",
+				enabled: c,
+				run: () => o.onAction("scope")
+			},
+			{
+				bind: "f",
+				title: "Change focus",
+				enabled: c,
+				run: () => o.onAction("focus")
+			},
+			{
+				bind: "c",
+				title: "Change context",
+				enabled: c,
+				run: () => o.onAction("context")
+			},
+			{
+				bind: "i",
+				title: "Toggle settings",
+				run: o.onSettings
+			}
+		]
+	}));
+	let l = () => `${o.plan.settings.scan.mode}${o.plan.inputs.mode ? "" : " (default)"}`, u = () => [
+		["Repository", o.plan.repository],
+		["Depth", l()],
+		["Scope", S(o.plan)],
+		["Focus", o.plan.scanPrompt || "—"],
+		["Context", o.plan.contextFiles.map((e) => e.path).join(", ") || "—"],
+		["Route", K(o.plan.settings)]
+	];
+	return (() => {
+		var c = t("box"), l = t("text"), p = t("b"), m = t("box"), h = t("text");
+		return a(c, l), a(c, m), a(c, h), s(c, "flexDirection", "column"), s(c, "paddingLeft", 2), s(c, "paddingRight", 2), s(c, "paddingBottom", 1), s(c, "gap", 1), a(l, p), i(p, () => o.plan.mock ? "Review mock scan" : "Review this scan"), s(m, "flexDirection", "column"), i(m, e(d, {
+			get each() {
+				return u();
+			},
+			children: ([e, n]) => (() => {
+				var c = t("box"), l = t("text"), u = t("text");
+				return a(c, l), a(c, u), s(c, "flexDirection", "row"), s(l, "width", 12), s(l, "flexShrink", 0), i(l, e), i(u, n), r((e) => s(l, "fg", o.color.muted(), e)), c;
+			})()
+		})), i(c, e(f, {
+			get when() {
+				return !o.plan.mock;
+			},
+			get fallback() {
+				return (() => {
+					var e = t("text");
+					return a(e, n("Mock SDK responses; no model calls.")), r((t) => s(e, "fg", o.color.muted(), t)), e;
+				})();
+			},
+			get children() {
+				var e = t("box"), c = t("text"), l = t("text");
+				return a(e, c), a(e, l), s(e, "flexDirection", "column"), a(c, n("Starting sends the source in scope and the context files over this route.")), i(l, () => he(o.plan.settings.scan.maxCostUsd)), r((e) => s(l, "fg", o.color.muted(), e)), e;
+			}
+		}), h), i(c, e(f, {
+			get when() {
+				return o.preparing;
+			},
+			get children() {
+				var e = t("text");
+				return a(e, n("Updating preview…")), r((t) => s(e, "fg", o.color.muted(), t)), e;
+			}
+		}), h), i(c, e(f, {
+			get when() {
+				return o.error;
+			},
+			get children() {
+				var e = t("text");
+				return i(e, () => o.error), r((t) => s(e, "fg", o.color.error(), t)), e;
+			}
+		}), h), i(c, e(f, {
+			get when() {
+				return o.settings;
+			},
+			get children() {
+				var e = t("text");
+				return i(e, () => q(o.plan)), r((t) => s(e, "fg", o.color.muted(), t)), e;
+			}
+		}), h), a(h, n("y start · t target · d depth · s scope · f focus · c context · i settings · esc back")), r((e) => {
+			var t = o.color.accent(), n = o.color.muted();
+			return t !== e.e && (e.e = s(l, "fg", t, e.e)), n !== e.t && (e.t = s(h, "fg", n, e.t)), e;
+		}, {
+			e: void 0,
+			t: void 0
+		}), c;
+	})();
+}
+// src/rpc.ts
+var Y = {
+	type: "object",
+	additionalProperties: !1
+}, Me = { "security.setup": Y }, Ne = {
+	type: "object",
+	properties: {
+		mode: {
+			type: "string",
+			enum: ["standard", "deep"],
+			description: "Omit to use the configured default (standard). Deep is slower and costs more."
+		},
+		repository: {
+			type: "string",
+			description: "Repository path. Defaults to the current workspace. May be a folder holding several checkouts."
+		},
+		scopePaths: {
+			type: "array",
+			items: { type: "string" },
+			description: "Paths relative to the repository. Omit to scan the whole repository."
+		},
+		changes: {
+			type: "string",
+			description: "Scan only a diff: \"uncommitted\" for staged and unstaged changes, or a base ref such as \"origin/main\" to compare with HEAD. Standard mode only; not combined with scopePaths."
+		},
+		scanPrompt: {
+			type: "string",
+			description: "What to focus on, plus architecture or threat assumptions the scan should know."
+		},
+		contextFiles: {
+			type: "array",
+			items: { type: "string" },
+			description: "Context files or directories, relative to the repository or absolute (other checkouts are fine). A file may be any UTF-8 text (Markdown, Terraform, YAML, JSON), PDF or DOCX. A directory contributes all its text, PDF and DOCX files. No symlinks."
+		}
+	},
+	additionalProperties: !1
+}, Pe = {
+	type: "object",
+	properties: {
+		kind: {
+			type: "string",
+			enum: [
+				"policy",
+				"validation",
+				"fix"
+			]
+		},
+		repository: { type: "string" },
+		path: { type: "string" },
+		contextFiles: {
+			type: "array",
+			items: { type: "string" }
+		},
+		finding: { anyOf: [{ type: "string" }, { type: "object" }] },
+		source: {
+			type: "object",
+			properties: {
+				runId: { type: "string" },
+				findingId: { type: "string" }
+			},
+			required: ["runId", "findingId"],
+			additionalProperties: !1
+		}
+	},
+	required: ["kind"],
+	additionalProperties: !1
+}, Fe = {
+	type: "object",
+	properties: { operationId: { type: "string" } },
+	required: ["operationId"],
+	additionalProperties: !1
+}, X = { type: "string" }, Z = { type: "object" }, Q = Me, Ie = v.define({
+	id: "gill.security",
+	methods: {
+		capabilities: {
+			input: Y,
+			output: Z,
+			errors: Q
+		},
+		prepare: {
+			input: Ne,
+			output: Z,
+			errors: Q
+		},
+		start: {
+			input: {
+				type: "object",
+				properties: { planId: X },
+				additionalProperties: !1
+			},
+			output: Z,
+			errors: Q
+		},
+		list: {
+			input: Y,
+			output: Z,
+			errors: Q
+		},
+		status: {
+			input: {
+				type: "object",
+				properties: {
+					runId: X,
+					planId: X
+				},
+				additionalProperties: !1
+			},
+			output: Z,
+			errors: Q
+		},
+		cancel: {
+			input: {
+				type: "object",
+				properties: { runId: X },
+				additionalProperties: !1
+			},
+			output: Z,
+			errors: Q
+		},
+		operationPrepare: {
+			input: Pe,
+			output: Z,
+			errors: Q
+		},
+		operationStart: {
+			input: Fe,
+			output: Z,
+			errors: Q
+		},
+		operationStatus: {
+			input: Fe,
+			output: Z,
+			errors: Q
+		},
+		operationList: {
+			input: Y,
+			output: Z,
+			errors: Q
+		},
+		operationAnswer: {
+			input: {
+				type: "object",
+				properties: {
+					operationId: X,
+					questionId: X,
+					answer: X
+				},
+				required: [
+					"operationId",
+					"questionId",
+					"answer"
+				],
+				additionalProperties: !1
+			},
+			output: Z,
+			errors: Q
+		},
+		operationCancel: {
+			input: Fe,
+			output: Z,
+			errors: Q
+		},
+		operationResolve: {
+			input: {
+				type: "object",
+				properties: {
+					operationId: X,
+					action: {
+						type: "string",
+						enum: ["apply", "discard"]
 					}
-					let e = await r.ui.dialog.select({
-						title: "Choose an operation",
-						current: A()?.operationId,
-						options: h().map((e) => ({
-							title: `${e.kind === "policy" ? "Policy" : "Validation"} · ${F(e.status)}`,
-							description: `${e.repository} · ${e.operationId.slice(0, 8)}`,
-							value: e.operationId
-						}))
-					});
-					e && !k && v(e);
-				}
+				},
+				required: ["operationId", "action"],
+				additionalProperties: !1
 			},
-			{
-				id: "security.operationStart",
-				title: "Security: review selected prepared operation",
-				group: "Security",
-				palette: !0,
-				enabled: () => A()?.status === "prepared",
-				slash: { name: "security-operation-start" },
-				run: async () => {
-					let e = A();
-					e && await M(() => P(e));
-				}
+			output: Z,
+			errors: Q
+		},
+		setup: {
+			input: Y,
+			output: Z,
+			errors: Q
+		},
+		signIn: {
+			input: {
+				type: "object",
+				properties: { device: { type: "boolean" } },
+				additionalProperties: !1
 			},
-			{
-				id: "security.answer",
-				title: "Security: answer policy questions",
-				group: "Security",
-				palette: !0,
-				enabled: () => !!A()?.question,
-				slash: { name: "security-answer" },
-				run: async () => {
-					let e = A(), t = e?.question;
-					e && t && (N(), await M(async () => {
-						let n = await r.ui.dialog.prompt({
-							title: "Answer security questions",
-							description: t.questions.map((e, t) => `${t + 1}. ${e}`).join("\n") + `\n\nAnswer each question or state what is unknown. Your answer will be sent to the already-approved route: ${D(e.plan.settings)}. Do not include secrets.`
-						});
-						n?.trim() && !k && await m.operationAnswer({
-							operationId: e.operationId,
-							questionId: t.id,
-							answer: n
-						}, { location: o });
-					}));
-				}
+			output: Z,
+			errors: Q
+		},
+		signInCancel: {
+			input: Y,
+			output: Z,
+			errors: Q
+		},
+		discuss: {
+			input: {
+				type: "object",
+				properties: {
+					runId: X,
+					findingId: X,
+					sessionID: X
+				},
+				required: [
+					"runId",
+					"findingId",
+					"sessionID"
+				],
+				additionalProperties: !1
 			},
-			{
-				id: "security.operationCancel",
-				title: "Security: cancel selected operation",
-				group: "Security",
-				palette: !0,
-				enabled: () => [
-					"prepared",
-					"running",
-					"awaiting_answers"
-				].includes(A()?.status ?? ""),
-				slash: { name: "security-operation-cancel" },
-				run: async () => {
-					let e = A();
-					e && await M(() => m.operationCancel({ operationId: e.operationId }, { location: o }));
-				}
+			output: Z,
+			errors: Q
+		},
+		setProfile: {
+			input: {
+				type: "object",
+				properties: { profile: X },
+				required: ["profile"],
+				additionalProperties: !1
 			},
-			{
-				id: "security.operationResult",
-				title: "Security: read operation result",
-				group: "Security",
-				palette: !0,
-				enabled: () => !!A()?.result,
-				slash: { name: "security-operation-result" },
-				run: async () => {
-					let e = A()?.result;
-					e && await r.ui.dialog.alert({
-						title: e.kind === "policy" ? "Policy draft · not applied" : `Source assessment · ${F(e.disposition)}`,
-						message: (e.kind === "policy" ? e.content + "\n\nReview notes:\n" + e.reviewNotes.join("\n") : e.report) + "\n\n" + (e.truncated ? "Preview truncated. Read full local SDK artifacts." : e.kind === "policy" ? "No repository files changed." : "Static assessment, not runtime reproduction.")
-					});
+			output: Z,
+			errors: Q
+		}
+	},
+	events: {
+		changed: { schema: { type: "object" } },
+		operationChanged: { schema: { type: "object" } }
+	}
+}), Le = 3e4;
+function Re(e) {
+	let t = e.client.rpc(Ie), n = e.location ?? e.data.location.default(), [r, i] = m(), [a, o] = m([]), [s, c] = m({
+		policy: !1,
+		validation: !1,
+		fix: !1
+	}), [l, u] = m(""), [d, f] = m(!1), p = !1, h, g = () => h ??= t.capabilities({}, { location: n }).then((e) => {
+		let t = e;
+		p || c({
+			policy: !!t.policy,
+			validation: !!t.validation,
+			fix: !!t.fix
+		});
+	}).catch(() => {
+		h = void 0;
+	}), _ = (e) => {
+		let t, n = !1;
+		return async () => {
+			if (t) return n = !0, t;
+			t = (async () => {
+				do {
+					n = !1;
+					try {
+						await e();
+					} catch (e) {
+						p || u(V(e));
+					}
+				} while (n && !p);
+			})();
+			try {
+				await t;
+			} finally {
+				t = void 0;
+			}
+		};
+	}, v = _(async () => {
+		let e = await t.list({}, { location: n });
+		p || i(e);
+	}), y = _(async () => {
+		await g();
+		let e = s();
+		if (!e.policy && !e.validation) return;
+		let r = await t.operationList({}, { location: n });
+		p || o(r.operations);
+	}), b = (e) => {
+		let t = e.runId ?? e.scanId ?? void 0, n = r(), a = n?.runs.findIndex((e) => e.runId === t) ?? -1;
+		if (!n || !t || a < 0) return void v();
+		if ((e.revision ?? 0) < (n.runs[a].revision ?? 0)) return;
+		let o = [...n.runs];
+		o[a] = {
+			...e,
+			runId: t
+		}, i({
+			...n,
+			runs: o
+		});
+	}, x = (e) => {
+		let t = a(), n = t.findIndex((t) => t.operationId === e.operationId);
+		if (n < 0) return void y();
+		if (e.revision < t[n].revision) return;
+		let r = [...t];
+		r[n] = e, o(r);
+	};
+	return {
+		client: t,
+		location: n,
+		catalog: r,
+		runs: () => r()?.runs ?? [],
+		operations: a,
+		capabilities: s,
+		loadCapabilities: g,
+		error: l,
+		setError: u,
+		busy: d,
+		perform: async (e) => {
+			if (!(p || d())) {
+				f(!0), u("");
+				try {
+					await e();
+				} catch (e) {
+					p || u(V(e));
+				} finally {
+					p || f(!1);
 				}
 			}
-		],
-		view: () => (() => {
-			var r = t("box"), o = t("text");
-			return a(r, o), s(r, "flexDirection", "column"), s(r, "gap", 1), a(o, n("/security-operations: choose work · /security: return to scans")), i(r, e(u, {
+		},
+		refreshScans: v,
+		refreshOperations: y,
+		watch: () => {
+			v(), y();
+			let e = t.events.on("changed", (e) => b(e.data)), n = t.events.on("operationChanged", (e) => x(e.data)), r = setInterval(() => {
+				v(), y();
+			}, Le);
+			return () => {
+				e(), n(), clearInterval(r);
+			};
+		},
+		dispose: () => {
+			p = !0;
+		},
+		isDisposed: () => p
+	};
+}
+// src/tui/theme.ts
+var $ = {
+	text: "#e0e0e0",
+	accent: "#9be4c6",
+	muted: "#b5b5b5",
+	error: "#ffb3b3",
+	warning: "#ebc28c",
+	success: "#9be4c6"
+};
+function ze(e) {
+	let t = () => e.theme ?? {}, n = (e) => t().text?.feedback?.[e]?.base;
+	return {
+		text: () => t().text?.base ?? $.text,
+		accent: () => n("info") ?? $.accent,
+		muted: () => t().text?.muted ?? $.muted,
+		error: () => n("error") ?? $.error,
+		warning: () => n("warning") ?? $.warning,
+		success: () => n("success") ?? $.success
+	};
+}
+// src/tui/view.tsx
+var Be = 5, Ve = 8;
+function He(u) {
+	let p = l(), m = () => Math.max(20, p().width - 4), h = u.color, g = (e) => e.severity === "critical" || e.severity === "high" ? h.error() : h.warning(), _ = (e) => (() => {
+		var n = t("text");
+		return i(n, () => e.children), r((e) => s(n, "fg", h.muted(), e)), n;
+	})(), v = () => {
+		let c = () => u.store.runs(), l = () => c().filter((e) => e.status === "running").length;
+		return (() => {
+			var d = t("box"), p = t("text"), m = t("b"), g = t("span"), _ = n(" · "), v = t("text"), y = t("span"), b = n(" "), x = t("span"), S = n("   "), C = n(" ");
+			return a(d, p), a(d, v), s(d, "flexDirection", "column"), s(d, "flexShrink", 0), a(p, m), a(p, g), a(m, n("Security")), a(g, _), i(g, () => u.store.location.directory, null), a(v, y), a(v, x), a(y, b), i(y, (() => {
+				var e = o(() => u.tab === "scans");
+				return () => e() ? (() => {
+					var e = t("b");
+					return a(e, n("Scans")), e;
+				})() : "Scans";
+			})(), b), i(y, () => c().length, null), a(x, S), a(x, C), i(x, (() => {
+				var e = o(() => u.tab === "operations");
+				return () => e() ? (() => {
+					var e = t("b");
+					return a(e, n("Operations")), e;
+				})() : "Operations";
+			})(), C), i(x, () => u.store.operations().length, null), i(v, e(f, {
 				get when() {
-					return w();
+					return l();
+				},
+				get children() {
+					var e = t("span"), o = n("   "), c = n(" of "), d = n(" running");
+					return a(e, o), a(e, c), a(e, d), i(e, l, c), i(e, () => u.store.catalog()?.maxConcurrent ?? 2, d), r((t) => s(e, "style", { fg: h.muted() }, t)), e;
+				}
+			}), null), i(v, e(f, {
+				get when() {
+					return u.waiting;
+				},
+				get children() {
+					var e = t("span"), o = n("   "), c = n(" "), l = n(" waiting · a answer");
+					return a(e, o), a(e, c), a(e, l), i(e, () => u.waiting, c), i(e, () => u.waiting === 1 ? "question" : "questions", l), r((t) => s(e, "style", { fg: h.warning() }, t)), e;
+				}
+			}), null), i(d, e(f, {
+				get when() {
+					return u.setup;
+				},
+				children: (n) => (() => {
+					var o = t("box"), c = t("text");
+					return a(o, c), s(o, "flexDirection", "column"), s(o, "flexShrink", 0), i(c, () => J(n()).text), i(o, e(f, {
+						get when() {
+							return J(n()).warnings.length;
+						},
+						get children() {
+							var e = t("text");
+							return i(e, () => J(n()).warnings.join("\n")), r((t) => s(e, "fg", h.warning(), t)), e;
+						}
+					}), null), r((e) => s(c, "fg", h.muted(), e)), o;
+				})()
+			}), null), r((e) => {
+				var t = { fg: h.muted() }, n = { fg: u.tab === "scans" ? h.accent() : h.muted() }, r = { fg: u.tab === "operations" ? h.accent() : h.muted() };
+				return t !== e.e && (e.e = s(g, "style", t, e.e)), n !== e.t && (e.t = s(y, "style", n, e.t)), r !== e.a && (e.a = s(x, "style", r, e.a)), e;
+			}, {
+				e: void 0,
+				t: void 0,
+				a: void 0
+			}), d;
+		})();
+	}, y = (c) => {
+		let l = () => c.run;
+		return (() => {
+			var c = t("box"), d = t("text"), p = t("b"), m = t("text"), g = n(" · "), _ = n(" · "), v = t("text"), y = t("text");
+			return a(c, d), a(c, m), a(c, v), a(c, y), s(c, "flexDirection", "column"), a(d, p), i(p, () => x(l())), a(m, g), a(m, _), i(m, () => l().repository, g), i(m, () => C(l()), _), i(m, () => l().mode ?? "fixture", null), i(v, () => ee(l()), null), i(v, e(f, {
+				get when() {
+					return B(l().startedAt, l().finishedAt, u.now);
+				},
+				children: (e) => [" · ", o(e)]
+			}), null), i(v, e(f, {
+				get when() {
+					return te(l());
+				},
+				get children() {
+					return [" · ", o(() => O(l()))];
+				}
+			}), null), i(c, e(f, {
+				get when() {
+					return l().status === "running";
 				},
 				get children() {
 					var e = t("text");
-					return s(e, "fg", "#ffb3b3"), i(e, w), e;
+					return i(e, () => k(l())), r((t) => s(e, "fg", h.muted(), t)), e;
 				}
-			}), null), i(r, e(u, {
+			}), y), i(y, () => j(l())), i(c, e(f, {
 				get when() {
-					return A();
+					return l().error;
 				},
-				get fallback() {
-					return (() => {
+				get children() {
+					var e = t("text");
+					return i(e, () => l().error), r((t) => s(e, "fg", h.error(), t)), e;
+				}
+			}), null), i(c, e(f, {
+				get when() {
+					return l().status === "cancelled";
+				},
+				get children() {
+					var e = t("text");
+					return a(e, n("Cancelled before finishing; this scan has no results.")), e;
+				}
+			}), null), i(c, e(f, {
+				get when() {
+					return l().status === "completed";
+				},
+				get children() {
+					var e = t("text");
+					return i(e, () => ae(l())), e;
+				}
+			}), null), i(c, e(f, {
+				get when() {
+					return u.details;
+				},
+				get children() {
+					return e(b, { get run() {
+						return l();
+					} });
+				}
+			}), null), r((e) => {
+				var t = h.muted(), n = h.muted();
+				return t !== e.e && (e.e = s(m, "fg", t, e.e)), n !== e.t && (e.t = s(y, "fg", n, e.t)), e;
+			}, {
+				e: void 0,
+				t: void 0
+			}), c;
+		})();
+	}, b = (c) => {
+		let l = () => c.run;
+		return (() => {
+			var c = t("box");
+			return s(c, "flexDirection", "column"), s(c, "paddingTop", 1), i(c, e(_, { get children() {
+				return ["Run ", o(() => l().runId)];
+			} }), null), i(c, e(f, {
+				get when() {
+					return l().telemetry?.authentication;
+				},
+				get children() {
+					return e(_, { get children() {
+						return ["Signed in with ", o(() => l().telemetry?.authentication)];
+					} });
+				}
+			}), null), i(c, e(f, {
+				get when() {
+					return L(l());
+				},
+				get children() {
+					var e = t("text");
+					return i(e, () => L(l())), r((t) => s(e, "fg", h.warning(), t)), e;
+				}
+			}), null), i(c, e(f, {
+				get when() {
+					return R(l());
+				},
+				get children() {
+					var e = t("text");
+					return i(e, () => R(l())), r((t) => s(e, "fg", h.warning(), t)), e;
+				}
+			}), null), i(c, e(f, {
+				get when() {
+					return l().telemetry?.measurement?.coverage !== "complete";
+				},
+				get children() {
+					return e(_, { get children() {
+						return M(l());
+					} });
+				}
+			}), null), i(c, e(f, {
+				get when() {
+					return F(l());
+				},
+				get children() {
+					return e(_, { get children() {
+						return F(l());
+					} });
+				}
+			}), null), i(c, e(f, {
+				get when() {
+					return I(l());
+				},
+				get children() {
+					return e(_, { get children() {
+						return I(l());
+					} });
+				}
+			}), null), i(c, e(f, {
+				get when() {
+					return o(() => l().status === "running")() && l().deepProgress;
+				},
+				get children() {
+					return e(_, { get children() {
+						return ne(l());
+					} });
+				}
+			}), null), i(c, e(f, {
+				get when() {
+					return l().status === "completed";
+				},
+				get children() {
+					return [e(_, { get children() {
+						return ["Coverage: ", o(() => oe(l()))];
+					} }), e(_, { get children() {
+						return ["Repository matching: ", o(() => z(l()))];
+					} })];
+				}
+			}), null), i(c, e(f, {
+				get when() {
+					return N(l()).length;
+				},
+				get children() {
+					return [(() => {
 						var e = t("text");
-						return a(e, n("Prepare a policy draft with /security-policy or assess a finding with /security-validate.")), e;
-					})();
+						return a(e, n("Activity")), e;
+					})(), e(d, {
+						get each() {
+							return P(l()).slice(0, 5);
+						},
+						children: (t) => e(_, { get children() {
+							return [
+								o(() => re(t.worker)),
+								" · ",
+								o(() => t.label),
+								" ·",
+								" ",
+								o(() => ie(t.status, l()))
+							];
+						} })
+					})];
+				}
+			}), null), i(c, e(f, {
+				get when() {
+					return l().events.length;
 				},
-				children: (r) => (() => {
-					var o = t("box"), c = t("text"), d = n(" · "), f = t("text"), p = n("Target: "), m = t("text");
-					return a(o, c), a(o, f), a(o, m), s(o, "flexDirection", "column"), s(o, "gap", 1), a(c, d), s(c, "fg", "#9be4c6"), i(c, () => r().kind === "policy" ? "Policy draft" : "Finding validation", d), i(c, () => F(r().status), null), a(f, p), i(f, () => r().repository, null), i(m, () => r().phase), i(o, e(u, {
+				get children() {
+					return [(() => {
+						var e = t("text");
+						return a(e, n("Milestones")), e;
+					})(), e(d, {
+						get each() {
+							return [...l().events].reverse().slice(0, 3);
+						},
+						children: (t) => e(_, { get children() {
+							return [
+								o(() => new Date(t.time).toLocaleTimeString()),
+								" · ",
+								o(() => t.message)
+							];
+						} })
+					})];
+				}
+			}), null), c;
+		})();
+	}, S = () => {
+		let c = () => u.store.runs(), l = () => Math.max(0, c().indexOf(u.run)), p = () => Se(c(), l(), Be), v = () => u.run ? ue(u.run) : [], b = () => u.focus === "findings";
+		return e(f, {
+			get when() {
+				return u.run;
+			},
+			get fallback() {
+				return (() => {
+					var e = t("text");
+					return a(e, n("No scans yet. Press n to start one.")), e;
+				})();
+			},
+			children: (l) => (() => {
+				var x = t("box"), S = t("box");
+				return a(x, S), s(x, "flexDirection", "column"), s(x, "gap", 1), s(S, "flexDirection", "column"), i(S, e(d, {
+					get each() {
+						return p().items;
+					},
+					children: (e) => {
+						let n = () => e.runId === l().runId;
+						return (() => {
+							var a = t("text");
+							return i(a, () => xe(`${n() ? "›" : " "} ${_e(e, u.now)}`, m())), r((e) => s(a, "fg", n() ? b() ? void 0 : h.accent() : h.muted(), e)), a;
+						})();
+					}
+				}), null), i(S, e(f, {
+					get when() {
+						return c().length > Be;
+					},
+					get children() {
+						return e(_, { get children() {
+							return [
+								"  ",
+								o(() => p().start + 1),
+								"–",
+								o(() => p().start + p().items.length),
+								" of",
+								" ",
+								o(() => c().length)
+							];
+						} });
+					}
+				}), null), i(x, e(y, { get run() {
+					return l();
+				} }), null), i(x, e(f, {
+					get when() {
+						return v().length;
+					},
+					get children() {
+						var o = t("box"), c = t("text"), f = t("b"), p = n(" "), _ = t("span");
+						return a(o, c), s(o, "flexDirection", "column"), a(c, f), a(c, p), a(c, _), a(f, n("Findings")), i(_, () => W(l())), i(o, e(d, {
+							get each() {
+								return v();
+							},
+							children: (e, o) => {
+								let c = () => b() && o() === u.findingIndex, d = () => de(l(), e.id), f = () => d() ? d().label : `${e.path}:${e.line}`;
+								return (() => {
+									var l = t("box"), u = t("text"), p = t("text"), _ = t("text"), v = t("text"), y = n(" ");
+									return a(l, u), a(l, p), a(l, _), a(l, v), s(l, "flexDirection", "row"), s(u, "flexShrink", 0), i(u, () => c() ? "› " : "  "), s(p, "width", 9), s(p, "flexShrink", 0), i(p, () => e.severity.toUpperCase()), s(_, "flexGrow", 1), i(_, () => xe(e.title, Math.max(10, m() - f().length - 14))), a(v, y), s(v, "flexShrink", 0), i(v, f, null), r((t) => {
+										var n = `finding-${o()}`, r = c() ? h.accent() : void 0, i = g(e), a = c() ? h.accent() : void 0, f = d()?.tone === "good" ? h.success() : d()?.tone === "warn" ? h.warning() : h.muted();
+										return n !== t.e && (t.e = s(l, "id", n, t.e)), r !== t.t && (t.t = s(u, "fg", r, t.t)), i !== t.a && (t.a = s(p, "fg", i, t.a)), a !== t.o && (t.o = s(_, "fg", a, t.o)), f !== t.i && (t.i = s(v, "fg", f, t.i)), t;
+									}, {
+										e: void 0,
+										t: void 0,
+										a: void 0,
+										o: void 0,
+										i: void 0
+									}), l;
+								})();
+							}
+						}), null), r((e) => s(_, "style", { fg: h.muted() }, e)), o;
+					}
+				}), null), i(x, e(f, {
+					get when() {
+						return o(() => l().status === "completed")() && !v().length;
+					},
+					get children() {
+						return e(_, { children: "No findings reported. Press d for coverage." });
+					}
+				}), null), x;
+			})()
+		});
+	}, T = (o) => {
+		let c = () => o.finding, l = (n) => (() => {
+			var r = t("box"), o = t("text");
+			return a(r, o), s(r, "flexDirection", "column"), i(r, e(_, { get children() {
+				return n.title;
+			} }), o), i(o, () => n.body), r;
+		})();
+		return (() => {
+			var o = t("box"), p = t("box"), m = t("text"), _ = t("span"), v = n(" · "), y = t("b"), b = t("text"), x = n(":"), S = n(" · "), C = n(" · "), T = n(" confidence");
+			return a(o, p), s(o, "flexDirection", "column"), s(o, "gap", 1), a(p, m), a(p, b), s(p, "flexDirection", "column"), a(m, _), a(m, v), a(m, y), i(_, () => c().severity.toUpperCase()), i(y, () => c().title), a(b, x), a(b, S), a(b, C), a(b, T), i(b, () => c().path, x), i(b, () => c().line, S), i(b, () => c().cwe, C), i(b, () => c().confidence, T), i(o, e(l, {
+				title: "Summary",
+				get body() {
+					return c().summary;
+				}
+			}), null), i(o, e(l, {
+				title: "Evidence",
+				get body() {
+					return c().evidence;
+				}
+			}), null), i(o, e(l, {
+				title: "Remediation",
+				get body() {
+					return c().remediation;
+				}
+			}), null), i(o, e(d, {
+				get each() {
+					return u.findingWork;
+				},
+				children: (o) => (() => {
+					var c = t("box"), l = t("text"), u = t("b"), d = t("span"), p = n(" · ");
+					return a(c, l), s(c, "flexDirection", "column"), s(c, "gap", 1), a(l, u), a(l, d), i(u, () => ve(o)), a(d, p), i(d, () => w(o.status), null), i(c, e(f, {
 						get when() {
-							return r().status === "prepared";
+							return o.error;
 						},
 						get children() {
 							var e = t("text");
-							return a(e, n("/security-operation-start to review this operation before starting.")), e;
+							return i(e, () => o.error), r((t) => s(e, "fg", h.error(), t)), e;
 						}
-					}), null), i(o, e(u, {
-						get when() {
-							return r().question;
-						},
-						children: (r) => (() => {
-							var o = t("box"), c = t("text");
-							return a(o, c), s(o, "flexDirection", "column"), a(c, n("Your input is needed. /security-answer to respond.")), i(o, e(l, {
-								get each() {
-									return r().questions;
-								},
-								children: (e) => (() => {
-									var n = t("text");
-									return i(n, e), n;
-								})()
-							}), null), o;
-						})()
-					}), null), i(o, e(u, {
-						get when() {
-							return r().estimatedCostUsd !== void 0;
-						},
-						get children() {
-							var e = t("text"), o = n("Estimated usage: USD ");
-							return a(e, o), i(e, () => (r().estimatedCostUsd ?? 0).toFixed(2), null), e;
-						}
-					}), null), i(o, e(u, {
-						get when() {
-							return r().error;
-						},
-						get children() {
-							var e = t("text");
-							return s(e, "fg", "#ffb3b3"), i(e, () => r().error), e;
-						}
-					}), null), i(o, e(u, {
-						get when() {
-							return r().result;
-						},
-						get children() {
-							var e = t("text"), o = n("/security-operation-result to read ");
-							return a(e, o), i(e, () => r().kind === "policy" ? "the draft. No files have been applied." : "the static assessment. This is not runtime reproduction.", null), e;
-						}
-					}), null), i(o, e(u, {
-						get when() {
-							return r().status === "running" || r().status === "awaiting_answers";
-						},
-						get children() {
-							var e = t("text");
-							return a(e, n("/security-operation-cancel stops only this operation.")), e;
-						}
-					}), null), o;
+					}), null), i(c, e(D, { op: o }), null), r((e) => s(d, "style", { fg: h.muted() }, e)), c;
 				})()
-			}), null), r;
-		})(),
-		visible: y,
-		close: () => x(!1),
-		refresh: j,
-		questionCount: () => h().filter((e) => e.status === "awaiting_answers").length,
-		dispose: () => {
-			k = !0;
+			}), null), r((e) => {
+				var t = { fg: g(c()) }, n = h.muted();
+				return t !== e.e && (e.e = s(_, "style", t, e.e)), n !== e.t && (e.t = s(b, "fg", n, e.t)), e;
+			}, {
+				e: void 0,
+				t: void 0
+			}), o;
+		})();
+	}, E = (n) => (() => {
+		var a = t("box");
+		return s(a, "flexDirection", "column"), i(a, e(d, {
+			get each() {
+				return G(n.diff);
+			},
+			children: (e) => (() => {
+				var n = t("text");
+				return i(n, () => e.text || " "), r((t) => s(n, "fg", e.kind === "add" ? h.success() : e.kind === "del" ? h.error() : e.kind === "context" ? void 0 : h.muted(), t)), n;
+			})()
+		})), a;
+	})(), D = (r) => e(f, {
+		get when() {
+			return r.op.result;
+		},
+		children: (r) => {
+			let c = r();
+			return c.kind === "policy" ? (() => {
+				var r = t("box"), l = t("text");
+				return a(r, l), s(r, "flexDirection", "column"), s(r, "gap", 1), i(r, e(_, { get children() {
+					return [
+						"Draft for ",
+						o(() => c.targetPath),
+						". Not written to disk."
+					];
+				} }), l), i(l, () => c.content), i(r, e(f, {
+					get when() {
+						return c.reviewNotes.length;
+					},
+					get children() {
+						var r = t("box");
+						return s(r, "flexDirection", "column"), i(r, e(_, { children: "Review notes" }), null), i(r, e(d, {
+							get each() {
+								return c.reviewNotes;
+							},
+							children: (e) => (() => {
+								var r = t("text"), o = n("- ");
+								return a(r, o), i(r, e, null), r;
+							})()
+						}), null), r;
+					}
+				}), null), i(r, e(f, {
+					get when() {
+						return c.truncated;
+					},
+					get children() {
+						return e(_, { children: "Truncated here; the full draft is in the local SDK artifacts." });
+					}
+				}), null), r;
+			})() : c.kind === "fix" ? (() => {
+				var n = t("box"), r = t("text"), l = t("b");
+				return a(n, r), s(n, "flexDirection", "column"), s(n, "gap", 1), a(r, l), i(l, () => le(c.status)), i(r, e(f, {
+					get when() {
+						return o(() => c.resolution !== "pending")() && c.resolution !== "none";
+					},
+					get children() {
+						return [
+							" ",
+							"· ",
+							o(() => c.resolution)
+						];
+					}
+				}), null), i(n, e(f, {
+					get when() {
+						return c.report;
+					},
+					get children() {
+						var e = t("text");
+						return i(e, () => c.report), e;
+					}
+				}), null), i(n, e(f, {
+					get when() {
+						return c.diff;
+					},
+					get fallback() {
+						return e(_, { children: "No files were changed." });
+					},
+					get children() {
+						return [e(_, { get children() {
+							return c.resolution === "pending" ? "Proposed change, not applied yet. y applies it to your working tree; r discards it." : "Change";
+						} }), e(E, { get diff() {
+							return c.diff;
+						} })];
+					}
+				}), null), i(n, e(f, {
+					get when() {
+						return c.truncated;
+					},
+					get children() {
+						return e(_, { children: "Diff truncated here; applying uses the whole change." });
+					}
+				}), null), n;
+			})() : (() => {
+				var n = t("box"), r = t("text"), o = t("b"), l = t("text");
+				return a(n, r), a(n, l), s(n, "flexDirection", "column"), s(n, "gap", 1), a(r, o), i(o, () => fe(c.disposition)), i(l, () => c.report), i(n, e(f, {
+					get when() {
+						return c.truncated;
+					},
+					get children() {
+						return e(_, { children: "Truncated here; the full report is in the local SDK artifacts." });
+					}
+				}), null), n;
+			})();
+		}
+	}), A = () => {
+		let c = () => u.store.operations(), l = () => Math.max(0, c().indexOf(u.operation)), p = () => Se(c(), l(), Ve);
+		return e(f, {
+			get when() {
+				return u.opsAvailable;
+			},
+			get fallback() {
+				return (() => {
+					var e = t("text");
+					return a(e, n("Policy drafts and validation need the Codex Security engine.")), e;
+				})();
+			},
+			get children() {
+				return e(f, {
+					get when() {
+						return u.operation;
+					},
+					get fallback() {
+						return (() => {
+							var e = t("text");
+							return a(e, n("No policy drafts or validations yet. Press p to draft a policy, or v on a finding to validate it.")), e;
+						})();
+					},
+					children: (n) => (() => {
+						var l = t("box"), u = t("box");
+						return a(l, u), s(l, "flexDirection", "column"), s(l, "gap", 1), s(u, "flexDirection", "column"), i(u, e(d, {
+							get each() {
+								return p().items;
+							},
+							children: (e) => {
+								let a = () => e.operationId === n().operationId;
+								return (() => {
+									var n = t("text");
+									return i(n, () => xe(`${a() ? "›" : " "} ${ye(e)}`, m())), r((e) => s(n, "fg", a() ? h.accent() : h.muted(), e)), n;
+								})();
+							}
+						}), null), i(u, e(f, {
+							get when() {
+								return c().length > Ve;
+							},
+							get children() {
+								return e(_, { get children() {
+									return [
+										"  ",
+										o(() => p().start + 1),
+										"–",
+										o(() => p().start + p().items.length),
+										" of",
+										" ",
+										o(() => c().length)
+									];
+								} });
+							}
+						}), null), i(l, e(V, { get op() {
+							return n();
+						} }), null), l;
+					})()
+				});
+			}
+		});
+	}, V = (o) => (() => {
+		var c = t("box"), l = t("text"), u = t("b"), d = n(" · "), p = t("text");
+		return a(c, l), a(c, p), s(c, "flexDirection", "column"), a(l, u), a(l, d), i(u, () => ve(o.op)), i(l, () => w(o.op.status), null), i(c, e(_, { get children() {
+			return o.op.repository;
+		} }), p), i(p, () => o.op.phase), i(c, e(f, {
+			get when() {
+				return o.op.question;
+			},
+			get children() {
+				var e = t("text");
+				return a(e, n("Waiting for your answer. Press a.")), r((t) => s(e, "fg", h.warning(), t)), e;
+			}
+		}), null), i(c, e(f, {
+			get when() {
+				return o.op.error;
+			},
+			get children() {
+				var e = t("text");
+				return i(e, () => o.op.error), r((t) => s(e, "fg", h.error(), t)), e;
+			}
+		}), null), i(c, e(f, {
+			get when() {
+				return o.op.result;
+			},
+			get children() {
+				return e(_, { children: "Press enter to read the result." });
+			}
+		}), null), c;
+	})(), se = (c) => {
+		let l = () => c.op;
+		return (() => {
+			var c = t("box"), u = t("box"), p = t("text"), m = t("b"), g = n(" · "), v = t("text");
+			return a(c, u), s(c, "flexDirection", "column"), s(c, "gap", 1), a(u, p), a(u, v), s(u, "flexDirection", "column"), a(p, m), a(p, g), i(m, () => ve(l())), i(p, () => w(l().status), null), i(u, e(_, { get children() {
+				return [o(() => l().repository), o(() => o(() => l().kind === "policy")() ? ` · ${l().plan.path ?? "."}` : "")];
+			} }), v), i(v, () => l().phase), i(u, e(f, {
+				get when() {
+					return l().estimatedCostUsd !== void 0;
+				},
+				get children() {
+					return e(_, { get children() {
+						return ["Estimated usage USD ", o(() => (l().estimatedCostUsd ?? 0).toFixed(2))];
+					} });
+				}
+			}), null), i(c, e(f, {
+				get when() {
+					return o(() => l().kind === "validation")() && l().plan.finding;
+				},
+				get children() {
+					var n = t("box"), r = t("text");
+					return a(n, r), s(n, "flexDirection", "column"), i(n, e(_, { children: "Finding" }), r), i(r, () => l().plan.finding), n;
+				}
+			}), null), i(c, e(f, {
+				get when() {
+					return l().question;
+				},
+				children: (o) => (() => {
+					var c = t("box"), l = t("text");
+					return a(c, l), s(c, "flexDirection", "column"), a(l, n("Waiting for your answer. Press a.")), i(c, e(d, {
+						get each() {
+							return o().questions;
+						},
+						children: (e, n) => (() => {
+							var r = t("text");
+							return i(r, () => `${n() + 1}. ${e}`), r;
+						})()
+					}), null), r((e) => s(l, "fg", h.warning(), e)), c;
+				})()
+			}), null), i(c, e(f, {
+				get when() {
+					return l().error;
+				},
+				get children() {
+					var e = t("text");
+					return i(e, () => l().error), r((t) => s(e, "fg", h.error(), t)), e;
+				}
+			}), null), i(c, e(D, { get op() {
+				return l();
+			} }), null), c;
+		})();
+	}, ce = () => {
+		let e = () => u.keys.filter((e) => e.key && e.label && e.when() && !e.secondary).map((e) => `${e.key} ${e.label()}`).join(" · ");
+		return (() => {
+			var n = t("text");
+			return i(n, (() => {
+				var t = o(() => !!u.store.busy());
+				return () => t() ? "Working…" : e();
+			})()), r((e) => s(n, "fg", h.muted(), e)), n;
+		})();
+	}, H = () => {
+		let e = u.run ? ue(u.run) : [];
+		return e[Math.min(u.findingIndex, e.length - 1)];
+	};
+	return (() => {
+		var n = t("box"), l = t("scrollbox");
+		return a(n, l), s(n, "flexDirection", "column"), s(n, "flexGrow", 1), s(n, "paddingLeft", 1), s(n, "paddingRight", 1), i(n, e(v, {}), l), i(n, e(f, {
+			get when() {
+				return u.store.error();
+			},
+			get children() {
+				var e = t("text");
+				return i(e, () => u.store.error()), r((t) => s(e, "fg", h.error(), t)), e;
+			}
+		}), l), i(n, e(f, {
+			get when() {
+				return u.store.catalog()?.historyError;
+			},
+			get children() {
+				var e = t("text");
+				return i(e, () => u.store.catalog()?.historyError), r((t) => s(e, "fg", h.error(), t)), e;
+			}
+		}), l), c((e) => u.ref(e), l), s(l, "flexGrow", 1), s(l, "paddingTop", 1), i(l, e(f, {
+			get when() {
+				return u.tab === "scans";
+			},
+			get children() {
+				return e(f, {
+					get when() {
+						return o(() => u.detail === "finding")() && H();
+					},
+					get fallback() {
+						return e(S, {});
+					},
+					children: (t) => e(T, { get finding() {
+						return t();
+					} })
+				});
+			}
+		}), null), i(l, e(f, {
+			get when() {
+				return u.tab === "operations";
+			},
+			get children() {
+				return e(f, {
+					get when() {
+						return o(() => u.detail === "operation")() && u.operation;
+					},
+					get fallback() {
+						return e(A, {});
+					},
+					children: (t) => e(se, { get op() {
+						return t();
+					} })
+				});
+			}
+		}), null), i(n, e(ce, {}), null), n;
+	})();
+}
+// src/tui/app.tsx
+var Ue = "security";
+function We(t) {
+	let n = Re(t), r = ze(t), [i, a] = m("scans"), [s, c] = m("runs"), [l, u] = m(), [d, f] = m(), [v, b] = m(0), [x, S] = m(), [C, w] = m(!1), [T, E] = m(), D = () => n.client.setup({}, { location: n.location }).then((e) => E(e)).catch((e) => n.setError(V(e)));
+	p(() => {
+		if (!T()?.signIn?.pending) return;
+		let e = setInterval(() => void D(), 2e3);
+		g(() => clearInterval(e));
+	});
+	let ee = () => n.perform(async () => {
+		let e = { location: n.location };
+		if (T()?.signIn?.pending) await n.client.signInCancel({}, e);
+		else {
+			let r = await t.ui.dialog.select({
+				title: "Sign in to Codex Security with ChatGPT",
+				options: [{
+					title: "In my browser",
+					description: "Opens the sign-in page.",
+					value: !1
+				}, {
+					title: "With a device code",
+					description: "For a remote machine: shows a code to enter on another device.",
+					value: !0
+				}]
+			});
+			if (r === void 0) return;
+			await n.client.signIn({ device: r }, e);
+		}
+		await D();
+	}), te = () => n.perform(async () => {
+		let e = T();
+		if (!e) return;
+		let r = await t.ui.dialog.select({
+			title: "Codex profile",
+			current: e.profile ?? "",
+			options: [{
+				title: "None",
+				description: "Use the Codex config as it is.",
+				value: ""
+			}, ...e.profiles.map((e) => ({
+				title: e,
+				value: e
+			}))]
+		});
+		r !== void 0 && (await n.client.setProfile({ profile: r }, { location: n.location }), await D());
+	}), O, ne = me(t.location?.directory) ? t.location.directory : void 0, k = () => {
+		let e = t.ui.router.current();
+		return e.type === "plugin" && e.name === "security";
+	}, A = n.runs, j = () => A().find((e) => e.runId === d()) ?? A()[0], M = () => j() ? ue(j()) : [], N = () => M()[Math.min(v(), M().length - 1)], P = () => n.operations().find((e) => e.operationId === x()) ?? n.operations()[0], re = () => n.operations().filter((e) => e.question);
+	p(h(d, () => b(0), { defer: !0 }));
+	let ie = () => {
+		k() || (O = t.ui.router.current()), t.ui.router.navigate({
+			type: "plugin",
+			name: Ue
+		});
+	}, F = () => t.ui.router.navigate(O ?? { type: "home" }), I = async () => {
+		if (ne) return ne;
+		let e = await t.ui.dialog.prompt({
+			title: "Target repository",
+			description: "Absolute path to a local repository.",
+			placeholder: "/path/to/project"
+		});
+		return e?.trim() ? Ae(e.trim()) : void 0;
+	}, L = we(t, n, I, (e) => {
+		S(e), a("operations"), u(void 0);
+	}), R = () => n.perform(async () => {
+		await n.refreshScans();
+		let e = n.catalog()?.maxConcurrent ?? 2;
+		if (A().filter((e) => e.status === "running").length >= e) throw Error(`All ${e} scan slots are in use. Start another when one finishes.`);
+		let i = await I();
+		if (!i) return;
+		let o = async (e) => {
+			let t = y(await n.client.prepare(e, { location: n.location })).plan;
+			if (!t) throw Error("The server returned no preview.");
+			return t;
+		}, s = await Oe(t, r, o, await o({ repository: i }));
+		if (!s) return;
+		let l = y(await n.client.start({ planId: s.id }, { location: n.location }));
+		a("scans"), u(void 0), c("runs"), f(l.runId), await n.refreshScans();
+	}), ae = () => n.perform(async () => {
+		let e = j();
+		e?.status === "running" && await t.ui.dialog.confirm({
+			title: "Cancel scan",
+			message: `Stop the scan of ${e.repository}? A cancelled scan has no results.`,
+			label: {
+				confirm: "Cancel scan",
+				cancel: "Keep running"
+			}
+		}) && (await n.client.cancel({ runId: e.runId }, { location: n.location }), await n.refreshScans());
+	}), oe = async () => {
+		let e = j();
+		if (!e?.findings.length) return L.validateText();
+		let n = l() === "finding" || s() === "findings" ? N() : void 0;
+		if (!n) {
+			let r = await t.ui.dialog.select({
+				title: `Validate a finding · ${e.repository}`,
+				options: e.findings.map((e) => ({
+					title: `${e.severity.toUpperCase()} ${e.title}`,
+					description: `${e.path}:${e.line}`,
+					value: e.id
+				}))
+			});
+			n = e.findings.find((e) => e.id === r);
+		}
+		n && await L.validate(e, n);
+	}, z, B = (e) => {
+		if (l()) return z?.scrollBy(e);
+		if (i() === "operations") {
+			let t = n.operations(), r = t.indexOf(P()), i = t[Math.max(0, Math.min(t.length - 1, r + e))];
+			i && S(i.operationId);
+			return;
+		}
+		if (s() === "findings") {
+			let t = Math.max(0, Math.min(M().length - 1, v() + e));
+			return b(t), z?.scrollChildIntoView(`finding-${t}`);
+		}
+		let t = A(), r = t.indexOf(j()), a = t[Math.max(0, Math.min(t.length - 1, r + e))];
+		a && f(a.runId);
+	}, se = () => {
+		if (i() === "operations") return void (P() && u("operation"));
+		if (s() === "runs") return M().length ? (c("findings"), z?.scrollChildIntoView(`finding-${v()}`)) : void 0;
+		u("finding");
+	}, ce = () => {
+		if (l()) return void u(void 0);
+		if (i() === "scans" && s() === "findings") return void c("runs");
+		F();
+	}, le = () => {
+		u(void 0), c("runs"), a((e) => e === "scans" ? "operations" : "scans"), n.refreshOperations();
+	}, H = () => P()?.question ? P() : re()[0], U = () => i() === "scans", W = () => !l(), de = () => {
+		let e = {
+			runId: j()?.runId,
+			findingId: N()?.id
+		}, t = n.operations().filter((t) => t.plan.source?.runId === e.runId && t.plan.source?.findingId === e.findingId);
+		return ["validation", "fix"].flatMap((e) => t.find((t) => t.kind === e) ?? []);
+	}, G = () => {
+		let e = (e) => e?.result?.kind === "fix" && e.result.resolution === "pending" ? e : void 0;
+		return U() ? l() === "finding" ? de().map(e).find(Boolean) : void 0 : e(P());
+	}, fe = () => O?.type === "session", pe = () => n.perform(async () => {
+		O?.type === "session" && (await n.client.discuss({
+			runId: j().runId,
+			findingId: N().id,
+			sessionID: O.sessionID
+		}, { location: n.location }), F());
+	}), K = () => t.ui.dialog.alert({
+		title: "Security keys",
+		message: ge.filter((e) => e.key && e.label && e.when()).map((e) => `${e.key.padEnd(6)} ${e.label()}`).join("\n")
+	}), q = () => U() && !!N() && (l() === "finding" || s() === "findings"), J = () => n.capabilities().policy || n.capabilities().validation, he = () => !!l() || (U() ? A().length > 1 || s() === "findings" : n.operations().length > 1), ge = [
+		{
+			bind: "up,k",
+			run: () => B(-1),
+			when: () => he()
+		},
+		{
+			bind: "down,j",
+			key: "↑↓",
+			label: () => l() ? "scroll" : "move",
+			run: () => B(1),
+			when: () => he()
+		},
+		{
+			bind: "return",
+			key: "enter",
+			label: () => U() && s() === "runs" ? "findings" : "open",
+			run: se,
+			when: () => W() && (U() ? !!M().length : !!P())
+		},
+		{
+			bind: "v",
+			key: "v",
+			label: () => "validate",
+			run: oe,
+			when: () => n.capabilities().validation && q()
+		},
+		{
+			bind: "x",
+			key: "x",
+			label: () => "propose fix",
+			run: () => L.fix(j(), N()),
+			when: () => n.capabilities().fix && q()
+		},
+		{
+			bind: "y",
+			key: "y",
+			label: () => "apply fix",
+			run: () => L.resolve(G(), "apply"),
+			when: () => !!G()
+		},
+		{
+			bind: "r",
+			key: "r",
+			label: () => "discard fix",
+			run: () => L.resolve(G(), "discard"),
+			when: () => !!G()
+		},
+		{
+			bind: "g",
+			key: "g",
+			label: () => "discuss in chat",
+			run: pe,
+			when: () => fe() && q()
+		},
+		{
+			bind: "s",
+			key: "s",
+			label: () => "start",
+			run: () => L.start(P()),
+			when: () => !U() && P()?.status === "prepared"
+		},
+		{
+			bind: "a",
+			key: "a",
+			label: () => "answer",
+			run: () => L.answer(H()),
+			when: () => !!H()
+		},
+		{
+			bind: "c",
+			key: "c",
+			label: () => "cancel",
+			run: () => U() ? ae() : L.cancel(P()),
+			when: () => U() ? W() && j()?.status === "running" : be(P())
+		},
+		{
+			bind: "d",
+			key: "d",
+			label: () => C() ? "hide details" : "details",
+			run: () => w((e) => !e),
+			when: () => U() && W() && !!j(),
+			secondary: !0
+		},
+		{
+			bind: "n",
+			key: "n",
+			label: () => "new scan",
+			run: R,
+			when: () => !0,
+			get secondary() {
+				return A().length > 0;
+			}
+		},
+		{
+			bind: "l",
+			key: "l",
+			label: () => T()?.signIn?.pending ? "cancel sign-in" : "sign in",
+			run: ee,
+			when: () => W() && !!T()?.signIn && T()?.signIn?.state !== "signed-in",
+			get secondary() {
+				return T()?.signIn?.state === "shared" && !T()?.signIn?.pending;
+			}
+		},
+		{
+			bind: "o",
+			key: "o",
+			label: () => "profile",
+			run: te,
+			when: () => W() && (T()?.profiles.length ?? 0) > 1,
+			secondary: !0
+		},
+		{
+			bind: "p",
+			key: "p",
+			label: () => "draft policy",
+			run: L.draftPolicy,
+			when: () => !U() && W() && n.capabilities().policy,
+			secondary: !0
+		},
+		{
+			bind: "tab",
+			key: "tab",
+			label: () => U() ? "operations" : "scans",
+			run: le,
+			when: () => !0
+		},
+		{
+			bind: "h",
+			key: "h",
+			label: () => "all keys",
+			run: K,
+			when: () => !0
+		},
+		{
+			bind: "escape",
+			key: "esc",
+			label: () => "back",
+			run: ce,
+			when: () => !0
+		}
+	];
+	return {
+		store: n,
+		open: ie,
+		onRoute: k,
+		View: () => {
+			let [a, c] = m(Date.now());
+			return _(() => {
+				D(), n.loadCapabilities(), g(n.watch());
+			}), p(() => {
+				if (!A().some((e) => e.status === "running")) return;
+				let e = setInterval(() => c(Date.now()), 1e3);
+				g(() => clearInterval(e));
+			}), t.keymap.layer(() => ({
+				priority: 10,
+				enabled: k,
+				commands: ge.map((e) => ({
+					bind: e.bind,
+					title: e.label ? `Security: ${e.label()}` : void 0,
+					group: "Security",
+					enabled: e.when,
+					run: () => void e.run()
+				}))
+			})), e(He, {
+				ctx: t,
+				color: r,
+				store: n,
+				keys: ge,
+				get now() {
+					return a();
+				},
+				get tab() {
+					return i();
+				},
+				get focus() {
+					return s();
+				},
+				get findingWork() {
+					return o(() => l() === "finding")() ? de() : [];
+				},
+				get detail() {
+					return l();
+				},
+				get run() {
+					return j();
+				},
+				get findingIndex() {
+					return v();
+				},
+				get operation() {
+					return P();
+				},
+				get details() {
+					return C();
+				},
+				get waiting() {
+					return re().length;
+				},
+				get opsAvailable() {
+					return J();
+				},
+				get setup() {
+					return T();
+				},
+				ref: (e) => z = e
+			});
+		},
+		newScan: R,
+		draftPolicy: L.draftPolicy,
+		validate: oe,
+		showOperations: () => {
+			a("operations"), u(void 0);
 		}
 	};
 }
 // src/tui.tsx
-var U = c.define({
+var Ge = u.define({
 	id: "gill.security.tui",
-	setup(c) {
-		let [m, h] = f(), [g, _] = f(), [v, y] = f(!1), [S, C] = f(""), [w, T] = f(!1), [M, F] = f(Date.now()), [I, L] = f({}), [R, z] = f(), H = !1, U = !1, W = c.location ?? c.data.location.default(), G = c.client.rpc(b), K = () => m()?.runs ?? [], q = () => K().find((e) => e.runId === g()) ?? K()[0];
-		d(p(() => q()?.runId, () => y(!1)));
-		let J = () => c.ui.router.navigate({
-			type: "plugin",
-			name: "security"
-		}), Y = A(c.location?.directory) ? c.location.directory : void 0, X = async (e = Y) => {
-			let t = await c.ui.dialog.prompt({
-				title: "Target repository",
-				description: "Choose an absolute local path. This changes only the next task, not the history workspace or global settings.",
-				value: e,
-				placeholder: "/path/to/project"
-			});
-			if (!(t === void 0 || H)) {
-				if (!A(t.trim())) throw Error("Choose an absolute local repository path before preparing a task.");
-				return t.trim();
+	setup(t) {
+		let n = We(t), r = t.ui.router.register({
+			name: Ue,
+			render: () => e(n.View, {})
+		}), i = /* @__PURE__ */ new Set(), a = n.store.client.events.on("operationChanged", (e) => {
+			let r = e.data;
+			r.question && !i.has(r.question.id) && (i.add(r.question.id), n.onRoute() || t.ui.toast.show({
+				title: "Security",
+				message: "A policy draft has a question for you. Open /security and press a.",
+				variant: "info"
+			}));
+		}), o = (e, t, r) => ({
+			id: `security.${e || "open"}`,
+			title: t,
+			group: "Security",
+			palette: !0,
+			slash: { name: e ? `security-${e}` : "security" },
+			run: () => {
+				n.open(), r();
 			}
-		}, Z = _e(c, W, q, J, async () => Y ?? X()), Q = () => K().filter((e) => e.status === "running").length, $ = async () => {
-			if (!(H || U)) {
-				U = !0;
-				try {
-					let e = await G.list({}, { location: W });
-					H || h(e);
-				} catch (e) {
-					H || C(V(e));
-				} finally {
-					U = !1;
-				}
-			}
-		}, ve = (o) => new Promise((l) => {
-			let d = !1, p = (e) => {
-				d || (d = !0, l(e), c.ui.dialog.clear());
-			}, m = () => {
-				let [l, d] = f(!1);
-				return c.keymap.layer(() => ({
-					mode: "global",
-					priority: 1e3,
-					commands: [
-						{
-							bind: "ctrl+y",
-							title: "Approve and start",
-							run: () => p(!0)
-						},
-						{
-							bind: "ctrl+d",
-							title: "Toggle advanced details",
-							run: () => d((e) => !e)
-						},
-						{
-							bind: "escape",
-							title: "Back without starting",
-							run: () => p(!1)
-						}
-					]
-				})), (() => {
-					var d = t("box"), f = t("text"), p = t("scrollbox"), m = t("box"), h = t("text"), g = n("Repository: "), _ = t("text"), v = n("Scope: "), y = n(" · Depth: "), b = t("text"), x = n("Ctrl+Y: "), S = n(" · Ctrl+D: "), C = n(" settings · Esc: back");
-					return a(d, f), a(d, p), a(d, b), s(d, "flexDirection", "column"), s(d, "padding", 1), s(d, "gap", 1), s(f, "fg", "#9be4c6"), i(f, () => o.mock ? "Review mock scan" : "Review this scan"), a(p, m), s(p, "focused", !0), a(m, h), a(m, _), s(m, "flexDirection", "column"), s(m, "gap", 1), a(h, g), i(h, () => o.repository, null), a(_, v), a(_, y), i(_, () => o.scopePaths.join(", ") || "Whole repository", y), i(_, () => o.settings.scan.mode, null), i(m, e(u, {
-						get when() {
-							return o.scanPrompt;
-						},
-						get children() {
-							var e = t("text"), r = n("Focus: ");
-							return a(e, r), i(e, () => o.scanPrompt, null), e;
-						}
-					}), null), i(m, e(u, {
-						get when() {
-							return o.contextFiles.length;
-						},
-						get children() {
-							var e = t("text"), r = n("Context: ");
-							return a(e, r), i(e, () => o.contextFiles.map((e) => e.path).join(", "), null), e;
-						}
-					}), null), i(m, e(u, {
-						get when() {
-							return !o.mock;
-						},
-						get fallback() {
-							return (() => {
-								var e = t("text");
-								return a(e, n("Mock SDK responses only. No model calls or source uploads.")), e;
-							})();
-						},
-						get children() {
-							return [
-								(() => {
-									var e = t("text"), r = n("Repository source and listed context will be sent to"), s = n(". Results stay local.");
-									return a(e, r), a(e, s), i(e, () => D(o.settings), s), e;
-								})(),
-								(() => {
-									var e = t("text");
-									return i(e, () => E(o.settings.scan.maxCostUsd)), e;
-								})(),
-								(() => {
-									var e = t("text");
-									return a(e, n("Conversation history is not copied. Scope guides the scan; it is not a filesystem sandbox.")), e;
-								})()
-							];
-						}
-					}), null), i(m, e(u, {
-						get when() {
-							return l();
-						},
-						get children() {
-							var e = t("text");
-							return i(e, () => O(o)), e;
-						}
-					}), null), a(b, x), a(b, S), a(b, C), i(b, () => o.mock ? "start mock scan" : "approve and start", S), i(b, () => l() ? "hide" : "show", C), r((e) => s(p, "height", Math.max(6, Math.min(22, c.renderer.height - 12)), e)), d;
-				})();
-			};
-			c.ui.dialog.show(() => e(m, {}), () => {
-				d || (d = !0, l(!1));
-			}), c.ui.dialog.set({
-				size: "xlarge",
-				centered: !0
-			});
-		}), ye = async () => {
-			if (!(w() || H)) {
-				T(!0), C("");
-				try {
-					if (await $(), Q() >= (m()?.maxConcurrent ?? 2)) throw Error("All scan slots are in use. Start another scan after one finishes.");
-					let e = {};
-					if (!m()?.engine?.startsWith("local-patterns")) {
-						let t = j(m(), Date.now(), R());
-						if (!t) {
-							let e = I().repository || Y || await X();
-							if (!e || H) return;
-							t = x(await G.prepare({
-								...I(),
-								repository: e
-							}, { location: W }));
-						}
-						let n = t.plan;
-						if (!n) throw Error("No scan preview returned. Nothing was started.");
-						if (!await ve(n) || H) return;
-						e = {
-							planId: n.id,
-							approveOpenAIInference: !0
-						};
-					}
-					let t = x(await G.start(e, { location: W }));
-					H || (_(t.runId), L({}), z(void 0), await $());
-				} catch (e) {
-					H || C(V(e));
-				} finally {
-					H || T(!1);
-				}
-			}
-		}, be = async () => {
-			if (await $(), !K().length) {
-				await c.ui.dialog.alert({
-					title: "Scans",
-					message: "No scans yet. Use /security-scan to review and start one."
-				});
-				return;
-			}
-			let e = await c.ui.dialog.select({
-				title: "Scans recorded in this workspace",
-				current: q()?.runId,
-				options: K().map((e) => ({
-					title: `${e.status.toUpperCase()} · ${N(e)}`,
-					description: `${e.repository} · ${P(e)} · ${e.mode ?? "fixture"} · ${e.runId?.slice(0, 8)}`,
-					value: e.runId
-				}))
-			});
-			e && !H && _(e);
-		}, xe = async () => {
-			let e = q();
-			if (!e?.runId || e.status !== "running") await c.ui.dialog.alert({
-				title: "Cancel scan",
-				message: "Select a running scan with /security-scans first."
-			});
-			else if (!w()) {
-				T(!0), C("");
-				try {
-					await G.cancel({ runId: e.runId }, { location: W }), await $();
-				} catch (e) {
-					H || C(V(e));
-				} finally {
-					H || T(!1);
-				}
-			}
-		};
-		$();
-		let Se = setInterval(() => {
-			F(Date.now()), $(), Z.refresh();
-		}, 1500), Ce = c.ui.router.register({
-			name: "security",
-			render: () => (() => {
-				var c = t("scrollbox"), d = t("box"), f = t("text"), p = t("text"), h = n("History workspace: "), g = t("text"), _ = t("text");
-				return a(c, d), s(c, "height", "100%"), s(c, "focused", !0), a(d, f), a(d, p), a(d, g), a(d, _), s(d, "flexDirection", "column"), s(d, "padding", 1), s(d, "gap", 1), a(f, n("Security")), s(f, "fg", "#9be4c6"), a(p, h), s(p, "fg", "#b5b5b5"), i(p, () => W.directory, null), i(d, e(u, {
-					when: !Y,
-					get children() {
-						var e = t("text");
-						return a(e, n("No active local workspace verified. Choose a target before preparing work.")), e;
-					}
-				}), g), i(g, (() => {
-					var e = o(() => !!Q());
-					return () => e() ? `${Q()} of ${m()?.maxConcurrent ?? 2} scans running` : "Review code, then follow each scan here.";
-				})()), a(_, n("/security-scan: new · /security-scans: switch · Ctrl+D: details · Esc: back")), s(_, "fg", "#b5b5b5"), i(d, e(u, {
-					get when() {
-						return Z.questionCount();
-					},
-					get children() {
-						var e = t("text"), r = n(" operation(s) need your answer. /security-operations to select.");
-						return a(e, r), s(e, "fg", "#9be4c6"), i(e, () => Z.questionCount(), r), e;
-					}
-				}), null), i(d, e(u, {
-					get when() {
-						return Z.visible();
-					},
-					fallback: [],
-					get children() {
-						return Z.view();
-					}
-				}), null), i(d, e(u, {
-					get when() {
-						return !Z.visible();
-					},
-					get children() {
-						return [
-							e(u, {
-								get when() {
-									return S();
-								},
-								get children() {
-									var e = t("text");
-									return s(e, "fg", "#ffb3b3"), i(e, S), e;
-								}
-							}),
-							e(u, {
-								get when() {
-									return m()?.historyError;
-								},
-								get children() {
-									var e = t("text");
-									return s(e, "fg", "#ffb3b3"), i(e, () => m()?.historyError), e;
-								}
-							}),
-							e(u, {
-								get when() {
-									return o(() => !!v())() && K().length;
-								},
-								get children() {
-									var o = t("box"), c = t("text"), u = t("text");
-									return a(o, c), a(o, u), s(o, "flexDirection", "column"), s(o, "gap", 0), a(c, n("Global settings share defaults, not a target or combined history.")), a(u, n("RECENT SCANS IN THIS WORKSPACE")), i(o, e(l, {
-										get each() {
-											return K().slice(0, 6);
-										},
-										children: (e) => (() => {
-											var o = t("text"), c = n(" · "), l = n(" · "), u = n(" · "), d = n(" · ");
-											return a(o, c), a(o, l), a(o, u), a(o, d), i(o, () => e.runId === q()?.runId ? "> " : "  ", c), i(o, () => e.status.toUpperCase(), c), i(o, () => N(e), l), i(o, () => e.mode ?? "fixture", u), i(o, () => e.runId?.slice(0, 8), d), i(o, () => e.repository, null), r((t) => s(o, "fg", e.runId === q()?.runId ? "#9be4c6" : void 0, t)), o;
-										})()
-									}), null), o;
-								}
-							}),
-							e(u, {
-								get when() {
-									return q();
-								},
-								get fallback() {
-									return (() => {
-										var e = t("text");
-										return a(e, n("No scans yet. Preparation makes no model calls. Each scan starts only after approval.")), e;
-									})();
-								},
-								children: (c) => (() => {
-									var d = t("box"), f = t("text"), p = t("text"), m = n("Target: "), h = t("text"), g = n(" · "), _ = t("text"), y = t("b"), b = t("text"), x = t("text"), S = n("Ctrl+D: "), C = n(" activity, coverage and scan details");
-									return a(d, f), a(d, p), a(d, h), a(d, _), a(d, b), a(d, x), s(d, "flexDirection", "column"), s(d, "gap", 1), s(f, "fg", "#9be4c6"), i(f, () => N(c())), a(p, m), s(p, "fg", "#b5b5b5"), i(p, () => c().repository, null), a(h, g), s(h, "fg", "#b5b5b5"), i(h, () => P(c()), g), i(h, () => c().mode ?? "Fixture pattern checks", null), a(_, y), i(y, () => ee(c())), i(_, e(u, {
-										get when() {
-											return ge(c().startedAt, c().finishedAt, M());
-										},
-										children: (e) => [" · ", o(e)]
-									}), null), i(d, e(u, {
-										get when() {
-											return te(c());
-										},
-										get children() {
-											var e = t("text"), r = n(" · ");
-											return a(e, r), i(e, () => ne(c()), r), i(e, () => re(c()), null), e;
-										}
-									}), b), i(d, e(u, {
-										get when() {
-											return c().status === "running";
-										},
-										get children() {
-											return [(() => {
-												var e = t("text");
-												return i(e, () => ae(c())), e;
-											})(), (() => {
-												var e = t("text");
-												return a(e, n("/security-cancel: stop this scan")), s(e, "fg", "#b5b5b5"), e;
-											})()];
-										}
-									}), b), i(b, () => oe(c())), i(d, e(u, {
-										get when() {
-											return c().error;
-										},
-										get children() {
-											var e = t("text");
-											return s(e, "fg", "#ffb3b3"), i(e, () => c().error), e;
-										}
-									}), x), i(d, e(u, {
-										get when() {
-											return c().status === "cancelled";
-										},
-										get children() {
-											var e = t("text");
-											return a(e, n("Cancelled. This scan is incomplete, not a clean result.")), e;
-										}
-									}), x), i(d, e(u, {
-										get when() {
-											return c().status === "completed";
-										},
-										get children() {
-											var e = t("text"), r = t("b"), o = n(" · /security-findings: evidence");
-											return a(e, r), a(e, o), i(r, () => pe(c())), e;
-										}
-									}), x), i(d, e(l, {
-										get each() {
-											return c().findings.slice(0, 5);
-										},
-										children: (e) => (() => {
-											var o = t("text"), c = t("span"), l = n(" · ");
-											return a(o, c), a(o, l), i(c, () => e.severity.toUpperCase()), i(o, () => e.title, null), r((t) => s(c, "style", { fg: e.severity === "high" || e.severity === "critical" ? "#ffb3b3" : "#ebc28c" }, t)), o;
-										})()
-									}), x), i(d, e(u, {
-										get when() {
-											return o(() => c().status === "completed")() && !c().findings.length;
-										},
-										get children() {
-											var e = t("text");
-											return a(e, n("No findings does not guarantee security. Check coverage in details.")), s(e, "fg", "#b5b5b5"), e;
-										}
-									}), x), a(x, S), a(x, C), s(x, "fg", "#b5b5b5"), i(x, () => v() ? "hide" : "show", C), i(d, e(u, {
-										get when() {
-											return v();
-										},
-										get children() {
-											return [
-												(() => {
-													var e = t("text");
-													return a(e, n("SCAN DETAILS")), e;
-												})(),
-												(() => {
-													var e = t("text");
-													return i(e, () => c().repository), e;
-												})(),
-												(() => {
-													var e = t("text"), r = n("Run: ");
-													return a(e, r), i(e, () => c().runId, null), e;
-												})(),
-												e(u, {
-													get when() {
-														return c().telemetry?.measurement?.coverage !== "complete";
-													},
-													get children() {
-														var e = t("text");
-														return i(e, () => se(c())), e;
-													}
-												}),
-												e(u, {
-													get when() {
-														return de(c());
-													},
-													get children() {
-														var e = t("text");
-														return i(e, () => de(c())), e;
-													}
-												}),
-												e(u, {
-													get when() {
-														return fe(c());
-													},
-													get children() {
-														var e = t("text");
-														return i(e, () => fe(c())), e;
-													}
-												}),
-												e(u, {
-													get when() {
-														return o(() => c().status === "running")() && c().deepProgress;
-													},
-													get children() {
-														var e = t("text"), r = n(". The cap is not a completion target.");
-														return a(e, r), i(e, () => ie(c()), r), e;
-													}
-												}),
-												e(u, {
-													get when() {
-														return c().status === "completed";
-													},
-													get children() {
-														return [
-															(() => {
-																var e = t("text");
-																return i(e, () => me(c())), e;
-															})(),
-															(() => {
-																var e = t("text"), r = n("Repository matching: ");
-																return a(e, r), i(e, () => he(c()), null), e;
-															})(),
-															(() => {
-																var e = t("text");
-																return a(e, n("Coverage is reported metadata, not proof of exhaustive review. See local SDK artifacts for details.")), e;
-															})()
-														];
-													}
-												}),
-												(() => {
-													var e = t("text");
-													return a(e, n("ACTIVITY · latest reported")), e;
-												})(),
-												e(u, {
-													get when() {
-														return B(c()).length;
-													},
-													get fallback() {
-														return (() => {
-															var e = t("text");
-															return a(e, n("No detailed SDK activity recorded.")), e;
-														})();
-													},
-													get children() {
-														return e(l, {
-															get each() {
-																return ce(c()).slice(0, 5);
-															},
-															children: (e) => (() => {
-																var r = t("text"), o = n(" · "), s = n(" · ");
-																return a(r, o), a(r, s), i(r, () => le(e.worker), o), i(r, () => e.label, s), i(r, () => ue(e.status, c()), null), r;
-															})()
-														});
-													}
-												}),
-												e(u, {
-													get when() {
-														return c().events.length;
-													},
-													get children() {
-														return [(() => {
-															var e = t("text");
-															return a(e, n("RECENT MILESTONES")), e;
-														})(), e(l, {
-															get each() {
-																return [...c().events].reverse().slice(0, 3);
-															},
-															children: (e) => (() => {
-																var r = t("text"), o = n(" · ");
-																return a(r, o), i(r, () => new Date(e.time).toLocaleTimeString(), o), i(r, () => e.message, null), r;
-															})()
-														})];
-													}
-												})
-											];
-										}
-									}), null), d;
-								})()
-							})
-						];
-					}
-				}), null), c;
-			})()
 		});
-		return c.keymap.layer(() => ({
+		return t.keymap.layer(() => ({
 			mode: "global",
 			commands: [
-				...Z.commands,
-				{
-					id: "security.details",
-					title: "Security: toggle scan details",
-					bind: "ctrl+d",
-					group: "Security",
-					palette: !0,
-					slash: { name: "security-details" },
-					enabled: () => {
-						let e = c.ui.router.current();
-						return !w() && !Z.visible() && !!q() && e.type === "plugin" && e.name === "security";
-					},
-					run: () => {
-						y((e) => !e);
-					}
-				},
-				{
-					id: "security.back",
-					title: "Security: return home",
-					bind: "escape",
-					enabled: () => {
-						let e = c.ui.router.current();
-						return !w() && e.type === "plugin" && e.name === "security";
-					},
-					run: () => c.ui.router.navigate({ type: "home" })
-				},
-				{
-					id: "security.open",
-					title: "Security: open scans",
-					group: "Security",
-					palette: !0,
-					slash: { name: "security" },
-					run: () => {
-						Z.close(), J();
-					}
-				},
-				{
-					id: "security.scan",
-					title: "Security: new scan",
-					group: "Security",
-					palette: !0,
-					slash: { name: "security-scan" },
-					run: async () => {
-						Z.close(), J(), await ye();
-					}
-				},
-				{
-					id: "security.runs",
-					title: "Security: choose a scan",
-					group: "Security",
-					palette: !0,
-					slash: { name: "security-scans" },
-					run: async () => {
-						Z.close(), J(), await be();
-					}
-				},
-				{
-					id: "security.cancel",
-					title: "Security: cancel selected scan",
-					group: "Security",
-					palette: !0,
-					slash: { name: "security-cancel" },
-					run: xe
-				},
-				{
-					id: "security.target",
-					title: "Security: choose next scan target",
-					group: "Security",
-					palette: !0,
-					slash: { name: "security-target" },
-					run: async () => {
-						if (!w()) {
-							T(!0), C("");
-							try {
-								let e = await X(Y);
-								if (!e || H) return;
-								let t = { repository: e };
-								L(t), z("pending");
-								let n = x(await G.prepare(t, { location: W }));
-								if (!n.plan) throw Error("No scan preview returned. Nothing was started.");
-								z(n.plan.id), await $(), Z.close(), J();
-							} catch (e) {
-								H || C(V(e));
-							} finally {
-								H || T(!1);
-							}
-						}
-					}
-				},
-				{
-					id: "security.mode",
-					title: "Security: choose next scan depth",
-					group: "Security",
-					palette: !0,
-					slash: { name: "security-mode" },
-					run: async () => {
-						if (!w()) {
-							T(!0), C("");
-							try {
-								let e = await c.ui.dialog.select({
-									title: "Depth for the next scan",
-									current: I().mode ?? "default",
-									options: [
-										{
-											title: "Global default",
-											description: "Use the configured depth.",
-											value: "default"
-										},
-										{
-											title: "Standard",
-											description: "Standard security scan.",
-											value: "standard"
-										},
-										{
-											title: "Deep",
-											description: "Additional work; can take longer and cost more.",
-											value: "deep"
-										}
-									]
-								});
-								if (!e || H) return;
-								let t = j(m(), Date.now(), R())?.plan, n = k(t?.inputs ?? I(), e);
-								if (n.repository ||= t?.repository || Y || await X(), !n.repository || H) return;
-								L(n), z("pending");
-								let r = x(await G.prepare(n, { location: W }));
-								if (!r.plan) throw Error("No scan preview returned. Nothing was started.");
-								z(r.plan.id), await $(), J();
-							} catch (e) {
-								H || C(V(e));
-							} finally {
-								H || T(!1);
-							}
-						}
-					}
-				},
-				{
-					id: "security.findings",
-					title: "Security: inspect selected scan findings",
-					group: "Security",
-					palette: !0,
-					slash: { name: "security-findings" },
-					run: async () => {
-						let e = q(), t = e?.findings ?? [];
-						if (!t.length) {
-							await c.ui.dialog.alert({
-								title: "Findings",
-								message: e?.status === "running" ? "This scan is still running. Findings are available at completion." : e?.status === "completed" ? "No findings were reported by this completed scan. This is not a guarantee of security." : "Select a completed scan with /security-scans to inspect its findings."
-							});
-							return;
-						}
-						let n = await c.ui.dialog.select({
-							title: "Findings",
-							options: t.map((e) => ({
-								title: `${e.severity.toUpperCase()} ${e.title}`,
-								description: `${e.path}:${e.line}`,
-								value: e.id
-							}))
-						}), r = t.find((e) => e.id === n);
-						r && await c.ui.dialog.alert({
-							title: r.title,
-							message: `${r.path}:${r.line} · ${r.cwe}\n\n${r.summary}\n\n${r.evidence}\n\nSuggested next step: ${r.remediation}\n\nConfidence: ${r.confidence}`
-						});
-					}
-				}
+				o("", "Security: open", () => {}),
+				o("scan", "Security: new scan", n.newScan),
+				o("policy", "Security: draft a policy", () => (n.showOperations(), n.draftPolicy())),
+				o("validate", "Security: validate a finding", n.validate)
 			]
 		})), () => {
-			H = !0, clearInterval(Se), Z.dispose(), Ce();
+			a(), n.store.dispose(), r();
 		};
 	}
 });
-export { U as default };
+export { Ge as default };

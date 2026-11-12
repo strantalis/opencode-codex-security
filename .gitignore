@@ -14,3 +14,4 @@ __pycache__/
 !.env.example
 auth.json
 credentials.json
+.claude/

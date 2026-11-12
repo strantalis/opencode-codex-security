@@ -4,5 +4,5 @@ dist
 evidence
 coverage
 package-lock.json
-fixtures
 *.tgz
+.claude

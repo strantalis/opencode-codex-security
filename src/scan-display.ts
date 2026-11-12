@@ -13,8 +13,13 @@ export function runTitle(run: ScanState) {
     (run.plan?.scopePaths.length ? run.plan.scopePaths.join(', ') : projectName(run.repository))
   );
 }
+export function scopeLabel(plan: { scopePaths: string[]; changes?: string }) {
+  if (plan.changes)
+    return plan.changes === 'uncommitted' ? 'Uncommitted changes' : `Changes since ${plan.changes}`;
+  return plan.scopePaths.join(', ') || 'Whole repository';
+}
 export function scanScope(run: ScanState) {
-  return run.plan?.scopePaths.join(', ') || 'Whole repository';
+  return run.plan ? scopeLabel(run.plan) : 'Whole repository';
 }
 export function phaseLabel(phase: string) {
   const clean = phase.replace(/\s*\((files|reviews)\)$/, '').replaceAll('_', ' ');
@@ -170,6 +175,18 @@ export function reconnectLabel(run: ScanState) {
   const reason = retry.reason ? ` · ${retry.reason.replaceAll('_', ' ')}` : '';
   return `Last connection retry: ${retry.attempt} of ${retry.maxAttempts}${reason}`;
 }
+/** Empty unless access is missing or unverified; a granted status is not worth a line. */
+export function trustedAccessLabel(run: ScanState) {
+  const status = run.telemetry?.trustedAccess;
+  return status === 'not_granted'
+    ? 'Trusted Access for Cyber: not granted'
+    : status === 'unknown'
+      ? 'Trusted Access for Cyber: not verified'
+      : '';
+}
+export function targetChangedLabel(run: ScanState) {
+  return run.telemetry?.warnings?.targetChanged ? 'The repository changed during the scan' : '';
+}
 export function resultCountsLabel(run: ScanState) {
   const counts = run.assessment?.returnedFindings;
   if (!counts)
@@ -281,4 +298,111 @@ export function userError(error: unknown) {
 
 export function findingText(finding: Finding) {
   return `${finding.title}\nSeverity: ${finding.severity} · ${finding.cwe}\nLocation: ${finding.path}:${finding.line}\n\n${finding.summary}\n\nEvidence:\n${finding.evidence}\n\nSuggested remediation:\n${finding.remediation}`;
+}
+
+/** What the SDK needs on OpenCode's PATH to run a scan, and what was found instead. */
+export function runtimeProblems(runtime: { node: string | null; python: string | null }) {
+  const parts = (version: string | null) => (version?.match(/\d+/g) ?? []).map(Number);
+  const [nodeMajor = 0, nodeMinor = 0] = parts(runtime.node);
+  const [pythonMajor = 0, pythonMinor = 0] = parts(runtime.python);
+  const found = (version: string | null) => (version ? `found ${version}` : 'not found');
+  return [
+    ...(nodeMajor === 24 || nodeMajor === 26 || (nodeMajor === 22 && nodeMinor >= 20)
+      ? []
+      : [`Node 22.20+, 24 or 26 (${found(runtime.node)})`]),
+    ...(pythonMajor > 3 || (pythonMajor === 3 && pythonMinor >= 10)
+      ? []
+      : [`Python 3.10+ (${found(runtime.python)})`]),
+  ];
+}
+
+/** The SDK's verdict on a fix it wrote. */
+export function fixStatusLabel(status: string) {
+  return (
+    {
+      verified: 'Fix verified',
+      no_change: 'No change needed',
+      blocked: 'Fix blocked',
+      failed: 'Fix failed verification',
+    }[status] ?? 'Fix'
+  );
+}
+
+export interface SignInInfo {
+  state: 'signed-in' | 'shared' | 'needed';
+  pending?: { url: string; code?: string };
+  error?: string;
+}
+/** What to say about the ChatGPT sign-in, or '' when there is nothing to do. */
+export function signInLabel(signIn: SignInInfo | undefined) {
+  if (!signIn) return '';
+  if (signIn.pending)
+    return signIn.pending.code
+      ? `Enter code ${signIn.pending.code} at ${signIn.pending.url}`
+      : `Finish signing in in your browser: ${signIn.pending.url}`;
+  const state = {
+    'signed-in': '',
+    shared: 'Using your Codex CLI sign-in; sign in here to keep the two separate',
+    needed: 'Not signed in to Codex Security',
+  }[signIn.state];
+  return [signIn.error, state].filter(Boolean).join(' · ');
+}
+
+const severityOrder = ['critical', 'high', 'medium', 'low'] as const;
+/** Findings with the most severe first; the scan's own order within a severity. */
+export function sortedFindings(run: ScanState) {
+  return [...run.findings].sort(
+    (a, b) => severityOrder.indexOf(a.severity) - severityOrder.indexOf(b.severity),
+  );
+}
+/** "2 high · 3 medium", or '' when there are no findings. */
+export function severitySummary(run: ScanState) {
+  return severityOrder
+    .map((level) => [level, run.findings.filter((f) => f.severity === level).length] as const)
+    .filter(([, count]) => count)
+    .map(([level, count]) => `${count} ${level}`)
+    .join(' · ');
+}
+/** What has been done about a finding since the scan: the fix if there is one, else the verdict. */
+export function findingStatus(
+  run: ScanState,
+  findingId: string,
+): { label: string; tone: 'good' | 'warn' | 'muted' } | undefined {
+  const review = run.reviews?.[findingId];
+  if (review?.fix?.resolution === 'applied') return { label: 'Fix applied', tone: 'good' };
+  if (review?.fix?.resolution === 'pending') return { label: 'Fix ready', tone: 'warn' };
+  const disposition = review?.validation?.disposition;
+  if (disposition === 'reportable') return { label: 'Confirmed', tone: 'warn' };
+  if (disposition === 'suppressed' || disposition === 'not_applicable')
+    return { label: 'Dismissed', tone: 'muted' };
+  if (disposition === 'deferred') return { label: 'Unclear', tone: 'muted' };
+  return undefined;
+}
+/** One line of a unified diff, classified for colouring. */
+export function diffLines(diff: string) {
+  return diff.split('\n').map((text) => ({
+    text,
+    kind:
+      text.startsWith('+++') || text.startsWith('---') || text.startsWith('diff ')
+        ? ('meta' as const)
+        : text.startsWith('@@')
+          ? ('hunk' as const)
+          : text.startsWith('+')
+            ? ('add' as const)
+            : text.startsWith('-')
+              ? ('del' as const)
+              : ('context' as const),
+  }));
+}
+
+/** A validation verdict in plain words. */
+export function dispositionLabel(disposition: string) {
+  return (
+    {
+      reportable: 'Confirmed in source',
+      suppressed: 'Not confirmed',
+      not_applicable: 'Not applicable',
+      deferred: 'Undecided: needs more context',
+    }[disposition] ?? disposition.replaceAll('_', ' ')
+  );
 }

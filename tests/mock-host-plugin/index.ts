@@ -1,17 +1,19 @@
 import { createSecurityPlugin } from '../../src/plugin.ts';
 import { resolve } from 'node:path';
 import { Rpc } from '@opencode/plugin/rpc';
-import { scanInputSchema } from '../../src/rpc.ts';
 export const TestRpc = Rpc.define({
   id: 'gill.security.mock-test',
   events: {},
   methods: {
-    prepareByTool: { input: scanInputSchema, output: { type: 'object' } },
     inspect: { input: { type: 'object' }, output: { type: 'object' } },
     toolCall: {
       input: {
         type: 'object',
-        properties: { name: { type: 'string' }, args: { type: 'object' } },
+        properties: {
+          name: { type: 'string' },
+          args: { type: 'object' },
+          context: { type: 'object' },
+        },
         required: ['name', 'args'],
       },
       output: { type: 'object' },
@@ -42,6 +44,16 @@ const implementation = createSecurityPlugin({
       async validate(options: any) {
         operationCalls.push({ kind: 'validation', repository: options.repositoryPath });
         return { disposition: 'reportable', report: 'Mock source-grounded validation result.' };
+      },
+      async patch(options: any) {
+        operationCalls.push({ kind: 'fix', repository: options.repositoryPath });
+        return {
+          status: 'no_change',
+          verificationReport: 'Mock: nothing to change.',
+          changedFiles: [],
+          threadId: null,
+          cost: null,
+        };
       },
       async close() {},
     }) as any,
@@ -173,12 +185,6 @@ export default {
   async setup(ctx: any) {
     const cleanup = await implementation.setup(ctx);
     const registration = await ctx.rpc.register(TestRpc, {
-      prepareByTool: async (input: unknown) => {
-        const tools = await ctx.tool.list();
-        const tool = tools.find((t: any) => t.name === 'security_prepare_scan');
-        if (!tool) throw new Error('Registered model tool missing');
-        return { result: await tool.execute(input, {}) };
-      },
       inspect: async () => ({
         calls,
         operationCalls,
@@ -188,7 +194,7 @@ export default {
       toolCall: async (input: any) => {
         const tool = (await ctx.tool.list()).find((t: any) => t.name === input.name);
         if (!tool) throw new Error('Missing tool');
-        return { result: await tool.execute(input.args, {}) };
+        return { result: await tool.execute(input.args, input.context ?? {}) };
       },
     });
     return async () => {

@@ -1,108 +1,177 @@
-# Codex Security for OpenCode
+<h1 align="center">Codex Security for OpenCode</h1>
 
-Security scans, policy drafts and finding validation inside **OpenCode V2**, with a native terminal view, an experimental Desktop panel and tools for your session's model.
+<p align="center">
+  Find, confirm and fix security issues in your code without leaving OpenCode.<br>
+  Ask for a scan in plain words, or drive it yourself from the terminal or the Desktop panel.
+</p>
 
-This is an early project, not an official OpenCode or OpenAI product. Published npm versions are available under [Apache 2.0](LICENSE). Releases use stage-only npm publishing, with human 2FA approval required before each version goes live. Tested GitHub release tarballs are also available. See [npm staging](docs/PUBLISHING.md).
+<p align="center">
+  <a href="https://www.npmjs.com/package/opencode-codex-security"><img alt="npm version" src="https://img.shields.io/npm/v/opencode-codex-security?color=3b5cf6"></a>
+  <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-3b5cf6"></a>
+  <img alt="OpenCode V2" src="https://img.shields.io/badge/OpenCode-V2-3b5cf6">
+</p>
 
-## What works
+<p align="center">
+  <img src="docs/images/terminal-findings.png" alt="The Security view in the OpenCode terminal: a finished scan with four findings, most severe first, one with a fix ready" width="860">
+</p>
 
-- Independent Standard or Deep scans, two concurrent runs per project, phase-local progress, safe worker activity, exact cancellation and private local history.
-- Honest partial/complete cost measurements and final coverage/repository-matching details when the SDK returns them. Missing data is labeled unavailable.
-- Model tools to prepare/start scans, list runs, inspect status/activity/results and read individual findings.
-- Security-policy generation that pauses for your answers and returns an **unapplied draft**.
-- Finding validation against source. This is static assessment, not runtime reproduction, and the SDK currently has **no validation cost ceiling**. It requires separate approval.
-- Global SDK defaults plus per-scan repository, scope, instructions and documentation context. Conversation history is not silently copied.
+<p align="center"><sub>The terminal view after a scan. Screenshots use sample data.</sub></p>
 
-Patch application and fix verification are not implemented. Findings arrive at scan completion, not continuously. No scan starts just because the plugin loads.
+It runs [Codex Security](https://developers.openai.com/codex/security) through the official [`@openai/codex-security`](https://www.npmjs.com/package/@openai/codex-security) SDK, using the model and provider you already have configured for Codex. This is an early, unofficial project, not an OpenCode or OpenAI product.
 
-## Requirements
+## Quick start
 
-- For installation and a scan-free loading check: an existing packaged OpenCode V2 host and public npm registry access. OpenCode installs and runs the plugin itself; a separate Node/npm install is **not** required for this step.
-- For real SDK operations: Node 22.20+ within 22.x, 24.x or 26.x available to the OpenCode process on its trusted `PATH`, plus Python 3.10+ (`tomli` for Python 3.10). SDK 0.9.1 needs external Node helpers when hosted by Bun. Reuse compatible installed runtimes rather than changing system defaults. See [runtime details](docs/AGENT-SETUP.md#what-you-need).
-- Default ChatGPT authentication is currently POSIX-only; its credential guard deliberately rejects Windows. Full Windows SDK operation is unverified.
-- OpenCode V2; 2.2.6 is the original test baseline, not an exact-patch requirement. Verify loading on the installed host. Desktop integration is experimental.
-- For real operations: supported account/model access and an existing private dedicated ChatGPT sign-in, an explicitly selected OpenAI environment API key, a supported custom Responses provider with an existing environment key, or (in the next source build) native Amazon Bedrock with an existing AWS identity. The plugin does not perform login or create/import credentials. See [no-sign-in provider setup](docs/GLOBAL-CONFIG.md#use-an-existing-custom-provider-without-sign-in). Custom-provider routing is available in `0.1.2`, not in `0.1.0`/`0.1.1`.
+**1. Add the plugin** to the `plugins` array in `~/.config/opencode/opencode.json`:
 
-SDK mode uses `@openai/codex-security` 0.9.1. Repository source and selected context are sent to the provider shown in the approval preview, OpenAI by default or the explicitly selected gateway. Gateway upstream routing is not verified. No dollar-based stop limit is set by default. You can explicitly configure `scan.maxCostUsd` when SDK pricing is available. SDK cost limits are estimates, **not guaranteed billing caps**. Account quota/availability can also limit scans.
+```json
+{ "plugins": [{ "package": "opencode-codex-security@VERSION" }] }
+```
 
-## Install a released version
+Use a published version (`npm view opencode-codex-security version`), or point `package` at a clone of this repository after `npm ci --ignore-scripts`.
 
-For a self-contained prompt to hand to another coding agent, see [install with an agent](https://github.com/strantalis/opencode-codex-security/blob/main/docs/AGENT-SETUP.md).
+**2. Open `/security`** in OpenCode. The top of the view shows the provider, model and credentials it will use, and tells you if anything is missing.
 
-OpenCode V2 supports npm packages directly.
+**3. Ask for a scan**, or press `n`:
 
-Real-by-default onboarding is prepared for `0.1.4`. Verify that exact version is published before installing; if it is unavailable, use an explicitly supplied [tested tarball](docs/RELEASING.md) or wait for release. Public `0.1.3` fixes the npm terminal view but still defaults to fixture mode; set `options.engine` to `codex` explicitly on that version. A source version alone is not an npm release.
+```text
+Run a security scan of this repo.
+```
 
-Add this object to your existing `plugins` array, preserving other settings:
+You see a preview of what will be scanned and where the source will be sent, and nothing starts until you approve it.
+
+Scans need Node 22.20+ (or 24, 26) and Python 3.10+ on the `PATH` OpenCode runs with. To have a coding agent do the install, see [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md).
+
+## Just ask
+
+The plugin gives your session's model the tools and a skill for the whole workflow, so you can describe what you want:
+
+```text
+Scan only what I changed on this branch against origin/main.
+```
+
+```text
+Scan the billing service. It depends on the auth and ledger repos, and our
+Terraform and GitOps repos describe how it is deployed.
+```
+
+```text
+Is the tenant check finding real? If it is, propose a fix.
+```
+
+```text
+Draft a SECURITY.md for services/api.
+```
+
+For the multi-repository case the model clones what is not checked out locally, reads the infrastructure repositories, writes a short deployment summary, and passes it to the scan as context. When a scan finishes, a notice lands in the conversation and the model reports the findings.
+
+## What you can do
+
+<table>
+  <tr>
+    <td width="46%" valign="top">
+      <img src="docs/images/desktop-finding.png" alt="The Desktop panel showing a high-severity finding, its validation result and a proposed fix as a diff with Apply and Discard buttons">
+    </td>
+    <td valign="top">
+
+**Scan**
+
+Standard or Deep. The whole repository, selected paths, your uncommitted changes, or everything since a branch or commit. Two scans can run at once.
+
+**Review findings**
+
+Most severe first, each with its location, evidence and a suggested fix. What you have done about a finding (confirmed, dismissed, fix ready, fix applied) is saved with the scan.
+
+**Validate**
+
+Re-check a finding against the source before you spend time on it.
+
+**Fix**
+
+The fix is written and verified in a throwaway copy of your last commit. You get a diff, and your files change only if you apply it. Nothing is committed.
+
+**Draft a security policy**
+
+A `SECURITY.md` for a repository or one component. It can ask you questions along the way, and it is never written for you.
+
+**Discuss**
+
+Hand any finding to the conversation and have the model explain it.
+
+  </td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/images/desktop-running.png" alt="The Desktop panel while a scan is running, with a progress bar and an estimated cost" width="520">
+</p>
+
+## Configuration
+
+There is nothing to configure if Codex already works for you. The plugin uses the model and provider from `~/.codex/config.toml`, including gateways and Amazon Bedrock, and authenticates the way the SDK does: an API key from the environment, otherwise your Codex Security sign-in.
+
+To choose a different model, a Codex profile, a default depth or a cost limit, add `~/.config/opencode/codex-security.json`:
 
 ```json
 {
-  "package": "opencode-codex-security@0.1.4"
+  "codex": { "profile": "work" },
+  "scan": { "mode": "standard", "maxCostUsd": 5 }
 }
 ```
 
-Check that no scans, approval dialogs or policy forms are active before editing watched settings or reloading. Open `/security` to verify loading. The normal install opens real SDK mode; opening the panel does not start a scan. Preparing a scan shows the actual repository and scope for review.
+Everything is in [docs/CONFIG.md](docs/CONFIG.md).
 
-When preparing a scan, the plugin discovers your existing Codex configuration and uses supported provider/model settings. Explicit plugin settings take precedence. It does not automatically inherit OpenCode provider settings, read credential files, or sign in. Missing or unsupported prerequisites produce a specific setup error, never a fixture result or a silent provider switch. See [authentication compatibility](docs/GLOBAL-CONFIG.md#authentication-compatibility), [provider setup](docs/GLOBAL-CONFIG.md#use-an-existing-custom-provider-without-sign-in) and [dedicated ChatGPT authentication](docs/SDK.md#default-dedicated-chatgpt-authentication). Real operations still need authorized scope, source-data transfer and usage.
+## In the terminal
 
-Fixture mode is only an explicit developer/test option: `"options": { "engine": "fixture" }`. It scans bundled examples, not your repository. Remove an old fixture option when upgrading, while the host is idle; upgrades preserve explicit choices.
+`/security` opens the view, `/security-scan` starts a scan, `/security-policy` drafts a policy and `/security-validate` re-checks a finding. Inside the view everything is a key, and the footer shows the ones that apply to what is selected:
 
-Verified November 10, 2026: exact `0.1.3` is public. Source `0.1.4` is prepared for real-by-default onboarding; recheck registry availability. Pin the full version you want rather than a moving tag. A staged version or `0.0.0-stage` placeholder is not installable functionality.
+| Key       | Does                                                   |
+| --------- | ------------------------------------------------------ |
+| `n`       | New scan, with a review where you set target and scope |
+| `enter`   | Move into the findings, then open one                  |
+| `v` / `x` | Validate the finding / propose a fix                   |
+| `y` / `r` | Apply / discard a proposed fix                         |
+| `g`       | Discuss the finding in the conversation you came from  |
+| `tab`     | Switch between scans and operations                    |
+| `h`       | List every key available right now                     |
 
-### Optional: manage the installation yourself
+<details>
+<summary><b>Tools for the session's model</b></summary>
 
-Skip this if OpenCode manages the package entry above. This alternative needs Node 22.20+ within 22.x, 24.x or 26.x and npm. For explicit npm installation/audit control, use a new dedicated consumer outside source repositories:
+| Tool                                                | Purpose                                                                       |
+| --------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `security_status`                                   | The resolved route, config files, Codex profiles, and Node/Python found.      |
+| `security_scan`                                     | Start a scan. Asks for your approval with the preview.                        |
+| `security_scans`, `security_scan_status`            | List scans and follow one.                                                    |
+| `security_scan_results`                             | Findings of a completed scan, or one finding in detail.                       |
+| `security_policy`, `security_validate`              | Start a policy draft or a validation. Each asks first.                        |
+| `security_fix`, `security_apply_fix`                | Propose a fix for a finding, then apply or discard the diff. Each asks first. |
+| `security_operations`                               | Status, pending questions and results of those operations.                    |
+| `security_answer_questions`                         | Answer a policy's owner questions. Asks first.                                |
+| `security_cancel_scan`, `security_cancel_operation` | Cancel one run.                                                               |
 
-```sh
-mkdir security-plugin && cd security-plugin
-npm init -y
-npm view opencode-codex-security@0.1.4 version &&
-  npm install --save-exact --ignore-scripts opencode-codex-security@0.1.4
-npm audit --omit=dev --audit-level=high
-```
+Approvals use OpenCode's permission rules, under the actions `codex_security_scan`, `codex_security_policy`, `codex_security_validation`, `codex_security_fix`, `codex_security_apply_fix` and `codex_security_answer`.
 
-Then set the plugin entry's `package` to the absolute path of `security-plugin/node_modules/opencode-codex-security`. Keep the lockfile; use `npm ci --ignore-scripts` for repeat installs into a separate directory. Keep the previous consumer for rollback and switch paths only when the host is idle. [Tested GitHub tarballs](docs/RELEASING.md) use the same local-path route.
+Context files for a scan may be absolute paths in other checkouts. Any UTF-8 text file (Terraform, YAML, JSON, Markdown), PDF or DOCX works, and a directory contributes all of its text files.
 
-## Configuration and model tools
+</details>
 
-Global settings live at `$XDG_CONFIG_HOME/opencode/codex-security.json`, or `~/.config/opencode/codex-security.json`. No project configuration overrides are loaded. Per-scan mode wins over the global Standard/Deep fallback. Daybreak is a separate option, not a model or an access grant.
+## Good to know
 
-See [global configuration](docs/GLOBAL-CONFIG.md), [scan lifecycle and tools](docs/MULTI-SCAN.md), [SDK integration](docs/SDK.md) and [release checklist](docs/PUBLISHING.md).
+- **Your source goes to your model provider.** Every scan, validation, fix and policy draft shows where, and waits for your approval.
+- **Costs are estimates.** `scan.maxCostUsd` stops a scan on the SDK's estimate; it is not a billing cap. Validation and fixes have no cost limit.
+- **Findings arrive when a scan completes**, not while it runs.
+- **A fix is written against your last commit.** It does not see uncommitted work, and applying it fails cleanly if you have since changed the same lines.
+- **Change scans run at Standard depth.**
+- **Restarts.** Scan results and finding status are kept. A scan that was running is marked interrupted, and policy drafts, validations and unapplied fixes in progress are lost.
+- Tested on macOS and Linux. The Desktop panel is experimental.
 
 ## Development
 
-Use a separate source checkout, not an installed or watched consumer. Development/TUI tests use Node 26.4+ (tested on 26.8.1); the TUI smoke test also needs Bun. These are contributor prerequisites. The published package already contains its Desktop bundle; consumers do not need to build it.
-
 ```sh
 npm ci --ignore-scripts
-
-npm run lint          # ESLint, including TypeScript
-npm run format:check  # Prettier
-npm run typecheck
-npm test              # offline unit tests
-npm run build         # Desktop and TUI bundles
-npm run check         # all checks above
-npm run pack:check    # inspect package allowlist; no publish
+npm run check        # lint, format, types, unit tests, build
+npm run setup:local  # one-time: isolated OpenCode under .runtime/
+npm run test:host    # the plugin inside a real OpenCode server, with a mock SDK
 ```
 
-For offline integration tests in the real OpenCode host:
-
-```sh
-npm run setup:local
-npm run test:host
-npm run test:plan-host
-npm run test:package  # installs the exact tarball into a separate consumer
-./scripts/opencode-local.sh --standalone
-```
-
-These launchers isolate configuration under `.runtime/`. The plan-host tests inject a mock SDK: no real inference or login. `npm run preview` is a standalone fixture design harness, not native Desktop verification.
-
-## Tested builds and releases
-
-CI produces an exact tested tarball with its source commit and SHA-256 checksums. A manual workflow can promote a successful main build to a GitHub prerelease at the explicitly selected repository visibility without npm tokens. See [testing and release readiness](docs/RELEASING.md) and [security reporting](SECURITY.md). The maintainer approved public GitHub distribution under Apache 2.0. npm registry publication remains a separate, human-approved step for every version.
-
-## Verification limits
-
-The real SDK smoke test authenticated successfully and reached discovery, then stopped at a USD 1 estimated guard. It returned no completed assessment. Mocked integration covers concurrent scans, cancellation, model tools, policy questions and static validation. The `0.1.3` tarball also passed native terminal rendering and a bundled fixture scan on OpenCode 2.2.6 and 2.2.7 with no Node/npm/Bun on its `PATH`. The `0.1.4` tests additionally cover a default real repository/scope preview, cancellation without execution, and a visible unsupported-authentication setup error with no fixture fallback, and explicit OpenAI API-key/gateway-header previews without execution. Direct native Desktop inspection remains a separate verification step.
-
-Do not commit credentials, `.runtime/`, evidence captures, scan artifacts or dependency folders. The repository ignores these; package checks also reject them. See [contributing](CONTRIBUTING.md) for the safe development workflow.
+See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/RELEASING.md](docs/RELEASING.md). Released under [Apache 2.0](LICENSE).

@@ -32,7 +32,7 @@ const [archive] = JSON.parse(
 );
 assertPackagePolicy(archive, manifest);
 const archivePath = join(output, archive.filename);
-// Exercise these exact bytes in a separate installed consumer, including the SDK permission gate.
+// Exercise these exact bytes in a separate installed consumer.
 process.stdout.write(
   run(process.execPath, ['scripts/packed-host-test.mjs', '--archive', archivePath]) + '\n',
 );
@@ -49,7 +49,7 @@ const artifact = {
   archive: archive.filename,
   archiveSha256: sha256(await readFile(archivePath)),
   verification:
-    'Exact tarball installed in isolated OpenCode; explicit fixture scan, GUI endpoint, real-default and explicit API-key/header previews, scope, unapproved-SDK gate and native TUI setup-error/cancel checks passed. TUI test has no Node/npm/Bun on PATH. No real model calls.',
+    'Exact tarball installed in isolated OpenCode; GUI endpoint, SDK-resolved previews for the default, gateway and Bedrock routes, setup errors and native TUI preview/cancel checks passed. TUI test has no Node/npm/Bun on PATH. No real model calls.',
 };
 const artifactBytes = JSON.stringify(artifact, null, 2) + '\n';
 await writeFile(join(output, 'build-manifest.json'), artifactBytes);

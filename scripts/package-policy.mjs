@@ -7,11 +7,7 @@ const allowedDocs = new Set([
   'CONTRIBUTING.md',
   'SECURITY.md',
   'docs/AGENT-SETUP.md',
-  'docs/GLOBAL-CONFIG.md',
-  'docs/MULTI-SCAN.md',
-  'docs/SDK.md',
-  'docs/PUBLISHING.md',
-  'docs/RELEASING.md',
+  'docs/CONFIG.md',
 ]);
 
 export function assertPackagePolicy(archive, manifest) {
@@ -63,8 +59,7 @@ export function assertPackagePolicy(archive, manifest) {
       path === 'dist/gui-experimental.cjs' ||
       path === 'dist/tui.js' ||
       allowedDocs.has(path) ||
-      /^src\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:ts|tsx|mjs)$/.test(path) ||
-      /^fixtures\/vulnerable\/(?:src\/[a-z-]+\.js|docs\/ARCHITECTURE\.md)$/.test(path);
+      /^src\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:ts|tsx)$/.test(path);
     assert.ok(allowed, `File outside package allowlist: ${path}`);
     assert.ok(!/(^|\/)(?:auth|credentials|secrets?)\./i.test(path), `Credential path: ${path}`);
   }
