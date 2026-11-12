@@ -15,14 +15,15 @@ export interface PatchWorkspace {
   directory: string;
   /** Everything the fix changed, as one diff against the last commit. */
   diff(): Promise<string>;
-  /** Apply that diff to the real working tree. Throws if it no longer applies. */
-  apply(): Promise<void>;
+  /** Apply exactly this diff to the real working tree. Throws if it no longer applies. */
+  apply(diff: string): Promise<void>;
   remove(): Promise<void>;
 }
 export type PatchWorkspaceFactory = (repository: string, id: string) => Promise<PatchWorkspace>;
 
 export async function gitRoot(repository: string) {
   try {
+    await git(repository, 'rev-parse', '--verify', '--quiet', 'HEAD');
     return (await git(repository, 'rev-parse', '--show-toplevel')).trim();
   } catch {
     throw new SecurityInputError(
@@ -57,8 +58,8 @@ export const createPatchWorkspace: PatchWorkspaceFactory = async (repository, id
   return {
     directory: join(worktree, relative(root, repository)),
     diff,
-    async apply() {
-      await writeFile(patch, await diff());
+    async apply(diff) {
+      await writeFile(patch, diff);
       try {
         await git(root, 'apply', '--whitespace=nowarn', patch);
       } catch {

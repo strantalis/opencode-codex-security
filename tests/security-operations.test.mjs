@@ -320,9 +320,10 @@ test('a fix is written in a throwaway worktree, then applied or discarded', asyn
       patch: async (options) => {
         workspaces.push(options.repositoryPath);
         assert.notEqual(options.repositoryPath, root);
-        if (outcome.status === 'verified')
-          await writeFile(join(options.repositoryPath, 'src', 'app.js'), 'export const ok = 1;\n');
-        return { ...outcome, threadId: null, cost: { estimatedUsd: 0.4 } };
+        const { write = 'export const ok = 1;\n', ...result } = outcome;
+        if (result.status === 'verified')
+          await writeFile(join(options.repositoryPath, 'src', 'app.js'), write);
+        return { ...result, threadId: null, cost: { estimatedUsd: 0.4 } };
       },
     }),
   );
@@ -364,11 +365,29 @@ test('a fix is written in a throwaway worktree, then applied or discarded', asyn
   assert.equal(await readFile(app, 'utf8'), 'export const ok = 1;\n');
   await assert.rejects(access(workspaces[1]));
 
+  // What is applied is the diff that was shown, even if the worktree changes afterwards,
+  // and a credential the fix deletes is not echoed in the preview.
+  await git('commit', '--quiet', '-am', 'applied');
+  await writeFile(app, 'const password = "hunter2-synthetic";\nexport const ok = 1;\n');
+  await git('commit', '--quiet', '-am', 'secret');
+  outcome = {
+    status: 'verified',
+    verificationReport: 'Removed.',
+    changedFiles: [],
+    write: 'export const ok = 2;\n',
+  };
+  const third = await propose();
+  assert.doesNotMatch(third.result.diff, /hunter2-synthetic/);
+  assert.match(third.result.diff, /^\+export const ok = 2;$/m);
+  await writeFile(join(workspaces.at(-1), 'src', 'app.js'), 'export const ok = "tampered";\n');
+  await operations.resolve({ operationId: third.operationId, action: 'apply' });
+  assert.equal(await readFile(app, 'utf8'), 'export const ok = 2;\n');
+
   // Nothing changed: no decision to make, and no worktree left behind.
   outcome = { status: 'blocked', reason: 'Needs a schema change.', changedFiles: [] };
   const blocked = await propose();
   assert.equal(blocked.result.resolution, 'none');
   assert.equal(blocked.result.report, 'Needs a schema change.');
-  await assert.rejects(access(workspaces[2]));
+  await assert.rejects(access(workspaces.at(-1)));
   assert.equal((await git('worktree', 'list')).stdout.trim().split('\n').length, 1);
 });

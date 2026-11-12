@@ -115,6 +115,8 @@ type Entry = {
   execution: PreparedScanPlan['sdk'];
   /** The worktree holding a proposed fix, until it is applied or discarded. */
   workspace?: PatchWorkspace;
+  /** The exact change the user was shown. Apply uses this, not the worktree's later state. */
+  fixDiff?: string;
   state: SecurityOperationState;
   controller: AbortController;
   task?: Promise<void>;
@@ -385,14 +387,15 @@ export class SecurityOperationsService {
           },
         });
         signal.throwIfAborted();
-        const diff = await workspace.diff();
+        const diff = (entry.fixDiff = await workspace.diff());
         const report = ('verificationReport' in result && result.verificationReport) || '';
         const reason = ('reason' in result && result.reason) || '';
         entry.state.result = {
           kind: 'fix',
           status: result.status,
           report: safeReportText([reason, report].filter(Boolean).join('\n\n')),
-          diff: diff.slice(0, diffLimit),
+          // Filtered like other report text: a fix may delete a hardcoded credential.
+          diff: safeReportText(diff, diffLimit),
           resolution: diff ? 'pending' : 'none',
           truncated: diff.length > diffLimit,
         };
@@ -567,9 +570,10 @@ export class SecurityOperationsService {
     if (input.action !== 'apply' && input.action !== 'discard')
       throw new SecurityInputError('Choose apply or discard.');
     // A failed apply leaves the fix pending, so the user can retry or discard it.
-    if (input.action === 'apply') await entry.workspace.apply();
+    if (input.action === 'apply') await entry.workspace.apply(entry.fixDiff ?? '');
     await entry.workspace.remove();
     entry.workspace = undefined;
+    entry.fixDiff = undefined;
     result.resolution = input.action === 'apply' ? 'applied' : 'discarded';
     entry.state.phase = input.action === 'apply' ? 'Fix applied' : 'Fix discarded';
     this.#emit(entry);
