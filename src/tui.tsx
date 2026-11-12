@@ -40,10 +40,6 @@ export default Plugin.define({
       commands: [
         command('', 'Security: open', () => {}),
         command('scan', 'Security: new scan', app.newScan),
-        command('policy', 'Security: draft a policy', () => {
-          app.showOperations();
-          return app.draftPolicy();
-        }),
         command('validate', 'Security: validate a finding', app.validate),
       ],
     }));

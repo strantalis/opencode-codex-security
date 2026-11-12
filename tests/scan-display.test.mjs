@@ -5,6 +5,8 @@ import {
   phaseLabel,
   elapsedLabel,
   runTitle,
+  scanScope,
+  scopeItems,
   splitPaths,
   phaseCounts,
   phaseContext,
@@ -38,6 +40,21 @@ test('run display uses actual phase, bounded focus title and stable elapsed time
   assert.equal(elapsedLabel('2026-11-10T00:00:00Z', '2026-11-10T00:01:05Z'), '1m 5s');
   assert.equal(elapsedLabel(null, null), '');
   assert.equal(runTitle({ ...emptyState(), repository: '/Projects/example' }), 'example');
+  // Paths are scope, not a title: one tag each, and a short line for lists.
+  const scoped = {
+    ...emptyState(),
+    repository: '/Projects/example',
+    plan: { scopePaths: ['src/a.ts', 'src/b.ts', 'src/c.ts'] },
+  };
+  assert.equal(runTitle(scoped), 'example');
+  assert.deepEqual(
+    scopeItems(scoped).map((item) => item.text),
+    ['src/a.ts', 'src/b.ts', 'src/c.ts'],
+  );
+  assert.equal(scanScope(scoped), 'src/a.ts, src/b.ts +1 more');
+  assert.deepEqual(scopeItems({ ...emptyState(), plan: { scopePaths: [], changes: 'main' } }), [
+    { text: 'Changes since main', path: false },
+  ]);
   assert.equal(
     runTitle({ ...emptyState(), plan: { scanPrompt: 'Tenant checks\nOther context' } }),
     'Tenant checks',

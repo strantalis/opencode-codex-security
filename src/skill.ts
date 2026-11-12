@@ -3,9 +3,9 @@ export const skill = {
   id: 'codex-security',
   name: 'Codex Security',
   description:
-    'Run a Codex Security scan of a repository with its dependencies and deployment repositories (GitOps, Terraform) as context.',
+    'Run a Codex Security scan of a repository with its dependencies and deployment repositories (GitOps, Terraform) as context, or draft a SECURITY.md policy for a repository.',
   path: 'skill://codex-security/SKILL.md',
-  content: `Use this when the user asks for a security scan that involves more than the current workspace.
+  content: `Use this when the user asks for a security scan that involves more than the current workspace, or for a security policy.
 
 1. Ask which repositories matter: the target, dependencies whose source the scan should follow, and repositories that describe deployment (GitOps, Terraform or other IaC). Ask for a ref for each.
 
@@ -23,7 +23,9 @@ export const skill = {
 
 5. Call security_scan. Tell the user it runs in the background. A notice arrives in this session when it ends; then call security_scan_results and report the findings by severity.
 
-6. Offer security_validate for findings the user cares about, and security_fix to propose a fix: it returns a diff, and you call security_apply_fix only after the user accepts it. Offer security_policy with the deployment summary as context, so a SECURITY.md records these facts and later scans pick them up.
+6. Offer security_validate for findings the user cares about, and security_fix to propose a fix: it returns a diff, and you call security_apply_fix only after the user accepts it.
 
-7. When the user is done, delete the workspace folder.`,
+7. A SECURITY.md policy belongs to one repository and tells later scans what counts as a finding. On request, call security_policy with \`repository\` set to that repository's checkout, not the folder holding several, and the deployment summary as context. A notice arrives when it has questions or is done: read it with security_operations, ask the user, answer with security_answer_questions. Show the draft. It is written nowhere and only takes effect once committed to the real repository, so offer to write it there on a branch for the user to review and push. Do that only if they say yes.
+
+8. When the user is done, delete the workspace folder.`,
 };

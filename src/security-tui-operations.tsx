@@ -58,19 +58,6 @@ export function createTuiOperations(
     source: { runId: run.runId!, findingId: finding.id },
   });
 
-  const draftPolicy = () =>
-    store.perform(async () => {
-      const repository = await chooseTarget();
-      if (!repository) return;
-      const path = await ctx.ui.dialog.prompt({
-        title: 'Draft a policy',
-        description: `Directory in ${repository} to cover. Leave empty for the whole project.`,
-        placeholder: 'src/api',
-      });
-      if (path === undefined) return;
-      await prepare({ kind: 'policy', repository, ...(path.trim() ? { path: path.trim() } : {}) });
-    });
-
   const validate = (run: ScanState, finding: Finding) =>
     store.perform(() => prepare({ kind: 'validation', ...about(run, finding) }));
 
@@ -131,7 +118,7 @@ export function createTuiOperations(
       await store.refreshOperations();
     });
 
-  return { draftPolicy, validate, validateText, fix, resolve, start, answer, cancel };
+  return { validate, validateText, fix, resolve, start, answer, cancel };
 }
 
 export type TuiOperations = ReturnType<typeof createTuiOperations>;
