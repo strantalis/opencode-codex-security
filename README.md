@@ -39,7 +39,7 @@ Run a security scan of this repo.
 
 You see a preview of what will be scanned and where the source will be sent, and nothing starts until you approve it.
 
-Scans need Node 22.20+ (or 24, 26) and Python 3.10+ on the `PATH` OpenCode runs with. To have a coding agent do the install, see [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md).
+Scans need Python 3.10 or newer. To have a coding agent do the install, see [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md).
 
 ## Just ask
 
@@ -163,6 +163,7 @@ Context files for a scan may be absolute paths in other checkouts. Any UTF-8 tex
 - **A fix is written against your last commit.** It does not see uncommitted work, and applying it fails cleanly if you have since changed the same lines.
 - **Change scans run at Standard depth.**
 - **Restarts.** Scan results and finding status are kept. A scan that was running is marked interrupted, and policy drafts, validations and unapplied fixes in progress are lost.
+- **Runtimes.** Scans use Python 3.10+ and Node on the `PATH` OpenCode runs with. If either is missing or too old, the Security view says so.
 - Tested on macOS and Linux. The Desktop panel is experimental.
 
 ## Development

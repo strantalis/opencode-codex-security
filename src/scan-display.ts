@@ -307,12 +307,13 @@ export function runtimeProblems(runtime: { node: string | null; python: string |
   const [pythonMajor = 0, pythonMinor = 0] = parts(runtime.python);
   const found = (version: string | null) => (version ? `found ${version}` : 'not found');
   return [
-    ...(nodeMajor === 24 || nodeMajor === 26 || (nodeMajor === 22 && nodeMinor >= 20)
+    // The SDK's own range. Only its helpers run on this Node; the plugin runs inside OpenCode.
+    ...(nodeMajor === 24 || nodeMajor === 26 || (nodeMajor === 22 && nodeMinor >= 13)
       ? []
-      : [`Node 22.20+, 24 or 26 (${found(runtime.node)})`]),
+      : [`Node 22.13 or newer (${found(runtime.node)})`]),
     ...(pythonMajor > 3 || (pythonMajor === 3 && pythonMinor >= 10)
       ? []
-      : [`Python 3.10+ (${found(runtime.python)})`]),
+      : [`Python 3.10 or newer (${found(runtime.python)})`]),
   ];
 }
 
