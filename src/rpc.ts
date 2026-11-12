@@ -66,7 +66,7 @@ const text = { type: 'string' } as const;
 const output = { type: 'object' } as const;
 const errors = setupErrors;
 export const Security = Rpc.define({
-  id: 'gill.security',
+  id: 'opencode-codex-security',
   methods: {
     capabilities: { input: empty, output, errors },
     prepare: { input: scanInputSchema, output, errors },

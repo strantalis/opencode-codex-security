@@ -62,7 +62,7 @@ export async function startHost({ port, config, settings, cwd = root }) {
       await client.location.get({ location });
       for (let i = 0; i < 50; i++) {
         const plugins = await client.plugin.list({ location });
-        if (plugins.data.some((p) => p.id === 'gill.security')) return location;
+        if (plugins.data.some((p) => p.id === 'opencode-codex-security')) return location;
         await sleep(100);
       }
       throw new Error(`Security plugin did not register.\n${stderr}`);

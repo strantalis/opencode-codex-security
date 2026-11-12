@@ -35,7 +35,6 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run audit:runtime
       - run: npm run check
-      - run: git diff --exit-code -- dist/gui-experimental.cjs dist/tui.js
       - run: npm run pack:check
       - run: npm run setup:local
       - run: npm run test:host

@@ -47,7 +47,7 @@ export function createSecurityPlugin(
   } = {},
 ) {
   return Plugin.define({
-    id: 'gill.security',
+    id: 'opencode-codex-security',
     async setup(ctx) {
       if (ctx.options.engine !== undefined && ctx.options.engine !== 'codex')
         throw new Error('The fixture engine was removed. Delete the "engine" plugin option.');

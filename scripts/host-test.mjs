@@ -66,7 +66,7 @@ try {
   console.log(
     'Actual OpenCode prepares previews through the SDK, follows the Codex config, and reports setup errors; no model calls.',
   );
-  const gui = await client.plugin.gui({ location, id: 'gill.security' });
+  const gui = await client.plugin.gui({ location, id: 'opencode-codex-security' });
   assert.ok(gui.data.code.includes('Security'));
   console.log('Actual OpenCode GUI bundle endpoint:', Object.keys(gui.data).join(', '));
   console.log('HOST INTEGRATION PASSED (no model calls)');

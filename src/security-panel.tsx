@@ -45,7 +45,7 @@ export function SecurityPanel(props: {
   const waiting = () => store.operations().filter((op) => op.status === 'awaiting_answers').length;
 
   return (
-    <section class="gill-security" aria-label="Security">
+    <section class="codex-security" aria-label="Security">
       <style>{securityStyles}</style>
       <div class="gs-body">
         <header class="gs-header">

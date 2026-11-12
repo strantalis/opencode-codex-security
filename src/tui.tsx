@@ -4,7 +4,7 @@ import type { SecurityOperationState } from './core/security-operations';
 import { createApp, ROUTE } from './tui/app';
 
 export default Plugin.define({
-  id: 'gill.security.tui',
+  id: 'opencode-codex-security.tui',
   setup(ctx) {
     const app = createApp(ctx);
     const unregister = ctx.ui.router.register({ name: ROUTE, render: () => <app.View /> });

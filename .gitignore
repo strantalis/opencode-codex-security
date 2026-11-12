@@ -1,8 +1,6 @@
 node_modules
 .runtime/
-dist/*
-!dist/gui-experimental.cjs
-!dist/tui.js
+dist/
 evidence/
 coverage/
 *.log

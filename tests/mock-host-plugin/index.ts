@@ -2,7 +2,7 @@ import { createSecurityPlugin } from '../../src/plugin.ts';
 import { resolve } from 'node:path';
 import { Rpc } from '@opencode/plugin/rpc';
 export const TestRpc = Rpc.define({
-  id: 'gill.security.mock-test',
+  id: 'opencode-codex-security.mock-test',
   events: {},
   methods: {
     inspect: { input: { type: 'object' }, output: { type: 'object' } },

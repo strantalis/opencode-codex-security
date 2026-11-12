@@ -65,7 +65,7 @@ missing, tell me what it is.
 <details>
 <summary><b>Run it from source</b></summary>
 
-Clone this repository, run `npm ci --ignore-scripts`, and set `package` to the checkout's absolute path. The built UI bundles are committed, so there is no build step.
+Clone this repository, run `npm ci --ignore-scripts && npm run build`, and set `package` to the checkout's absolute path. Run `npm run build` again after pulling changes.
 
 </details>
 
@@ -198,7 +198,7 @@ Context files for a scan may be absolute paths in other checkouts. Any UTF-8 tex
 
 ```sh
 npm ci --ignore-scripts
-npm run check        # lint, format, types, unit tests, build
+npm run check        # lint, format, types, build, unit tests
 npm run setup:local  # one-time: isolated OpenCode under .runtime/
 npm run test:host    # the plugin inside a real OpenCode server, with a mock SDK
 ```
