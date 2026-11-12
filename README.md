@@ -1,48 +1,141 @@
-# Codex Security for OpenCode
+<h1 align="center">Codex Security for OpenCode</h1>
 
-Run [Codex Security](https://developers.openai.com/codex/security) scans from OpenCode V2: a `/security` view in the terminal, an experimental Desktop panel, and tools your session's model can call.
+<p align="center">
+  Find, confirm and fix security issues in your code without leaving OpenCode.<br>
+  Ask for a scan in plain words, or drive it yourself from the terminal or the Desktop panel.
+</p>
 
-This is an early, unofficial project (not an OpenCode or OpenAI product), released under [Apache 2.0](LICENSE).
+<p align="center">
+  <a href="https://www.npmjs.com/package/opencode-codex-security"><img alt="npm version" src="https://img.shields.io/npm/v/opencode-codex-security?color=3b5cf6"></a>
+  <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-3b5cf6"></a>
+  <img alt="OpenCode V2" src="https://img.shields.io/badge/OpenCode-V2-3b5cf6">
+</p>
 
-## What it does
+<p align="center">
+  <img src="docs/images/terminal-findings.png" alt="The Security view in the OpenCode terminal: a finished scan with four findings, most severe first, one with a fix ready" width="860">
+</p>
 
-- **Scans**: Standard or Deep, on the whole repository, selected paths, or only what changed (uncommitted work, or a branch against a base ref), with progress, estimated cost and findings. Two scans can run at once per project, and results are kept in local history.
-- **Policy drafts**: generates a `SECURITY.md` draft for a repository or component. It can pause to ask you questions, and it never writes the file.
-- **Finding validation**: re-checks one finding against the source.
-- **Fixes**: writes and verifies a fix for one finding in a throwaway copy of the last commit, then shows you the diff. Your files change only if you apply it, and nothing is committed.
+<p align="center"><sub>The terminal view after a scan. Screenshots use sample data.</sub></p>
 
-The plugin is a thin layer over the [`@openai/codex-security`](https://www.npmjs.com/package/@openai/codex-security) SDK, which runs the Codex runtime underneath. Scans send your source to the model provider you have configured, so every scan, policy draft and validation shows a preview and waits for your approval.
+It runs [Codex Security](https://developers.openai.com/codex/security) through the official [`@openai/codex-security`](https://www.npmjs.com/package/@openai/codex-security) SDK, using the model and provider you already have configured for Codex. This is an early, unofficial project, not an OpenCode or OpenAI product.
 
-## Install
+## Quick start
 
-Add the package to the `plugins` array in your OpenCode config (`~/.config/opencode/opencode.json`), pinning a published version:
+**1. Add the plugin** to the `plugins` array in `~/.config/opencode/opencode.json`:
 
 ```json
 { "plugins": [{ "package": "opencode-codex-security@VERSION" }] }
 ```
 
-To run from source instead, clone this repository, run `npm ci --ignore-scripts`, and set `package` to the checkout's absolute path. The built UI bundles are committed, so no build step is needed.
+Use a published version (`npm view opencode-codex-security version`), or point `package` at a clone of this repository after `npm ci --ignore-scripts`.
 
-Open `/security` to confirm it loaded. To hand the install to a coding agent, see [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md).
+**2. Open `/security`** in OpenCode. The top of the view shows the provider, model and credentials it will use, and tells you if anything is missing.
 
-Running a scan also needs, on the `PATH` of the OpenCode process:
+**3. Ask for a scan**, or press `n`:
 
-- Node 22.20+, 24.x or 26.x (the SDK runs helpers on Node even though OpenCode itself runs on Bun)
-- Python 3.10+
+```text
+Run a security scan of this repo.
+```
+
+You see a preview of what will be scanned and where the source will be sent, and nothing starts until you approve it.
+
+Scans need Node 22.20+ (or 24, 26) and Python 3.10+ on the `PATH` OpenCode runs with. To have a coding agent do the install, see [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md).
+
+## Just ask
+
+The plugin gives your session's model the tools and a skill for the whole workflow, so you can describe what you want:
+
+```text
+Scan only what I changed on this branch against origin/main.
+```
+
+```text
+Scan the billing service. It depends on the auth and ledger repos, and our
+Terraform and GitOps repos describe how it is deployed.
+```
+
+```text
+Is the tenant check finding real? If it is, propose a fix.
+```
+
+```text
+Draft a SECURITY.md for services/api.
+```
+
+For the multi-repository case the model clones what is not checked out locally, reads the infrastructure repositories, writes a short deployment summary, and passes it to the scan as context. When a scan finishes, a notice lands in the conversation and the model reports the findings.
+
+## What you can do
+
+<table>
+  <tr>
+    <td width="46%" valign="top">
+      <img src="docs/images/desktop-finding.png" alt="The Desktop panel showing a high-severity finding, its validation result and a proposed fix as a diff with Apply and Discard buttons">
+    </td>
+    <td valign="top">
+
+**Scan**
+
+Standard or Deep. The whole repository, selected paths, your uncommitted changes, or everything since a branch or commit. Two scans can run at once.
+
+**Review findings**
+
+Most severe first, each with its location, evidence and a suggested fix. What you have done about a finding (confirmed, dismissed, fix ready, fix applied) is saved with the scan.
+
+**Validate**
+
+Re-check a finding against the source before you spend time on it.
+
+**Fix**
+
+The fix is written and verified in a throwaway copy of your last commit. You get a diff, and your files change only if you apply it. Nothing is committed.
+
+**Draft a security policy**
+
+A `SECURITY.md` for a repository or one component. It can ask you questions along the way, and it is never written for you.
+
+**Discuss**
+
+Hand any finding to the conversation and have the model explain it.
+
+  </td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/images/desktop-running.png" alt="The Desktop panel while a scan is running, with a progress bar and an estimated cost" width="520">
+</p>
 
 ## Configuration
 
-With no configuration, the plugin uses the model and provider from your Codex config (`~/.codex/config.toml`), or the SDK defaults if you have none. Authentication follows the SDK: an API key from the environment, otherwise your Codex Security sign-in.
+There is nothing to configure if Codex already works for you. The plugin uses the model and provider from `~/.codex/config.toml`, including gateways and Amazon Bedrock, and authenticates the way the SDK does: an API key from the environment, otherwise your Codex Security sign-in.
 
-To change the model, provider, scan mode or cost limit, see [docs/CONFIG.md](docs/CONFIG.md).
+To choose a different model, a Codex profile, a default depth or a cost limit, add `~/.config/opencode/codex-security.json`:
 
-## Using it
+```json
+{
+  "codex": { "profile": "work" },
+  "scan": { "mode": "standard", "maxCostUsd": 5 }
+}
+```
 
-In the terminal, `/security` opens the view, `/security-scan` starts a new scan, `/security-policy` drafts a policy and `/security-validate` re-checks a finding. Everything else is a key inside the view. The footer shows the keys that matter for what is selected, and `h` lists them all: move through scans and findings, open a finding, validate it, propose a fix, apply or discard the fix, or hand the finding to the conversation you came from. The scan review lets you change the target, depth, scope, focus and context before you start.
+Everything is in [docs/CONFIG.md](docs/CONFIG.md).
 
-Findings are listed most severe first. Each one shows what has been done about it since the scan (confirmed, dismissed, fix ready, fix applied), and that is saved with the scan.
+## In the terminal
 
-Your session's model can do the same through these tools:
+`/security` opens the view, `/security-scan` starts a scan, `/security-policy` drafts a policy and `/security-validate` re-checks a finding. Inside the view everything is a key, and the footer shows the ones that apply to what is selected:
+
+| Key       | Does                                                   |
+| --------- | ------------------------------------------------------ |
+| `n`       | New scan, with a review where you set target and scope |
+| `enter`   | Move into the findings, then open one                  |
+| `v` / `x` | Validate the finding / propose a fix                   |
+| `y` / `r` | Apply / discard a proposed fix                         |
+| `g`       | Discuss the finding in the conversation you came from  |
+| `tab`     | Switch between scans and operations                    |
+| `h`       | List every key available right now                     |
+
+<details>
+<summary><b>Tools for the session's model</b></summary>
 
 | Tool                                                | Purpose                                                                       |
 | --------------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -58,26 +151,18 @@ Your session's model can do the same through these tools:
 
 Approvals use OpenCode's permission rules, under the actions `codex_security_scan`, `codex_security_policy`, `codex_security_validation`, `codex_security_fix`, `codex_security_apply_fix` and `codex_security_answer`.
 
-When a scan, policy draft or validation started by the session's model ends, or a policy draft has questions for you, the plugin posts a short notice into that session and the model picks it up from there.
+Context files for a scan may be absolute paths in other checkouts. Any UTF-8 text file (Terraform, YAML, JSON, Markdown), PDF or DOCX works, and a directory contributes all of its text files.
 
-### Scanning with context from other repositories
+</details>
 
-Tell the session what matters, for example: "scan repo X; it depends on Y and Z, and our GitOps and Terraform repos describe how it is deployed". The plugin ships a `codex-security` skill that has the model:
+## Good to know
 
-1. Clone what is not checked out locally into `~/.cache/opencode/codex-security/workspaces/<name>/` (`app/` for the code, `context/` for infrastructure).
-2. Write a short deployment summary from the infrastructure repositories.
-3. Scan the target with that summary and the relevant infrastructure files as context. Context paths may be absolute and point anywhere; any UTF-8 text file (Terraform, YAML, JSON, Markdown), PDF or DOCX works.
-4. Or, if you want data flow followed across repositories, scan the `app/` folder as one system with scope paths into each checkout. This costs more.
-
-The workspace stays until you ask the model to delete it, so validation can reuse the same files.
-
-## Limits
-
-- Cost figures are the SDK's estimates, and `scan.maxCostUsd` stops a scan on that estimate. Neither is a billing cap, and validation and fixes have no cost limit at all.
-- Findings arrive when a scan completes, not while it runs.
-- Policy and validation operations live in memory and are lost when OpenCode restarts. A scan interrupted by a restart is marked as interrupted, not resumed. Session notices are not sent for work that outlives a restart.
-- A fix is written against the last commit, so it does not see uncommitted work, and applying it fails if your working tree has changed the same lines. A proposed fix that is neither applied nor discarded is removed when OpenCode restarts.
-- Diff scans are Standard only.
+- **Your source goes to your model provider.** Every scan, validation, fix and policy draft shows where, and waits for your approval.
+- **Costs are estimates.** `scan.maxCostUsd` stops a scan on the SDK's estimate; it is not a billing cap. Validation and fixes have no cost limit.
+- **Findings arrive when a scan completes**, not while it runs.
+- **A fix is written against your last commit.** It does not see uncommitted work, and applying it fails cleanly if you have since changed the same lines.
+- **Change scans run at Standard depth.**
+- **Restarts.** Scan results and finding status are kept. A scan that was running is marked interrupted, and policy drafts, validations and unapplied fixes in progress are lost.
 - Tested on macOS and Linux. The Desktop panel is experimental.
 
 ## Development
@@ -86,7 +171,7 @@ The workspace stays until you ask the model to delete it, so validation can reus
 npm ci --ignore-scripts
 npm run check        # lint, format, types, unit tests, build
 npm run setup:local  # one-time: isolated OpenCode under .runtime/
-npm run test:host
+npm run test:host    # the plugin inside a real OpenCode server, with a mock SDK
 ```
 
-The host tests run the plugin inside a real OpenCode server with a mock SDK, so they make no model calls. See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/RELEASING.md](docs/RELEASING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/RELEASING.md](docs/RELEASING.md). Released under [Apache 2.0](LICENSE).
