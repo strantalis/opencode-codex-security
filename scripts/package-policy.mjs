@@ -6,7 +6,6 @@ const allowedDocs = new Set([
   'README.md',
   'CONTRIBUTING.md',
   'SECURITY.md',
-  'docs/AGENT-SETUP.md',
   'docs/CONFIG.md',
 ]);
 
