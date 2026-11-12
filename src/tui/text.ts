@@ -41,9 +41,14 @@ export function setupLine(setup: SetupInfo): { text: string; warning?: string } 
     ...(profile ? [`profile ${profile}`] : []),
   ].join(' · ');
   const problems = runtimeProblems(runtime);
+  // The shared sign-in is a quiet state: offered under `h`, not announced here.
+  const signIn =
+    setup.signIn && (setup.signIn.state === 'needed' || setup.signIn.pending || setup.signIn.error)
+      ? signInLabel(setup.signIn)
+      : '';
   const warning = [
     ...(problems.length ? [`Scans need ${problems.join(' and ')}.`] : []),
-    ...(signInLabel(setup.signIn) ? [signInLabel(setup.signIn)] : []),
+    ...(signIn ? [signIn] : []),
   ].join(' ');
   return warning ? { text, warning } : { text };
 }

@@ -1,6 +1,6 @@
 import type { Plugin } from '@opencode/plugin/tui';
 import type { SecurityOperationState } from './core/security-operations';
-import type { Finding } from './types';
+import type { Finding, ScanState } from './types';
 import { describeInferenceRoute } from './plan-view';
 import { findingText } from './scan-display';
 import type { Store } from './tui/store';
@@ -43,14 +43,20 @@ export function createTuiOperations(
     await store.refreshOperations();
   };
 
+  /** Work started from a finding stays with that finding; the rest opens in Operations. */
   const prepare = async (input: Record<string, unknown>) => {
     const op = (await client.operationPrepare(input as never, {
       location,
     })) as unknown as SecurityOperationState;
     await store.refreshOperations();
-    onPrepared(op.operationId);
+    if (!input.source) onPrepared(op.operationId);
     await approve(op);
   };
+  const about = (run: ScanState, finding: Finding) => ({
+    repository: run.repository,
+    finding: findingText(finding),
+    source: { runId: run.runId!, findingId: finding.id },
+  });
 
   const draftPolicy = () =>
     store.perform(async () => {
@@ -65,11 +71,11 @@ export function createTuiOperations(
       await prepare({ kind: 'policy', repository, ...(path.trim() ? { path: path.trim() } : {}) });
     });
 
-  const validate = (repository: string, finding: Finding) =>
-    store.perform(() => prepare({ kind: 'validation', repository, finding: findingText(finding) }));
+  const validate = (run: ScanState, finding: Finding) =>
+    store.perform(() => prepare({ kind: 'validation', ...about(run, finding) }));
 
-  const fix = (repository: string, finding: Finding) =>
-    store.perform(() => prepare({ kind: 'fix', repository, finding: findingText(finding) }));
+  const fix = (run: ScanState, finding: Finding) =>
+    store.perform(() => prepare({ kind: 'fix', ...about(run, finding) }));
 
   /** Apply a proposed fix to the working tree, or discard it. */
   const resolve = (op: SecurityOperationState, action: 'apply' | 'discard') =>

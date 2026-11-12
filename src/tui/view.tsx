@@ -22,6 +22,10 @@ import {
   runTitle,
   scanScope,
   usageContext,
+  diffLines,
+  findingStatus,
+  severitySummary,
+  sortedFindings,
   fixStatusLabel,
   trustedAccessLabel,
   targetChangedLabel,
@@ -48,6 +52,8 @@ export interface Key {
   label?: () => string;
   run: () => unknown;
   when: () => boolean;
+  /** Listed under `h`, not in the footer. */
+  secondary?: boolean;
 }
 
 interface Props {
@@ -58,6 +64,8 @@ interface Props {
   now: number;
   tab: 'scans' | 'operations';
   focus: 'runs' | 'findings';
+  /** The latest validation and fix for the open finding. */
+  findingWork: SecurityOperationState[];
   detail?: 'finding' | 'operation';
   run?: ScanState;
   findingIndex: number;
@@ -222,7 +230,7 @@ export function SecurityView(props: Props) {
     const runs = () => props.store.runs();
     const index = () => Math.max(0, runs().indexOf(props.run!));
     const visible = () => windowed(runs(), index(), RUN_ROWS);
-    const findings = () => props.run?.findings ?? [];
+    const findings = () => (props.run ? sortedFindings(props.run) : []);
     const onFindings = () => props.focus === 'findings';
     return (
       <Show when={props.run} fallback={<text>No scans yet. Press n to start one.</text>}>
@@ -251,12 +259,13 @@ export function SecurityView(props: Props) {
             <Show when={findings().length}>
               <box flexDirection="column">
                 <text>
-                  <b>Findings</b> <span style={{ fg: c.muted() }}>{findings().length}</span>
+                  <b>Findings</b> <span style={{ fg: c.muted() }}>{severitySummary(run())}</span>
                 </text>
                 <For each={findings()}>
                   {(f, i) => {
                     const selected = () => onFindings() && i() === props.findingIndex;
-                    const location = `${f.path}:${f.line}`;
+                    const status = () => findingStatus(run(), f.id);
+                    const location = () => (status() ? status()!.label : `${f.path}:${f.line}`);
                     return (
                       <box id={`finding-${i()}`} flexDirection="row">
                         <text fg={selected() ? c.accent() : undefined} flexShrink={0}>
@@ -266,11 +275,20 @@ export function SecurityView(props: Props) {
                           {f.severity.toUpperCase()}
                         </text>
                         <text fg={selected() ? c.accent() : undefined} flexGrow={1}>
-                          {fit(f.title, Math.max(10, width() - location.length - 14))}
+                          {fit(f.title, Math.max(10, width() - location().length - 14))}
                         </text>
-                        <text fg={c.muted()} flexShrink={0}>
+                        <text
+                          fg={
+                            status()?.tone === 'good'
+                              ? c.success()
+                              : status()?.tone === 'warn'
+                                ? c.warning()
+                                : c.muted()
+                          }
+                          flexShrink={0}
+                        >
                           {' '}
-                          {location}
+                          {location()}
                         </text>
                       </box>
                     );
@@ -309,9 +327,103 @@ export function SecurityView(props: Props) {
         <Section title="Summary" body={f().summary} />
         <Section title="Evidence" body={f().evidence} />
         <Section title="Remediation" body={f().remediation} />
+        <For each={props.findingWork}>
+          {(op) => (
+            <box flexDirection="column" gap={1}>
+              <text>
+                <b>{operationTitle(op)}</b>
+                <span style={{ fg: c.muted() }}> · {phaseLabel(op.status)}</span>
+              </text>
+              <Show when={op.error}>
+                <text fg={c.error()}>{op.error}</text>
+              </Show>
+              <Result op={op} />
+            </box>
+          )}
+        </For>
       </box>
     );
   };
+
+  const DiffText = (p: { diff: string }) => (
+    <box flexDirection="column">
+      <For each={diffLines(p.diff)}>
+        {(line) => (
+          <text
+            fg={
+              line.kind === 'add'
+                ? c.success()
+                : line.kind === 'del'
+                  ? c.error()
+                  : line.kind === 'context'
+                    ? undefined
+                    : c.muted()
+            }
+          >
+            {line.text || ' '}
+          </text>
+        )}
+      </For>
+    </box>
+  );
+
+  /** The outcome of a policy draft, validation or fix. Shown in Operations and on its finding. */
+  const Result = (p: { op: SecurityOperationState }) => (
+    <Show when={p.op.result}>
+      {(result) => {
+        const r = result();
+        return r.kind === 'policy' ? (
+          <box flexDirection="column" gap={1}>
+            <Label>Draft for {r.targetPath}. Not written to disk.</Label>
+            <text>{r.content}</text>
+            <Show when={r.reviewNotes.length}>
+              <box flexDirection="column">
+                <Label>Review notes</Label>
+                <For each={r.reviewNotes}>{(note) => <text>- {note}</text>}</For>
+              </box>
+            </Show>
+            <Show when={r.truncated}>
+              <Label>Truncated here; the full draft is in the local SDK artifacts.</Label>
+            </Show>
+          </box>
+        ) : r.kind === 'fix' ? (
+          <box flexDirection="column" gap={1}>
+            <text>
+              <b>{fixStatusLabel(r.status)}</b>
+              <Show when={r.resolution !== 'pending' && r.resolution !== 'none'}>
+                {' '}
+                · {r.resolution}
+              </Show>
+            </text>
+            <Show when={r.report}>
+              <text>{r.report}</text>
+            </Show>
+            <Show when={r.diff} fallback={<Label>No files were changed.</Label>}>
+              <Label>
+                {r.resolution === 'pending'
+                  ? 'Proposed change, not applied yet. y applies it to your working tree; r discards it.'
+                  : 'Change'}
+              </Label>
+              <DiffText diff={r.diff} />
+            </Show>
+            <Show when={r.truncated}>
+              <Label>Diff truncated here; applying uses the whole change.</Label>
+            </Show>
+          </box>
+        ) : (
+          <box flexDirection="column" gap={1}>
+            <text>
+              <b>Assessment: {phaseLabel(r.disposition)}</b>
+            </text>
+            <text>{r.report}</text>
+            <Show when={r.truncated}>
+              <Label>Truncated here; the full report is in the local SDK artifacts.</Label>
+            </Show>
+          </box>
+        );
+      }}
+    </Show>
+  );
 
   const Operations = () => {
     const list = () => props.store.operations();
@@ -413,60 +525,7 @@ export function SecurityView(props: Props) {
         <Show when={op().error}>
           <text fg={c.error()}>{op().error}</text>
         </Show>
-        <Show when={op().result}>
-          {(result) => {
-            const r = result();
-            return r.kind === 'policy' ? (
-              <box flexDirection="column" gap={1}>
-                <Label>Draft for {r.targetPath}. Not written to disk.</Label>
-                <text>{r.content}</text>
-                <Show when={r.reviewNotes.length}>
-                  <box flexDirection="column">
-                    <Label>Review notes</Label>
-                    <For each={r.reviewNotes}>{(note) => <text>- {note}</text>}</For>
-                  </box>
-                </Show>
-                <Show when={r.truncated}>
-                  <Label>Truncated here; the full draft is in the local SDK artifacts.</Label>
-                </Show>
-              </box>
-            ) : r.kind === 'fix' ? (
-              <box flexDirection="column" gap={1}>
-                <text>
-                  <b>{fixStatusLabel(r.status)}</b>
-                  <Show when={r.resolution !== 'pending' && r.resolution !== 'none'}>
-                    {' '}
-                    · {r.resolution}
-                  </Show>
-                </text>
-                <Show when={r.report}>
-                  <text>{r.report}</text>
-                </Show>
-                <Show when={r.diff} fallback={<Label>No files were changed.</Label>}>
-                  <Label>
-                    {r.resolution === 'pending'
-                      ? 'Proposed change, not applied yet. y applies it to your working tree; r discards it.'
-                      : 'Change'}
-                  </Label>
-                  <text>{r.diff}</text>
-                </Show>
-                <Show when={r.truncated}>
-                  <Label>Diff truncated here; applying uses the whole change.</Label>
-                </Show>
-              </box>
-            ) : (
-              <box flexDirection="column" gap={1}>
-                <text>
-                  <b>Assessment: {phaseLabel(r.disposition)}</b>
-                </text>
-                <text>{r.report}</text>
-                <Show when={r.truncated}>
-                  <Label>Truncated here; the full report is in the local SDK artifacts.</Label>
-                </Show>
-              </box>
-            );
-          }}
-        </Show>
+        <Result op={op()} />
       </box>
     );
   };
@@ -474,14 +533,16 @@ export function SecurityView(props: Props) {
   const Footer = () => {
     const hints = () =>
       props.keys
-        .filter((key) => key.key && key.label && key.when())
+        .filter((key) => key.key && key.label && key.when() && !key.secondary)
         .map((key) => `${key.key} ${key.label!()}`)
         .join(' · ');
     return <text fg={c.muted()}>{props.store.busy() ? 'Working…' : hints()}</text>;
   };
 
-  const finding = () =>
-    props.run?.findings[Math.min(props.findingIndex, (props.run?.findings.length ?? 1) - 1)];
+  const finding = () => {
+    const list = props.run ? sortedFindings(props.run) : [];
+    return list[Math.min(props.findingIndex, list.length - 1)];
+  };
 
   return (
     <box flexDirection="column" flexGrow={1} paddingLeft={1} paddingRight={1}>

@@ -265,6 +265,8 @@ export function registerTools(
         status: state.status,
         complete: true,
         findings: state.findings.map(safeFinding).map(withoutEvidence),
+        // What has been validated or fixed since the scan, by finding ID.
+        reviews: state.reviews,
         omittedInformational: state.skipped,
         assessment: state.assessment,
       };

@@ -117,23 +117,53 @@ async function edit(ctx: Plugin.Context, field: Edit, plan: ScanPlan) {
     } satisfies ScanInputs;
   }
   if (field === 'scope') {
-    const value = await ctx.ui.dialog.prompt({
-      title: 'Scope',
-      description:
-        'Paths separated by commas, or leave empty for everything. For a diff scan, type "uncommitted" or "since origin/main".',
-      value: plan.changes
+    const { scopePaths: _paths, changes: _changes, ...rest } = inputs;
+    const choice = await ctx.ui.dialog.select<'repository' | 'paths' | 'uncommitted' | 'since'>({
+      title: 'What to scan',
+      current: plan.changes
         ? plan.changes === 'uncommitted'
           ? 'uncommitted'
-          : `since ${plan.changes}`
-        : plan.scopePaths.join(', '),
-      placeholder: 'src/api, src/auth',
+          : 'since'
+        : plan.scopePaths.length
+          ? 'paths'
+          : 'repository',
+      options: [
+        { title: 'Whole repository', value: 'repository' },
+        { title: 'Selected paths', description: 'Choose folders or files.', value: 'paths' },
+        {
+          title: 'Uncommitted changes',
+          description: 'Staged and unstaged work. Standard depth.',
+          value: 'uncommitted',
+        },
+        {
+          title: 'Changes since a branch or commit',
+          description: 'What changed between a ref and HEAD. Standard depth.',
+          value: 'since',
+        },
+      ],
     });
-    if (value === undefined) return;
-    const { scopePaths: _paths, changes: _changes, ...rest } = inputs;
-    const text = value.trim();
-    if (text === 'uncommitted') return { ...rest, changes: text };
-    if (text.startsWith('since ')) return { ...rest, changes: text.slice(6).trim() };
-    return { ...rest, scopePaths: splitList(value) };
+    if (choice === undefined) return;
+    if (choice === 'repository') return rest;
+    if (choice === 'uncommitted') return { ...rest, changes: 'uncommitted' };
+    const value = await ctx.ui.dialog.prompt(
+      choice === 'paths'
+        ? {
+            title: 'Paths',
+            description: 'Relative to the repository, separated by commas.',
+            value: plan.scopePaths.join(', '),
+            placeholder: 'src/api, src/auth',
+          }
+        : {
+            title: 'Compare with',
+            description: 'A branch, tag or commit. The scan covers what changed since then.',
+            value: plan.changes && plan.changes !== 'uncommitted' ? plan.changes : '',
+            placeholder: 'origin/main',
+          },
+    );
+    if (!value?.trim()) return;
+    return choice === 'paths'
+      ? { ...rest, scopePaths: splitList(value) }
+      : { ...rest, changes: value.trim() };
   }
   if (field === 'focus') {
     const value = await ctx.ui.dialog.prompt({

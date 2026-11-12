@@ -8,7 +8,8 @@ import { createTuiOperations } from '../security-tui-operations';
 import { reviewScan, validTarget } from './review';
 import { createStore } from './store';
 import { colors } from './theme';
-import { userError } from '../scan-display';
+import { sortedFindings, userError } from '../scan-display';
+import type { SecurityOperationState } from '../core/security-operations';
 import { cancellable, type SetupInfo } from './text';
 import { SecurityView, type Key } from './view';
 
@@ -87,7 +88,7 @@ export function createApp(ctx: Plugin.Context) {
   };
   const runs = store.runs;
   const run = () => runs().find((item) => item.runId === runId()) ?? runs()[0];
-  const findings = () => run()?.findings ?? [];
+  const findings = () => (run() ? sortedFindings(run()!) : []);
   const finding = () => findings()[Math.min(findingIndex(), findings().length - 1)];
   const operation = () =>
     store.operations().find((op) => op.operationId === operationId()) ?? store.operations()[0];
@@ -170,7 +171,7 @@ export function createApp(ctx: Plugin.Context) {
       });
       selected = source.findings.find((f) => f.id === id);
     }
-    if (selected) await operations.validate(source.repository, selected);
+    if (selected) await operations.validate(source, selected);
   };
 
   let scroller:
@@ -218,10 +219,47 @@ export function createApp(ctx: Plugin.Context) {
 
   const scans = () => tab() === 'scans';
   const listing = () => !detail();
-  const fixPending = () => {
-    const result = operation()?.result;
-    return result?.kind === 'fix' && result.resolution === 'pending';
+  /** The latest validation and fix started from the selected finding. */
+  const findingWork = () => {
+    const source = { runId: run()?.runId, findingId: finding()?.id };
+    const about = store
+      .operations()
+      .filter(
+        (op) =>
+          op.plan.source?.runId === source.runId && op.plan.source?.findingId === source.findingId,
+      );
+    return (['validation', 'fix'] as const).flatMap(
+      (kind) => about.find((op) => op.kind === kind) ?? [],
+    );
   };
+  /** A fix waiting for a decision: on the open finding, or the selected operation. */
+  const pendingFix = () => {
+    const pending = (op?: SecurityOperationState) =>
+      op?.result?.kind === 'fix' && op.result.resolution === 'pending' ? op : undefined;
+    return scans()
+      ? detail() === 'finding'
+        ? findingWork().map(pending).find(Boolean)
+        : undefined
+      : pending(operation());
+  };
+  const inSession = () => origin?.type === 'session';
+  const discuss = () =>
+    store.perform(async () => {
+      if (origin?.type !== 'session') return;
+      await store.client.discuss(
+        { runId: run()!.runId!, findingId: finding()!.id, sessionID: origin.sessionID },
+        { location: store.location },
+      );
+      leave();
+    });
+  const help = () =>
+    ctx.ui.dialog.alert({
+      title: 'Security keys',
+      message: keys
+        .filter((key) => key.key && key.label && key.when())
+        .map((key) => `${key.key!.padEnd(6)} ${key.label!()}`)
+        .join('\n'),
+    });
   const findingSelected = () =>
     scans() && !!finding() && (detail() === 'finding' || focus() === 'findings');
   const opsAvailable = () => store.capabilities().policy || store.capabilities().validation;
@@ -255,22 +293,29 @@ export function createApp(ctx: Plugin.Context) {
       bind: 'x',
       key: 'x',
       label: () => 'propose fix',
-      run: () => operations.fix(run()!.repository, finding()!),
+      run: () => operations.fix(run()!, finding()!),
       when: () => store.capabilities().fix && findingSelected(),
     },
     {
       bind: 'y',
       key: 'y',
       label: () => 'apply fix',
-      run: () => operations.resolve(operation()!, 'apply'),
-      when: () => !scans() && fixPending(),
+      run: () => operations.resolve(pendingFix()!, 'apply'),
+      when: () => !!pendingFix(),
     },
     {
       bind: 'r',
       key: 'r',
       label: () => 'discard fix',
-      run: () => operations.resolve(operation()!, 'discard'),
-      when: () => !scans() && fixPending(),
+      run: () => operations.resolve(pendingFix()!, 'discard'),
+      when: () => !!pendingFix(),
+    },
+    {
+      bind: 'g',
+      key: 'g',
+      label: () => 'discuss in chat',
+      run: discuss,
+      when: () => inSession() && findingSelected(),
     },
     {
       bind: 's',
@@ -299,8 +344,19 @@ export function createApp(ctx: Plugin.Context) {
       label: () => (details() ? 'hide details' : 'details'),
       run: () => setDetails((value) => !value),
       when: () => scans() && listing() && !!run(),
+      secondary: true,
     },
-    { bind: 'n', key: 'n', label: () => 'new scan', run: newScan, when: () => true },
+    {
+      bind: 'n',
+      key: 'n',
+      label: () => 'new scan',
+      run: newScan,
+      when: () => true,
+      // The way in when there is nothing to look at; otherwise one of many.
+      get secondary() {
+        return runs().length > 0;
+      },
+    },
     {
       // Not `i`: a terminal sends Tab as Ctrl+I, so the two collide.
       bind: 'l',
@@ -308,6 +364,10 @@ export function createApp(ctx: Plugin.Context) {
       label: () => (setup()?.signIn?.pending ? 'cancel sign-in' : 'sign in'),
       run: signIn,
       when: () => listing() && !!setup()?.signIn && setup()?.signIn?.state !== 'signed-in',
+      // Prominent only when there is nothing to sign in with.
+      get secondary() {
+        return setup()?.signIn?.state === 'shared' && !setup()?.signIn?.pending;
+      },
     },
     {
       bind: 'o',
@@ -315,6 +375,7 @@ export function createApp(ctx: Plugin.Context) {
       label: () => 'profile',
       run: chooseProfile,
       when: () => listing() && (setup()?.profiles.length ?? 0) > 1,
+      secondary: true,
     },
     {
       bind: 'p',
@@ -322,6 +383,7 @@ export function createApp(ctx: Plugin.Context) {
       label: () => 'draft policy',
       run: operations.draftPolicy,
       when: () => !scans() && listing() && store.capabilities().policy,
+      secondary: true,
     },
     {
       bind: 'tab',
@@ -330,6 +392,7 @@ export function createApp(ctx: Plugin.Context) {
       run: switchTab,
       when: () => true,
     },
+    { bind: 'h', key: 'h', label: () => 'all keys', run: help, when: () => true },
     { bind: 'escape', key: 'esc', label: () => 'back', run: back, when: () => true },
   ];
 
@@ -365,6 +428,7 @@ export function createApp(ctx: Plugin.Context) {
         now={now()}
         tab={tab()}
         focus={focus()}
+        findingWork={detail() === 'finding' ? findingWork() : []}
         detail={detail()}
         run={run()}
         findingIndex={findingIndex()}

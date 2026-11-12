@@ -16,6 +16,7 @@ const fallback = {
   muted: '#b5b5b5',
   error: '#ffb3b3',
   warning: '#ebc28c',
+  success: '#9be4c6',
 };
 
 export type Colors = Record<keyof typeof fallback, () => any>;
@@ -31,5 +32,6 @@ export function colors(ctx: Plugin.Context): Colors {
     muted: () => theme().text?.muted ?? fallback.muted,
     error: () => feedback('error') ?? fallback.error,
     warning: () => feedback('warning') ?? fallback.warning,
+    success: () => feedback('success') ?? fallback.success,
   };
 }

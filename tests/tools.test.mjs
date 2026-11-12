@@ -375,4 +375,11 @@ test('a fix is proposed in the background and applied only with permission', asy
   const applied = await call('security_apply_fix', { operationId: fix.operationId });
   assert.equal(applied.result.resolution, 'applied');
   assert.equal(await readFile(app, 'utf8'), 'export const ok = 1;\n');
+
+  // The outcome is kept with the finding, for the views and for later sessions.
+  const validation = await call('security_validate', { runId, findingId: 'o1' });
+  await settled(() => call('security_operations', { operationId: validation.operationId }));
+  const { reviews } = await call('security_scan_results', { runId });
+  assert.equal(reviews.o1.fix.resolution, 'applied');
+  assert.equal(reviews.o1.validation.disposition, 'reportable');
 });

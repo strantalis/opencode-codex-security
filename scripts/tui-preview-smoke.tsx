@@ -173,6 +173,7 @@ const rpc = {
         contextFiles: [],
         mock: true,
         finding: input.finding,
+        source: (input as { source?: unknown }).source,
         costNotice: 'No cost limit.',
       } as never,
     };
@@ -356,7 +357,7 @@ try {
   assert.match(main, /1 question waiting/);
   assert.match(main, /Reviewing source · 1m \d+s · 8 of 20 files/);
   assert.match(main, /Partial estimate USD 0.24/);
-  assert.match(main, /n new scan/);
+  assert.match(main, /h all keys/);
   assert.doesNotMatch(main, /\/security-|History workspace|does not guarantee/);
 
   // Events update the view without a fetch.
@@ -369,7 +370,7 @@ try {
   await press('j');
   let view = await frame();
   assert.match(view, /Scan complete/);
-  assert.match(view, /Findings 12/);
+  assert.match(view, /Findings 1 high · 11 medium/);
   await press('return');
   for (let i = 0; i < 11; i++) await press('down');
   view = await frame();
@@ -382,15 +383,20 @@ try {
   assert.match(detail, /Remediation/);
   assert.match(detail, /v validate/);
 
-  // Validate from the finding detail; lands on Operations with it selected.
+  // Validate from the finding detail: the result stays with the finding.
   replies.push(true);
   await press('v');
   assert.deepEqual(opCalls[0][0], 'prepare');
-  assert.match(String((opCalls[0][1] as { finding: string }).finding), /Synthetic finding 12/);
+  const asked = opCalls[0][1] as { finding: string; source: unknown };
+  assert.match(String(asked.finding), /Synthetic finding 12/);
+  assert.deepEqual(asked.source, { runId: 'synthetic-complete', findingId: 'finding-12' });
   assert.deepEqual(opCalls[1], ['start', { operationId: 'op-validate' }]);
   view = await frame();
+  assert.match(view, /Synthetic finding 12/, 'still on the finding');
   assert.match(view, /Operations 2/);
-  assert.match(view, /Validation · Running/);
+  await press('escape');
+  await press('escape');
+  await press('tab');
 
   // Operations: move, open, answer, cancel.
   await press('k');
@@ -424,6 +430,7 @@ try {
   review = await frame();
   assert.match(review, /Depth\s+deep/);
   assert.deepEqual(prepared.at(-1), { repository: '/synthetic', mode: 'deep' });
+  replies.push('paths');
   replies.push('src/api, src/auth');
   await press('s');
   assert.deepEqual(prepared.at(-1), {
