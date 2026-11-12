@@ -9,8 +9,8 @@ export const projectName = (path: string) =>
   'Project';
 export function runTitle(run: ScanState) {
   return (
-    run.plan?.scanPrompt?.split('\n')[0].slice(0, 72) ||
-    (run.plan?.scopePaths.length ? run.plan.scopePaths.join(', ') : projectName(run.repository))
+    // The scope is shown on its own; a list of paths makes a poor title.
+    run.plan?.scanPrompt?.split('\n')[0].slice(0, 72) || projectName(run.repository)
   );
 }
 export function scopeLabel(plan: { scopePaths: string[]; changes?: string }) {
@@ -21,8 +21,18 @@ export function scopeLabel(plan: { scopePaths: string[]; changes?: string }) {
 export function depthLabel(run: ScanState) {
   return (run.mode ?? run.plan?.settings.scan.mode) === 'deep' ? 'Deep' : 'Standard';
 }
+/** One line for lists: the first two paths, then a count. */
 export function scanScope(run: ScanState) {
+  const paths = run.plan?.changes ? [] : (run.plan?.scopePaths ?? []);
+  if (paths.length > 2) return `${paths.slice(0, 2).join(', ')} +${paths.length - 2} more`;
   return run.plan ? scopeLabel(run.plan) : 'Whole repository';
+}
+/** The scope as separate items, one per path, for display as tags. */
+export function scopeItems(run: ScanState): { text: string; path: boolean }[] {
+  const plan = run.plan;
+  if (!plan || plan.changes || !plan.scopePaths.length)
+    return [{ text: plan ? scopeLabel(plan) : 'Whole repository', path: false }];
+  return plan.scopePaths.map((text) => ({ text, path: true }));
 }
 export function phaseLabel(phase: string) {
   const clean = phase.replace(/\s*\((files|reviews)\)$/, '').replaceAll('_', ' ');

@@ -721,6 +721,10 @@ export const securityStyles = `
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+.gs-tag-path {
+  border-radius: 6px;
+  font-family: var(--gs-font-mono);
+}
 .gs-tag[data-kind='depth'] {
   border-color: transparent;
   background: var(--gs-accent);

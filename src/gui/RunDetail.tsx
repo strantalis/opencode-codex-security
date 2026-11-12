@@ -1,4 +1,4 @@
-import { createSignal, Show } from 'solid-js';
+import { createSignal, For, Show } from 'solid-js';
 import { asState, type ScanState } from '../types';
 import type { ScanPlan } from '../core/scan-plan';
 import {
@@ -13,7 +13,7 @@ import {
   progressLabel,
   runPhaseLabel,
   runTitle,
-  scanScope,
+  scopeItems,
   timeLimitLabel,
   usageLabel,
   userError,
@@ -23,6 +23,8 @@ import { shortTime } from './format';
 import { Findings } from './Findings';
 import { RunActivity, RunInfo } from './RunActivity';
 import type { OperationPort, SecurityPort, SecurityStore } from './store';
+
+const maxScopeTags = 4;
 
 /** One scan. Mount one instance per run so disclosures reset when the selection changes. */
 export function RunDetail(props: {
@@ -69,7 +71,24 @@ export function RunDetail(props: {
           <span class="gs-tag" data-kind="depth">
             {depthLabel(run())} scan
           </span>
-          <span class="gs-tag">{scanScope(run())}</span>
+          <For each={scopeItems(run()).slice(0, maxScopeTags)}>
+            {(item) => (
+              <span class="gs-tag" classList={{ 'gs-tag-path': item.path }}>
+                {item.text}
+              </span>
+            )}
+          </For>
+          <Show when={scopeItems(run()).length > maxScopeTags}>
+            <span
+              class="gs-tag gs-muted"
+              title={scopeItems(run())
+                .slice(maxScopeTags)
+                .map((item) => item.text)
+                .join('\n')}
+            >
+              +{scopeItems(run()).length - maxScopeTags} more
+            </span>
+          </Show>
           <Show when={run().model ?? run().plan?.settings.codex.model}>
             <span class="gs-tag">{run().model ?? run().plan?.settings.codex.model}</span>
           </Show>
