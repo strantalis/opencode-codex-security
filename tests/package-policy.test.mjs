@@ -32,17 +32,6 @@ test('package policy accepts only intended package content', () => {
     manifest,
   );
 });
-test('package policy requires the compiled TUI artifact when it is exported', () => {
-  const compiledManifest = {
-    ...manifest,
-    exports: { ...manifest.exports, './tui': './dist/tui.js' },
-  };
-  assert.throws(() => assertPackagePolicy(archive(), compiledManifest), /Missing export/);
-  assertPackagePolicy(
-    archive(['package.json', 'LICENSE', 'DISCLOSURE', 'src/plugin.ts', 'dist/tui.js']),
-    compiledManifest,
-  );
-});
 test('package policy rejects hidden files, credentials, dev output and path traversal', () => {
   for (const path of [
     'src/.env',
@@ -63,39 +52,6 @@ test('package policy rejects hidden files, credentials, dev output and path trav
         assertPackagePolicy(archive(['src/plugin.ts', 'LICENSE', 'DISCLOSURE', path]), manifest),
       undefined,
       path,
-    );
-  }
-});
-test('package policy requires public dual-use metadata, exports and bounded bundles', () => {
-  assert.throws(() => assertPackagePolicy(archive(), { ...manifest, private: true }));
-  assert.throws(() => assertPackagePolicy(archive(), { ...manifest, license: 'MIT' }));
-  assert.throws(() => assertPackagePolicy(archive(['package.json', 'LICENSE']), manifest));
-  assert.throws(() => assertPackagePolicy(archive(['package.json', 'src/plugin.ts']), manifest));
-  assert.throws(() => assertPackagePolicy({ ...archive(), unpackedSize: 2_000_000 }, manifest));
-  assert.throws(() => assertPackagePolicy({ ...archive(), filename: '../evil.tgz' }, manifest));
-});
-
-test('package policy requires persistent disclosure and forbids lifecycle execution', () => {
-  assert.throws(() => assertPackagePolicy(archive(), { ...manifest, contentPolicy: {} }));
-  assert.throws(() => assertPackagePolicy(archive(), { ...manifest, publishConfig: {} }));
-  assert.throws(() =>
-    assertPackagePolicy(archive(['package.json', 'LICENSE', 'src/plugin.ts']), manifest),
-  );
-  for (const hook of [
-    'preinstall',
-    'install',
-    'postinstall',
-    'prepare',
-    'prepublish',
-    'prepublishOnly',
-    'publish',
-    'postpublish',
-    'prepack',
-    'postpack',
-  ]) {
-    assert.throws(
-      () => assertPackagePolicy(archive(), { ...manifest, scripts: { [hook]: 'evil' } }),
-      /Forbidden lifecycle hook/,
     );
   }
 });

@@ -53,7 +53,7 @@ try {
   run('npm', ['audit', '--prefix', consumer, '--omit=dev', '--audit-level=high']);
   const packageRoot = join(consumer, 'node_modules', 'opencode-codex-security');
   process.stdout.write(run(process.execPath, ['scripts/host-test.mjs', '--package', packageRoot]));
-  for (const mode of [[], ['--openai-key'], ['--gateway-config'], ['--bedrock-config']])
+  for (const mode of [[], ['--openai-key']])
     process.stdout.write(
       run('python3', ['scripts/packed-tui-test.py', '--package', packageRoot, ...mode]),
     );

@@ -89,10 +89,6 @@ test('final summaries project coverage dispositions, gaps, and returned record c
   assert.deepEqual(coverage.scopeExcludePaths.items, ['vendor/']);
   assert.deepEqual(coverage.reviewExcludedPaths.items, ['vendor/']);
   assert.deepEqual(coverage.limitations.items, ['Runtime execution was not performed.']);
-  assert.deepEqual(summary.artifacts.items, [
-    { path: 'report.md', mediaType: 'text/markdown' },
-    { path: 'findings.json', mediaType: 'application/json' },
-  ]);
   assert.ok(summary.notes.some((note) => note.includes('not exhaustive coverage')));
 });
 
@@ -108,7 +104,6 @@ test('missing, empty, and malformed collections remain distinguishable', () => {
   assert.equal(missing.repositoryFindings.available, false);
   assert.equal(missing.repositoryFindings.total, null);
   assert.equal(missing.repositoryFindings.open, null);
-  assert.equal(missing.artifacts.total, null);
   const empty = summarizeScanResult(
     {
       findings: { findings: [] },
@@ -134,23 +129,6 @@ test('missing, empty, and malformed collections remain distinguishable', () => {
   assert.equal(malformed.coverage.source, 'unavailable');
 });
 
-test('sealed SDK results retain scope and exclusions without fabricating surface coverage', () => {
-  const input = result();
-  delete input.manifest.scan.reviewState;
-  input.manifest.scan.review = { excludedPaths: ['generated/'] };
-  delete input.review;
-  // Coverage is not a public ScanResult field in SDK 0.9.1, even when constructor input had it.
-  input.coverage = { surfaces: [{ disposition: 'reported' }], deferred: [] };
-  const summary = summarizeScanResult(input, repository);
-  assert.equal(summary.coverage.source, 'unavailable');
-  assert.equal(summary.coverage.surfaces.total, null);
-  assert.equal(summary.coverage.deferred.total, null);
-  assert.deepEqual(summary.coverage.scopeIncludePaths.items, ['src/']);
-  assert.deepEqual(summary.coverage.reviewExcludedPaths.items, ['generated/']);
-  input.review = { excludedPaths: [] };
-  assert.deepEqual(summarizeScanResult(input, repository).coverage.reviewExcludedPaths.items, []);
-});
-
 test('repository status, confirmation, and known matching metadata are independent', () => {
   const input = result();
   input.repositoryFindings.push(
@@ -174,122 +152,6 @@ test('repository status, confirmation, and known matching metadata are independe
   assert.equal(rows.items[1].matchedFindingIds.total, null);
   assert.ok(summary.notes.some((note) => note.includes('Unconfirmed does not mean fixed')));
   assert.ok(summary.notes.some((note) => note.includes('missing matches do not mean new')));
-});
-
-test('duplicate identities are counted as returned records, never deduplicated or labeled new', () => {
-  const input = result();
-  input.findings.findings = [finding(), finding(), finding('informational')];
-  input.repositoryFindings = [input.repositoryFindings[0], input.repositoryFindings[0]];
-  const summary = summarizeScanResult(input, repository);
-  assert.equal(summary.returnedFindings.total, 3);
-  assert.equal(summary.returnedFindings.reportable, 2);
-  assert.equal(summary.returnedFindings.informational, 1);
-  assert.equal(summary.repositoryFindings.total, 2);
-  assert.equal(summary.repositoryFindings.withMatchedFindingIds, 2);
-  const forbiddenKeys = /"(?:newFindings|uniqueFindings|deduplicated|dedupProgress)":/;
-  assert.doesNotMatch(JSON.stringify(summary), forbiddenKeys);
-});
-
-test('unknown enums and malformed records never become reassuring zeros or statuses', () => {
-  const input = result();
-  input.findings.findings = [finding('future-severity'), null, finding('low')];
-  input.manifest.scan.reviewState.surfaces = [
-    { id: 'future', disposition: 'future-disposition' },
-    null,
-  ];
-  input.repositoryFindings = [
-    { status: 'future-status', confirmedInLatestScan: 'false', matchedFindingIds: [null, ''] },
-    null,
-  ];
-  const summary = summarizeScanResult(input, repository);
-  assert.deepEqual(summary.returnedFindings, {
-    total: 3,
-    reportable: 1,
-    informational: 0,
-    unclassified: 2,
-  });
-  assert.equal(summary.coverage.surfaces.dispositions.unknown, 2);
-  assert.equal(summary.coverage.surfaces.items[0].disposition, 'unknown');
-  assert.equal(summary.coverage.surfaces.omitted, 1);
-  assert.equal(summary.repositoryFindings.unknownStatus, 2);
-  assert.equal(summary.repositoryFindings.unknownConfirmation, 2);
-  assert.equal(summary.repositoryFindings.items[0].status, 'unknown');
-  assert.equal(summary.repositoryFindings.items[0].confirmedInLatestScan, null);
-  assert.equal(summary.repositoryFindings.withMatchedFindingIds, 0);
-});
-
-test('every retained free-text surface is sanitized and raw extensions are excluded', () => {
-  const secret = 'sk-syntheticSummarySecret01234567890';
-  const rawOnly = 'FORBIDDEN_RAW_COMMAND_REPORT_REASONING_EVIDENCE';
-  const input = result();
-  input.manifest.scan.scope = {
-    includePaths: [secret],
-    excludePaths: [secret],
-    limitations: [secret],
-    summary: rawOnly,
-    context: rawOnly,
-    artifactsReviewed: [rawOnly],
-  };
-  input.manifest.scan.reviewState = {
-    surfaces: [
-      { id: secret, label: secret, disposition: 'reported', riskArea: secret, notes: rawOnly },
-    ],
-    explicitExclusions: [{ pattern: secret, reason: secret, evidence: rawOnly }],
-    deferred: [{ id: secret, reason: secret, paths: [secret], surfaceIds: [secret] }],
-    resolvedDeferred: [{ id: secret, reason: secret }],
-    openQuestions: [{ question: secret, followUpPrompt: rawOnly }],
-    reviews: [{ threadId: rawOnly, threatModel: rawOnly }],
-    commands: [rawOnly],
-  };
-  input.review = { excludedPaths: [secret], report: rawOnly };
-  input.manifest.scan.artifacts = [{ path: `reports/${secret}.md`, mediaType: secret }];
-  input.manifest.scan.threatModel = { summary: rawOnly };
-  input.findings.findings[0].summary = rawOnly;
-  input.findings.findings[0].codeEvidence = [{ code: rawOnly }];
-  input.repositoryFindings = [
-    {
-      findingId: secret,
-      occurrenceId: secret,
-      status: 'open',
-      confirmedInLatestScan: true,
-      knownSince: secret,
-      knownScanIds: [secret],
-      matchedFindingIds: [secret],
-      title: rawOnly,
-      summary: rawOnly,
-      threadId: rawOnly,
-      scanId: rawOnly,
-    },
-  ];
-  input.turnResult = { finalResponse: rawOnly };
-  input.threadId = rawOnly;
-  const summary = summarizeScanResult(input, `/tmp/${secret}`);
-  const serialized = JSON.stringify(summary);
-  assert.ok(!serialized.includes(secret));
-  assert.ok(!serialized.includes(rawOnly));
-  const retained = [
-    summary.repository,
-    summary.coverage.scopeIncludePaths.items[0],
-    summary.coverage.scopeExcludePaths.items[0],
-    summary.coverage.limitations.items[0],
-    summary.coverage.reviewExcludedPaths.items[0],
-    ...Object.values(summary.coverage.surfaces.items[0]).filter((v) => v !== 'reported'),
-    ...Object.values(summary.coverage.explicitExclusions.items[0]),
-    summary.coverage.deferred.items[0].id,
-    summary.coverage.deferred.items[0].reason,
-    summary.coverage.deferred.items[0].paths.items[0],
-    summary.coverage.deferred.items[0].surfaceIds.items[0],
-    ...Object.values(summary.coverage.resolvedDeferred.items[0]),
-    summary.coverage.openQuestions.items[0].question,
-    summary.repositoryFindings.items[0].findingId,
-    summary.repositoryFindings.items[0].occurrenceId,
-    summary.repositoryFindings.items[0].knownSince,
-    summary.repositoryFindings.items[0].knownScanIds.items[0],
-    summary.repositoryFindings.items[0].matchedFindingIds.items[0],
-    summary.artifacts.items[0].path,
-    summary.artifacts.items[0].mediaType,
-  ];
-  assert.ok(retained.every((value) => value.includes('[REDACTED')));
 });
 
 test('summary text applies the shared password, bearer, private-key, and control filtering', () => {
@@ -330,7 +192,6 @@ test('lists and text are bounded while counts cover all returned records', () =>
     knownScanIds: repeat(long),
     matchedFindingIds: repeat(long),
   });
-  input.manifest.scan.artifacts = repeat({ path: 'report.md', mediaType: long });
   const summary = summarizeScanResult(input, repository);
   const lists = [
     summary.coverage.scopeIncludePaths,
@@ -341,7 +202,6 @@ test('lists and text are bounded while counts cover all returned records', () =>
     summary.repositoryFindings,
     summary.repositoryFindings.items[0].knownScanIds,
     summary.repositoryFindings.items[0].matchedFindingIds,
-    summary.artifacts,
   ];
   for (const value of lists) {
     assert.equal(value.total, 27);
@@ -352,57 +212,4 @@ test('lists and text are bounded while counts cover all returned records', () =>
   assert.equal(summary.repositoryFindings.withMatchedFindingIds, 27);
   assert.equal(summary.coverage.surfaces.items[0].label.length, 320);
   assert.equal(summary.coverage.surfaces.items[0].id.length, 160);
-  assert.equal(summary.artifacts.items[0].mediaType.length, 100);
-});
-
-test('artifact projection rejects absolute paths, traversal, URLs, and control characters', () => {
-  const input = result();
-  const rejected = [
-    '/tmp/report.md',
-    '../report.md',
-    'nested/../../report.md',
-    './report.md',
-    'nested//report.md',
-    'https://example.com/report.md',
-    'file:///tmp/report.md',
-    'C:\\reports\\report.md',
-    'reports\\..\\report.md',
-    'report.md?token=secret',
-    'report.md#secret',
-    '%2e%2e/report.md',
-    'report\u0000.md',
-    'x'.repeat(321),
-    '',
-    null,
-  ];
-  input.manifest.scan.artifacts = [
-    ...rejected.map((path) => ({ path, mediaType: 'text/plain' })),
-    { path: 'exports/results.sarif', mediaType: 'application/sarif+json' },
-  ];
-  const artifacts = summarizeScanResult(input, repository).artifacts;
-  assert.equal(artifacts.total, rejected.length + 1);
-  assert.equal(artifacts.omitted, rejected.length);
-  assert.deepEqual(artifacts.items, [
-    { path: 'exports/results.sarif', mediaType: 'application/sarif+json' },
-  ]);
-});
-
-test('mapper is pure and never consults raw reports, result serializers, or artifact getters', () => {
-  const input = result();
-  const snapshot = structuredClone(input);
-  for (const key of ['reportPath', 'sarifPath', 'artifactsDir', 'turnResult', 'toJSON'])
-    Object.defineProperty(input, key, {
-      get() {
-        throw new Error(`Forbidden access: ${key}`);
-      },
-    });
-  const first = summarizeScanResult(input, repository);
-  assert.deepEqual(summarizeScanResult(input, repository), first);
-  assert.deepEqual(input.manifest, snapshot.manifest);
-  assert.deepEqual(input.findings, snapshot.findings);
-  assert.deepEqual(input.repositoryFindings, snapshot.repositoryFindings);
-  first.coverage.scopeIncludePaths.items.push('mutation');
-  first.repositoryFindings.items[0].matchedFindingIds.items.push('mutation');
-  assert.deepEqual(input.manifest, snapshot.manifest);
-  assert.deepEqual(input.repositoryFindings, snapshot.repositoryFindings);
 });

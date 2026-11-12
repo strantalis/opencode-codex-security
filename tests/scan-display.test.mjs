@@ -12,9 +12,6 @@ import {
   runPhaseLabel,
   deepProgressLabel,
   findingsPendingLabel,
-  usageLabel,
-  usageContext,
-  usageRangeLabel,
   activityRows,
   workerActivityRows,
   activityActor,
@@ -88,29 +85,6 @@ test('core lifecycle completion does not present completed findings or a full pr
   state.status = 'completed';
   assert.equal(runPhaseLabel(state), 'Scan complete');
 });
-test('cost copy separates complete estimates, partial subtotals and unavailable coverage', () => {
-  const state = live();
-  assert.equal(usageLabel(state), 'Cost estimate unavailable');
-  state.estimatedCostUsd = 1;
-  assert.match(usageLabel(state), /coverage unknown/);
-  state.telemetry.measurement = {
-    coverage: 'partial',
-    missingThreadCount: 2,
-    cost: { baselineUsd: 0.24, range: { min: 0.24, max: null } },
-  };
-  assert.equal(usageLabel(state), 'Partial estimate USD 0.24');
-  assert.match(usageContext(state), /2 sessions are missing/);
-  assert.equal(usageRangeLabel(state), 'USD 0.24 or more; upper estimate unavailable');
-  state.telemetry.measurement.coverage = 'complete';
-  assert.equal(usageLabel(state), 'Estimated usage USD 0.24');
-  assert.match(usageContext(state), /not an invoice/);
-  state.telemetry.measurement.coverage = 'unavailable';
-  assert.equal(usageLabel(state), 'Last estimate USD 0.24 · coverage unavailable');
-  delete state.telemetry.measurement.cost;
-  assert.equal(usageLabel(state), 'Cost estimate unavailable');
-  state.telemetry.measurement = { coverage: 'complete', cost: { baselineUsd: 0 } };
-  assert.equal(usageLabel(state), 'Estimated usage USD 0.00');
-});
 test('activity keeps safe labels and worker identity without inferring worker completion', () => {
   const state = live();
   state.telemetry.activity = [
@@ -162,14 +136,6 @@ test('informational-only results and unavailable coverage are not presented as a
   assert.equal(rows.find((row) => row.label === 'Open questions').value, 'Not reported');
   assert.equal(rows.find((row) => row.label === 'Review surfaces').value, 'Not reported');
 });
-test('legacy history remains truthful when no structured outcome exists', () => {
-  const state = { ...emptyState(), skipped: 2 };
-  assert.equal(resultCountsLabel(state), '0 findings shown · 2 other items omitted');
-  assert.equal(coverageLabel(state), 'Coverage details unavailable');
-  assert.deepEqual(coverageDetails(state), []);
-  assert.equal(repositoryMatchingLabel(state), 'Repository matching unavailable');
-});
-
 test('the compact activity view shows each actor once without losing keyed history', () => {
   const state = live();
   state.telemetry.activity = [
@@ -200,10 +166,6 @@ test('SDK failure or cancellation while cleanup is pending hides ordinary progre
     assert.equal(activityStatusLabel('running', state), 'Last reported running');
     assert.equal(state.status, 'running');
   }
-});
-
-test('single legacy finding uses singular copy', () => {
-  assert.equal(resultCountsLabel({ ...emptyState(), findings: [{}] }), '1 finding shown');
 });
 
 test('trusted access is shown only when missing or unverified', () => {

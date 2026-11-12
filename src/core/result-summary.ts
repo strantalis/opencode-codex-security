@@ -68,8 +68,6 @@ export interface ScanOutcomeSummary {
     withKnownSince: number | null;
     withMatchedFindingIds: number | null;
   };
-  /** Manifest-declared metadata only. No file reads, existence checks, or clickable URLs. */
-  artifacts: SummaryList<{ path: string; mediaType: string | null }>;
   notes: string[];
 }
 
@@ -239,25 +237,6 @@ function repositoryFindings(value: unknown): ScanOutcomeSummary['repositoryFindi
   };
 }
 
-function artifact(entry: unknown): ScanOutcomeSummary['artifacts']['items'][number] | null {
-  const row = record(entry);
-  const path = row?.path;
-  // A display-only relative manifest path, never an arbitrary file or a URL to open.
-  if (
-    typeof path !== 'string' ||
-    path.length > MAX_PATH ||
-    !path ||
-    path.startsWith('/') ||
-    /[\\:?#%]/.test(path) ||
-    path.split('/').some((part) => !part || part === '.' || part === '..') ||
-    [...path].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
-  )
-    return null;
-  const safePath = text(path, MAX_PATH);
-  if (!safePath) return null;
-  return { path: safePath, mediaType: text(row?.mediaType, 100) };
-}
-
 /**
  * Project only final returned SDK metadata. This never reads artifacts or serializes a ScanResult,
  * turnResult, report, finding evidence, command, or arbitrary reviewState extension.
@@ -305,7 +284,6 @@ export function summarizeScanResult(result: ScanResult, repository: string): Sca
       limitations: strings(scope?.limitations),
     },
     repositoryFindings: repositoryFindings(result?.repositoryFindings),
-    artifacts: list(scan?.artifacts, artifact),
     notes: [...SUMMARY_NOTES],
   };
 }

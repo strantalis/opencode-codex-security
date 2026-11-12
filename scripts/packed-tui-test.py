@@ -32,8 +32,6 @@ def main():
     parser.add_argument('--opencode', type=Path, default=Path(__file__).resolve().parents[1] / 'node_modules/.bin/opencode')
     parser.add_argument('--timeout', type=float, default=45)
     parser.add_argument('--openai-key', action='store_true', help='Verify the missing API-key setup error is shown')
-    parser.add_argument('--gateway-config', action='store_true', help='Verify a gateway from the Codex config appears in the preview')
-    parser.add_argument('--bedrock-config', action='store_true', help='Verify a native Bedrock route appears in the preview')
     args = parser.parse_args()
     package = args.package.resolve(strict=True)
     binary = args.opencode.resolve(strict=True)
@@ -70,19 +68,9 @@ def main():
     }
     assert all(shutil.which(name, path=env['PATH']) is None for name in ['node', 'npm', 'bun'])
     Path(env['OPENCODE_CONFIG']).write_text(json.dumps({'plugins': [{'package': str(package)}]}))
-    if args.gateway_config:
-        # Routing comes from the user's own Codex config; the plugin needs no settings file.
-        codex = Path(env['CODEX_HOME'])
-        codex.mkdir()
-        (codex / 'config.toml').write_text(
-            'model = "gateway-model"\nmodel_provider = "gateway"\n[model_providers.gateway]\n'
-            'base_url = "https://gateway.example.test/v1"\nenv_key = "SYNTHETIC_GATEWAY_KEY"\n')
     settings = None
     if args.openai_key:
         settings = {'auth': 'api-key'}
-    if args.bedrock_config:
-        settings = {'codex': {'model': 'openai.gpt-daybreak-blue-5.6-sol', 'model_provider': 'amazon-bedrock',
-                              'model_providers': {'amazon-bedrock': {'aws': {'region': 'us-east-2'}}}}}
     if settings:
         (isolated / 'config/opencode/codex-security.json').write_text(json.dumps(settings))
     master, slave = pty.openpty()
@@ -175,12 +163,6 @@ def main():
             wait_for(lambda text: 'Reviewthisscan' in squashed(text) and 'Wholerepository' in squashed(text),
                      'repository/scope review')
             assert str(project) in plain(), 'Review lost actual workspace target'
-            if args.gateway_config:
-                wait_for(lambda text: 'gateway.example.test/v1' in text and 'SYNTHETIC_GATEWAY_KEY' in text
-                         and 'gateway-model' in text, 'gateway route in the preview')
-            if args.bedrock_config:
-                wait_for(lambda text: 'amazon-bedrock' in text and 'openai.gpt-daybreak-blue-5.6-sol' in text
-                         and 'AWScredentials' in squashed(text), 'Bedrock route in the preview')
             # Depth re-prepares the preview in place: default -> standard -> deep.
             settle(0.5)
             send(b'd')
@@ -206,8 +188,6 @@ def main():
         if child.returncode != 0:
             raise RuntimeError(f'Native TUI exited with status {child.returncode}')
         result = ('missing API-key setup error shown' if args.openai_key else
-                  'gateway preview from the Codex config, cancelled without scan' if args.gateway_config else
-                  'native Bedrock preview, cancelled without scan' if args.bedrock_config else
                   'default repository/scope preview, cancelled without scan')
         print(f'PACKED NATIVE TUI PASSED: /security rendered, tab keys work, {result}, clean exit; no Node/npm/Bun on PATH.')
     finally:

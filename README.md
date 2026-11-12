@@ -84,7 +84,7 @@ The workspace stays until you ask the model to delete it, so validation can reus
 npm ci --ignore-scripts
 npm run check        # lint, format, types, unit tests, build
 npm run setup:local  # one-time: isolated OpenCode under .runtime/
-npm run test:host && npm run test:plan-host
+npm run test:host
 ```
 
 The host tests run the plugin inside a real OpenCode server with a mock SDK, so they make no model calls. See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/RELEASING.md](docs/RELEASING.md).

@@ -1,14 +1,11 @@
-import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { OpenCode } from '@opencode/client';
 import { Rpc } from '@opencode/plugin/rpc';
 import { Security } from '../src/rpc.ts';
-const root = fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/, '');
+import { root, startHost } from './host.mjs';
 // Synthetic projects outside this checkout, so nothing resolves to the plugin's own repository.
 async function sampleProject(name) {
   const directory = await realpath(await mkdtemp(join(tmpdir(), `opencode-security-${name}-`)));
@@ -20,24 +17,6 @@ async function sampleProject(name) {
 }
 const fixture = await sampleProject('first');
 const secondFixture = await sampleProject('second');
-const configPath = `${root}/.runtime/plan/config/opencode/opencode.json`;
-await mkdir(`${root}/.runtime/plan/config/opencode`, { recursive: true });
-await mkdir(`${root}/.runtime/plan/home`, { recursive: true });
-await writeFile(
-  configPath,
-  JSON.stringify({
-    plugins: [{ package: `${root}/tests/mock-host-plugin` }],
-    // A session woken by a scan notice must never reach a model.
-    policies: [{ action: 'provider.use', resource: '*', effect: 'deny' }],
-  }),
-);
-await writeFile(
-  `${root}/.runtime/plan/config/opencode/codex-security.json`,
-  JSON.stringify({
-    codex: { model_reasoning_effort: 'high', daybreak: true },
-    scan: { mode: 'standard', maxCostUsd: 2, cyberAccessProgram: 'daybreak_blue' },
-  }),
-);
 const TestRpc = Rpc.define({
   id: 'gill.security.mock-test',
   events: {},
@@ -57,46 +36,23 @@ const TestRpc = Rpc.define({
     },
   },
 });
-const env = {
-  PATH: process.env.PATH,
-  HOME: `${root}/.runtime/plan/home`,
-  XDG_DATA_HOME: `${root}/.runtime/plan/data`,
-  XDG_CONFIG_HOME: `${root}/.runtime/plan/config`,
-  XDG_STATE_HOME: `${root}/.runtime/plan/state`,
-  XDG_CACHE_HOME: `${root}/.runtime/plan/cache`,
-  OPENCODE_CONFIG: configPath,
-  OPENCODE_DISABLE_AUTOUPDATE: '1',
-  OPENCODE_DISABLE_MODELS_FETCH: '1',
-};
-const child = spawn(
-  `${root}/node_modules/.bin/opencode`,
-  ['serve', '--hostname', '127.0.0.1', '--port', '4110'],
-  { cwd: fixture, env, stdio: ['ignore', 'pipe', 'pipe'] },
-);
-let output = '',
-  stderr = '';
-child.stdout.on('data', (d) => (output += d));
-child.stderr.on('data', (d) => (stderr += d));
+const { client, env, open, stop } = await startHost({
+  port: 4110,
+  cwd: fixture,
+  config: {
+    plugins: [{ package: `${root}/tests/mock-host-plugin` }],
+    // A session woken by a scan notice must never reach a model.
+    policies: [{ action: 'provider.use', resource: '*', effect: 'deny' }],
+  },
+  settings: {
+    codex: { model_reasoning_effort: 'high', daybreak: true },
+    scan: { mode: 'standard', maxCostUsd: 2, cyberAccessProgram: 'daybreak_blue' },
+  },
+});
 try {
-  for (let i = 0; i < 100 && !/server password ([^\s]+)/.test(output); i++) {
-    if (child.exitCode !== null) throw new Error(stderr);
-    await sleep(100);
-  }
-  const password = output.match(/server password ([^\s]+)/)?.[1];
-  assert.ok(password, 'host ready');
-  const client = OpenCode.make({
-    baseUrl: 'http://127.0.0.1:4110',
-    headers: { Authorization: `Basic ${Buffer.from('opencode:' + password).toString('base64')}` },
-  });
-  const location = { directory: fixture };
-  await client.location.get({ location });
+  const location = await open(fixture);
   const rpc = client.rpc(Security),
     test = client.rpc(TestRpc);
-  for (let i = 0; i < 50; i++) {
-    const plugins = await client.plugin.list({ location });
-    if (plugins.data.some((p) => p.id === 'gill.security')) break;
-    await sleep(100);
-  }
   await assert.rejects(rpc.prepare({ repository: env.HOME }, { location }));
   assert.equal((await test.inspect({}, { location })).calls.length, 0);
   let state = await rpc.prepare(
@@ -325,12 +281,12 @@ try {
   );
   const skill = (await client.skill.list({ location })).data.find((s) => s.id === 'codex-security');
   assert.equal(skill?.path, 'skill://codex-security/SKILL.md');
-  const settingsFile = `${root}/.runtime/plan/config/opencode/codex-security.json`;
+  const settingsFile = `${env.XDG_CONFIG_HOME}/opencode/codex-security.json`;
   const setup = await rpc.setup({}, { location });
   assert.equal(setup.configFile, settingsFile);
   assert.equal(setup.route.reasoningEffort, 'high');
   assert.equal(setup.route.daybreak, true);
-  assert.equal(setup.codexConfigFile, `${root}/.runtime/plan/home/.codex/config.toml`);
+  assert.equal(setup.codexConfigFile, `${env.HOME}/.codex/config.toml`);
   assert.equal(typeof setup.runtime.node, 'string');
   const before = JSON.parse(await readFile(settingsFile, 'utf8'));
   assert.equal((await rpc.setProfile({ profile: 'work' }, { location })).profile, 'work');
@@ -388,13 +344,7 @@ try {
   console.log(
     'Actual host: finished scans and pending owner questions post a notice into the session that started them, which resumes (no model allowed).',
   );
-  const secondLocation = { directory: secondFixture };
-  await client.location.get({ location: secondLocation });
-  for (let i = 0; i < 50; i++) {
-    const plugins = await client.plugin.list({ location: secondLocation });
-    if (plugins.data.some((p) => p.id === 'gill.security')) break;
-    await sleep(100);
-  }
+  const secondLocation = await open(secondFixture);
   assert.equal((await rpc.list({}, { location: secondLocation })).runs.length, 0);
   assert.equal((await rpc.operationList({}, { location: secondLocation })).operations.length, 0);
   await assert.rejects(rpc.status({ runId: b.runId }, { location: secondLocation }));
@@ -413,10 +363,7 @@ try {
   );
   console.log('HOST SCAN-PLAN INTEGRATION PASSED (mock SDK only; no paid inference or login).');
 } finally {
-  child.kill('SIGTERM');
-  const timeout = setTimeout(() => child.kill('SIGKILL'), 3000);
-  await new Promise((resolve) => child.once('exit', resolve));
-  clearTimeout(timeout);
+  await stop();
   await Promise.all(
     [fixture, secondFixture].map((path) => rm(path, { recursive: true, force: true })),
   );
