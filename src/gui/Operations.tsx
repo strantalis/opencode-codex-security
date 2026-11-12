@@ -35,17 +35,19 @@ export function Operations(props: {
   const showForm = () => props.policy && composing();
   return (
     <section class="gs-operations" aria-label="Policy drafts and other activity">
-      <Show when={showForm()}>
-        <PolicyForm
-          directory={props.directory}
-          port={props.port}
-          store={props.store}
-          onClose={() => setComposing(false)}
-          onPrepared={(id) => {
-            select(id);
-            setComposing(false);
-          }}
-        />
+      <Show when={showForm() && props.directory} keyed>
+        {(directory) => (
+          <PolicyForm
+            directory={directory}
+            port={props.port}
+            store={props.store}
+            onClose={() => setComposing(false)}
+            onPrepared={(id) => {
+              select(id);
+              setComposing(false);
+            }}
+          />
+        )}
       </Show>
       <Show when={operations().length > 1}>
         <ul class="gs-list" aria-label="Recent operations">

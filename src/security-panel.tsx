@@ -30,7 +30,12 @@ export function SecurityPanel(props: {
     operations: props.operations,
     fallbackMs: props.fallbackMs,
   });
-  const [drafting, setDrafting] = createSignal(false);
+  // A policy belongs to one repository: the selected scan's, else the workspace.
+  const [drafting, setDrafting] = createSignal<string>();
+  const draftPolicy = (repository: string) => {
+    setDrafting(repository);
+    queueMicrotask(showOther);
+  };
   let other: HTMLDetailsElement | undefined;
   const [selectedId, selectRun] = createSignal<string>();
   const [composer, setComposer] = createSignal<Composer>();
@@ -42,10 +47,11 @@ export function SecurityPanel(props: {
     composer() ?? (store.loaded() && !runs().length ? blankComposer : undefined);
   const capabilities = () => props.operations?.capabilities;
   const showOperations = () => !!props.operations && store.loaded();
+  const canDraft = () => showOperations() && (capabilities()?.policy ?? true);
   // Validations and fixes started from a finding are shown on that finding.
   const unattached = createMemo(() => store.operations().filter((op) => !op.plan.source));
   const attention = () =>
-    drafting() ||
+    !!drafting() ||
     unattached().some((op) => ['prepared', 'running', 'awaiting_answers'].includes(op.status));
   const showOther = () => {
     if (!other) return;
@@ -73,14 +79,8 @@ export function SecurityPanel(props: {
             </p>
           </div>
           <div class="gs-header-actions">
-            <Show when={showOperations() && (capabilities()?.policy ?? true)}>
-              <button
-                class="gs-button"
-                onClick={() => {
-                  setDrafting(true);
-                  queueMicrotask(showOther);
-                }}
-              >
+            <Show when={canDraft() && !runs().length}>
+              <button class="gs-button" onClick={() => draftPolicy(props.directory)}>
                 Draft policy
               </button>
             </Show>
@@ -158,6 +158,7 @@ export function SecurityPanel(props: {
                   validation={validation()}
                   onAgain={(plan) => setComposer({ plan, edit: true })}
                   onReview={(plan) => setComposer({ plan })}
+                  onPolicy={canDraft() ? draftPolicy : undefined}
                 />
               )}
             </Show>
@@ -172,13 +173,13 @@ export function SecurityPanel(props: {
               </Show>
             </summary>
             <Operations
-              directory={props.directory}
+              directory={drafting() ?? props.directory}
               port={props.operations!}
               store={store}
               policy={capabilities()?.policy ?? true}
               list={unattached()}
-              composing={drafting()}
-              onComposing={setDrafting}
+              composing={!!drafting()}
+              onComposing={(open) => setDrafting(open ? props.directory : undefined)}
             />
           </details>
         </Show>

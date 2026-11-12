@@ -4,6 +4,8 @@ import { depthLabel, runTitle, scanScope } from '../scan-display';
 import { shortTime, statusLabel } from './format';
 
 const shown = 3;
+/** Enough scans that scrolling to find one is slower than typing. */
+const filterFrom = 5;
 const outcome = (run: ScanState) =>
   run.status === 'completed' || run.partial
     ? `${run.findings.length} ${run.findings.length === 1 ? 'finding' : 'findings'}${run.partial ? ' so far' : ''}`
@@ -16,20 +18,52 @@ export function RunList(props: {
   onSelect(runId: string | undefined): void;
 }) {
   const [all, setAll] = createSignal(false);
+  const [query, setQuery] = createSignal('');
+  const words = () => query().toLowerCase().split(/\s+/).filter(Boolean);
+  const matches = (run: ScanState) => {
+    const text = [
+      runTitle(run),
+      run.repository,
+      run.plan?.scopePaths.join(' '),
+      run.plan?.changes,
+      depthLabel(run),
+      outcome(run),
+      statusLabel(run.status),
+    ]
+      .join(' ')
+      .toLowerCase();
+    return words().every((word) => text.includes(word));
+  };
   const ordered = createMemo(() => [
     ...props.runs.filter((run) => run.status === 'running'),
     ...props.runs.filter((run) => run.status !== 'running'),
   ]);
   // The selected scan is always in view, even when it is further down than the short list.
   const visible = () =>
-    all()
-      ? ordered()
-      : ordered().filter((run, index) => index < shown || run.runId === props.selectedId);
+    words().length
+      ? ordered().filter(matches)
+      : all()
+        ? ordered()
+        : ordered().filter((run, index) => index < shown || run.runId === props.selectedId);
   const hidden = () => ordered().length - visible().length;
   // Only worth a line when the scans are not all of the same repository.
   const several = () => new Set(props.runs.map((run) => run.repository)).size > 1;
   return (
     <section class="gs-runs" aria-label="Scans">
+      <Show when={props.runs.length >= filterFrom}>
+        <input
+          class="gs-filter"
+          type="search"
+          value={query()}
+          onInput={(event) => setQuery(event.currentTarget.value)}
+          placeholder={`Filter ${props.runs.length} scans by repository, title or status`}
+          aria-label="Filter scans"
+          spellcheck={false}
+        />
+      </Show>
+      <Show when={words().length && !visible().length}>
+        <p class="gs-muted gs-small">No scan matches “{query()}”.</p>
+      </Show>
       <ul class="gs-list">
         <For each={visible()}>
           {(run) => (
@@ -57,7 +91,7 @@ export function RunList(props: {
           )}
         </For>
       </ul>
-      <Show when={hidden() > 0 || all()}>
+      <Show when={!words().length && (hidden() > 0 || all())}>
         <button class="gs-link gs-small" onClick={() => setAll((value) => !value)}>
           {all() ? 'Show fewer' : `Show ${hidden()} more`}
         </button>

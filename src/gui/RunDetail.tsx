@@ -8,6 +8,7 @@ import {
   hasDeterminateProgress,
   hasPhaseProgress,
   partialLabel,
+  projectName,
   resumeProblem,
   phaseCounts,
   progressLabel,
@@ -37,6 +38,8 @@ export function RunDetail(props: {
   onAgain?(plan: ScanPlan): void;
   /** Review a prepared plan, such as one that resumes this scan. */
   onReview?(plan: ScanPlan): void;
+  /** Draft a SECURITY.md for this scan's repository. */
+  onPolicy?(repository: string): void;
 }) {
   const run = () => props.run;
   const paths = () =>
@@ -134,23 +137,30 @@ export function RunDetail(props: {
       </Show>
       <div class="gs-scan-actions">
         <span class="gs-muted gs-tabular">{usageLabel(run())}</span>
-        <Show when={run().status === 'running'}>
-          <button class="gs-link" disabled={cancelling()} onClick={() => void cancel()}>
-            {cancelling() ? 'Stopping…' : 'Cancel scan'}
-          </button>
-        </Show>
-        <Show when={props.onReview && !resumeProblem(run())}>
-          <button class="gs-link" onClick={() => void resume()}>
-            Resume
-          </button>
-        </Show>
-        <Show when={run().status !== 'running' && props.onAgain && run().plan}>
-          {(plan) => (
-            <button class="gs-link" onClick={() => props.onAgain?.(plan())}>
-              Run again
+        <span class="gs-link-row">
+          <Show when={run().status === 'running'}>
+            <button class="gs-link" disabled={cancelling()} onClick={() => void cancel()}>
+              {cancelling() ? 'Stopping…' : 'Cancel scan'}
             </button>
-          )}
-        </Show>
+          </Show>
+          <Show when={props.onReview && !resumeProblem(run())}>
+            <button class="gs-link" onClick={() => void resume()}>
+              Resume
+            </button>
+          </Show>
+          <Show when={props.onPolicy}>
+            <button class="gs-link" onClick={() => props.onPolicy?.(run().repository)}>
+              Draft policy for {projectName(run().repository)}
+            </button>
+          </Show>
+          <Show when={run().status !== 'running' && props.onAgain && run().plan}>
+            {(plan) => (
+              <button class="gs-link" onClick={() => props.onAgain?.(plan())}>
+                Run again
+              </button>
+            )}
+          </Show>
+        </span>
       </div>
       <Show when={error() || run().error}>
         <p class="gs-alert" role="alert">

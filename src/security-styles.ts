@@ -651,7 +651,58 @@ export const securityStyles = `
 }
 .gs-dot[data-status='running'] {
   background: var(--gs-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gs-accent) 25%, transparent);
+  animation: gs-pulse 1.8s ease-out infinite;
+}
+@keyframes gs-pulse {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--gs-accent) 55%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 7px transparent;
+  }
+}
+@keyframes gs-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+/* Motion only where it says something: a scan is live, a value moved, a section opened. */
+.gs-section[open] > :not(summary),
+.gs-finding[open] > :not(summary),
+.gs-detail {
+  animation: gs-in 0.16s ease-out;
+}
+.gs-list-item,
+.gs-button,
+.gs-link {
+  transition:
+    background-color 0.12s,
+    border-color 0.12s,
+    color 0.12s;
+}
+.gs-progress::-webkit-progress-value {
+  transition: width 0.4s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .codex-security *,
+  .codex-security *::before,
+  .codex-security *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+.gs-filter {
+  display: block;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--gs-line-strong);
+  border-radius: var(--gs-radius);
+  background: var(--gs-bg);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
 }
 .gs-dot[data-status='completed'] {
   background: var(--gs-success);
@@ -826,6 +877,11 @@ export const securityStyles = `
   justify-content: space-between;
   gap: 4px 12px;
   font-size: 12px;
+}
+.gs-link-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
 }
 .gs-scan-actions {
   display: flex;

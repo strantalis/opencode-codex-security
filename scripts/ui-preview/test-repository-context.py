@@ -61,7 +61,7 @@ async def main():
 
         # A validation stays on its finding. A policy draft starts from the header and asks questions.
         await expect(page.locator('.gs-other')).to_have_count(0)
-        await page.get_by_role('button', name='Draft policy', exact=True).click()
+        await page.get_by_role('button', name='Draft policy for').click()
         await page.get_by_role('textbox', name='Operation repository').fill('/Projects/other-team/atlas')
         await page.get_by_role('button', name='Review policy draft', exact=True).click()
         detail = page.get_by_role('article', name='Selected operation')
@@ -72,8 +72,9 @@ async def main():
         await page.get_by_role('button', name='Send answer', exact=True).click()
         await expect(detail).to_contain_text('Not written to disk')
         await expect(page.get_by_text('A policy draft is waiting for your answers.')).to_have_count(0)
-        await page.get_by_role('button', name='Draft policy', exact=True).click()
-        await expect(page.get_by_role('textbox', name='Operation repository')).to_have_value('/Projects/atlas')
+        await page.get_by_role('button', name='Draft policy for').click()
+        # A policy is for one repository: the selected scan's, not the workspace.
+        await expect(page.get_by_role('textbox', name='Operation repository')).to_have_value('/Projects/other-team/atlas')
         await page.get_by_role('button', name='Back', exact=True).click()
 
         await page.evaluate("document.body.classList.add('narrow')")
@@ -85,7 +86,7 @@ async def main():
         await page.screenshot(path=str(out / 'repository-context-narrow.png'), full_page=True)
         assert not errors, errors
         await browser.close()
-        print(json.dumps({'passed': ['setup card profile switch', 'same-basename targets distinguished', 'validation from finding shows result inline', 'scope/context cleared on target change', 'new scan defaults to workspace', 'prepared draft keeps its target', 'validation listed under policy and validation', 'policy questions, answer and draft', 'new policy resets target', 'narrow no overflow', 'no browser errors']}))
+        print(json.dumps({'passed': ['setup card profile switch', 'same-basename targets distinguished', 'validation from finding shows result inline', 'scope/context cleared on target change', 'new scan defaults to workspace', 'prepared draft keeps its target', 'validation listed under policy and validation', 'policy questions, answer and draft', 'policy follows the selected scan', 'narrow no overflow', 'no browser errors']}))
 
 
 asyncio.run(main())
