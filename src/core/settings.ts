@@ -31,10 +31,17 @@ export const settingsPath = () =>
     'codex-security.json',
   );
 
-/** Model and provider routing only. MCP servers, hooks and the rest stay out of scans. */
+/**
+ * Model and provider routing, and the model's size limits: Codex compacts a long scan before it
+ * overflows only if it knows the context window, which it cannot for a gateway's model alias.
+ * MCP servers, hooks and the rest stay out of scans.
+ */
 const routingKeys = [
   'model',
   'model_reasoning_effort',
+  'model_context_window',
+  'model_auto_compact_token_limit',
+  'model_max_output_tokens',
   'model_provider',
   'model_providers',
   'openai_base_url',
