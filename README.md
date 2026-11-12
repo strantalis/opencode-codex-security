@@ -24,10 +24,10 @@ It runs [Codex Security](https://developers.openai.com/codex/security) through t
 **1. Add the plugin** to the `plugins` array in `~/.config/opencode/opencode.json`:
 
 ```json
-{ "plugins": [{ "package": "opencode-codex-security@VERSION" }] }
+{ "plugins": [{ "package": "opencode-codex-security@latest" }] }
 ```
 
-Use a published version (`npm view opencode-codex-security version`), or point `package` at a clone of this repository after `npm ci --ignore-scripts`.
+Then restart OpenCode.
 
 **2. Open `/security`** in OpenCode. The top of the view shows the provider, model and credentials it will use, and tells you if anything is missing.
 
@@ -39,7 +39,35 @@ Run a security scan of this repo.
 
 You see a preview of what will be scanned and where the source will be sent, and nothing starts until you approve it.
 
-Scans need Python 3.10 or newer. To have a coding agent do the install, see [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md).
+Scans need Python 3.10 or newer.
+
+<details>
+<summary><b>Have a coding agent install it</b></summary>
+
+Paste this into your coding agent on the machine where you use OpenCode:
+
+```text
+Install the OpenCode plugin opencode-codex-security.
+
+1. Add { "package": "opencode-codex-security@latest" } to the "plugins" array of my
+   OpenCode config (~/.config/opencode/opencode.json, or under $XDG_CONFIG_HOME).
+   Keep everything else in the file as it is.
+2. Tell me to restart OpenCode and open /security to confirm it loaded.
+3. If you are running inside OpenCode, after the restart call security_status and
+   report what it says.
+
+Don't start a scan or change my model provider or credentials. If something is
+missing, tell me what it is.
+```
+
+</details>
+
+<details>
+<summary><b>Run it from source</b></summary>
+
+Clone this repository, run `npm ci --ignore-scripts`, and set `package` to the checkout's absolute path. The built UI bundles are committed, so there is no build step.
+
+</details>
 
 ## Just ask
 

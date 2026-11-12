@@ -8,7 +8,7 @@ Check the registry again before choosing an installation or release version:
 npm view opencode-codex-security dist-tags versions --json
 ```
 
-For installation, use [the README](../README.md#install-a-released-version) or [agent setup](https://github.com/strantalis/opencode-codex-security/blob/main/docs/AGENT-SETUP.md). Consumers do not need npm login, trusted-publisher settings or these release tools. GitHub previews remain available independently through [the preview release guide](RELEASING.md).
+For installation, use [the README](../README.md#quick-start). It installs `opencode-codex-security@latest`, so a release only reaches new users once it is published under the `latest` tag; `next` is for testing. Consumers do not need npm login, trusted-publisher settings or these release tools. GitHub previews remain available independently through [the preview release guide](RELEASING.md).
 
 ## Stage the next release
 
