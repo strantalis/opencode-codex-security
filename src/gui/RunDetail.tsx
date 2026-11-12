@@ -8,7 +8,6 @@ import {
   hasDeterminateProgress,
   hasPhaseProgress,
   partialLabel,
-  projectName,
   resumeProblem,
   phaseCounts,
   progressLabel,
@@ -38,8 +37,6 @@ export function RunDetail(props: {
   onAgain?(plan: ScanPlan): void;
   /** Review a prepared plan, such as one that resumes this scan. */
   onReview?(plan: ScanPlan): void;
-  /** Draft a SECURITY.md for this scan's repository. */
-  onPolicy?(repository: string): void;
 }) {
   const run = () => props.run;
   const paths = () =>
@@ -146,11 +143,6 @@ export function RunDetail(props: {
           <Show when={props.onReview && !resumeProblem(run())}>
             <button class="gs-link" onClick={() => void resume()}>
               Resume
-            </button>
-          </Show>
-          <Show when={props.onPolicy}>
-            <button class="gs-link" onClick={() => props.onPolicy?.(run().repository)}>
-              Draft policy for {projectName(run().repository)}
             </button>
           </Show>
           <Show when={run().status !== 'running' && props.onAgain && run().plan}>

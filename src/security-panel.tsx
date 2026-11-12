@@ -30,12 +30,6 @@ export function SecurityPanel(props: {
     operations: props.operations,
     fallbackMs: props.fallbackMs,
   });
-  // A policy belongs to one repository: the selected scan's, else the workspace.
-  const [drafting, setDrafting] = createSignal<string>();
-  const draftPolicy = (repository: string) => {
-    setDrafting(repository);
-    queueMicrotask(showOther);
-  };
   let other: HTMLDetailsElement | undefined;
   const [selectedId, selectRun] = createSignal<string>();
   const [composer, setComposer] = createSignal<Composer>();
@@ -47,11 +41,9 @@ export function SecurityPanel(props: {
     composer() ?? (store.loaded() && !runs().length ? blankComposer : undefined);
   const capabilities = () => props.operations?.capabilities;
   const showOperations = () => !!props.operations && store.loaded();
-  const canDraft = () => showOperations() && (capabilities()?.policy ?? true);
   // Validations and fixes started from a finding are shown on that finding.
   const unattached = createMemo(() => store.operations().filter((op) => !op.plan.source));
   const attention = () =>
-    !!drafting() ||
     unattached().some((op) => ['prepared', 'running', 'awaiting_answers'].includes(op.status));
   const showOther = () => {
     if (!other) return;
@@ -79,11 +71,6 @@ export function SecurityPanel(props: {
             </p>
           </div>
           <div class="gs-header-actions">
-            <Show when={canDraft() && !runs().length}>
-              <button class="gs-button" onClick={() => draftPolicy(props.directory)}>
-                Draft policy
-              </button>
-            </Show>
             <Show when={!openComposer()}>
               <button class="gs-button gs-primary" onClick={() => setComposer({})}>
                 New scan
@@ -158,13 +145,12 @@ export function SecurityPanel(props: {
                   validation={validation()}
                   onAgain={(plan) => setComposer({ plan, edit: true })}
                   onReview={(plan) => setComposer({ plan })}
-                  onPolicy={canDraft() ? draftPolicy : undefined}
                 />
               )}
             </Show>
           )}
         </Show>
-        <Show when={props.operations && showOperations() && (unattached().length || drafting())}>
+        <Show when={props.operations && showOperations() && unattached().length}>
           <details ref={(element) => (other = element)} class="gs-section gs-other">
             <summary>
               Policy drafts and other activity
@@ -172,15 +158,7 @@ export function SecurityPanel(props: {
                 <span class="gs-summary-note">{unattached().length}</span>
               </Show>
             </summary>
-            <Operations
-              directory={drafting() ?? props.directory}
-              port={props.operations!}
-              store={store}
-              policy={capabilities()?.policy ?? true}
-              list={unattached()}
-              composing={!!drafting()}
-              onComposing={(open) => setDrafting(open ? props.directory : undefined)}
-            />
+            <Operations port={props.operations!} store={store} list={unattached()} />
           </details>
         </Show>
       </div>

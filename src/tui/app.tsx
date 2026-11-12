@@ -419,14 +419,6 @@ export function createApp(ctx: Plugin.Context) {
       secondary: true,
     },
     {
-      bind: 'p',
-      key: 'p',
-      label: () => 'draft policy',
-      run: operations.draftPolicy,
-      when: () => listing() && store.capabilities().policy,
-      secondary: true,
-    },
-    {
       bind: 'tab',
       key: 'tab',
       label: () => (scans() ? 'activity' : 'scans'),
@@ -489,7 +481,6 @@ export function createApp(ctx: Plugin.Context) {
     onRoute,
     View,
     newScan,
-    draftPolicy: operations.draftPolicy,
     validate,
     showOperations: () => {
       setTab('operations');

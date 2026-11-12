@@ -341,12 +341,7 @@ try {
   assert.equal(intervals.size, 0, 'no timers before /security');
   assert.deepEqual(calls, [], 'no RPC calls before /security');
   const slashIds = [...layers].flatMap((f) => f().commands ?? []).map((c) => c.id);
-  assert.deepEqual(slashIds, [
-    'security.open',
-    'security.scan',
-    'security.policy',
-    'security.validate',
-  ]);
+  assert.deepEqual(slashIds, ['security.open', 'security.scan', 'security.validate']);
   assert.equal(await press('n'), false, 'view keys are inactive off the Security route');
 
   await slash('security.open');
