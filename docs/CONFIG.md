@@ -42,6 +42,16 @@ The SDK decides how to authenticate from the provider and the `auth` mode:
 - **A custom provider**: uses the environment variable named by its `env_key`.
 - **Amazon Bedrock**: uses your AWS credential chain.
 
+### A gateway with no API key
+
+If your gateway identifies you by network (Cloudflare WARP, a VPN, a local proxy), its provider has no `env_key`. The SDK still refuses to start without some credential, so give it a placeholder:
+
+```sh
+export CODEX_API_KEY=unused
+```
+
+For a Desktop launch on macOS, run `launchctl setenv CODEX_API_KEY unused` and reopen the app. The placeholder is not sent to the gateway. Until it is set, the Security view shows the same instruction next to Credentials.
+
 Environment variables must be visible to the OpenCode process. A desktop launch may not inherit what your shell exports, and the preview marks a key that is not set.
 
 Codex Security keeps its own sign-in, separate from the Codex CLI. If it has none, the SDK copies your Codex CLI sign-in the first time it runs. The two then share one refresh token, and whichever refreshes second can be signed out. To avoid that, sign in once before your first scan. In the terminal view press `l`; in the Desktop panel use "Sign in with ChatGPT" on the setup card. Both run the SDK's own sign-in, in your browser or with a device code for a remote machine. From a shell, `npx @openai/codex-security login` does the same.

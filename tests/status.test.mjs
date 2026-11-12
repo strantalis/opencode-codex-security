@@ -42,3 +42,25 @@ test('status reports the node and python3 found on PATH, or null', async (t) => 
   t.after(() => (process.env.PATH = path));
   assert.deepEqual((await setupStatus(root)).runtime, { node: null, python: '3.12.4' });
 });
+
+test('a provider with no credential is not sent to sign-in, and says how to start', async (t) => {
+  const root = await project(t);
+  await configure(t, {
+    codex: `
+model = "gateway-model"
+model_provider = "gateway"
+[model_providers.gateway]
+base_url = "https://gateway.example.test/v1"
+`,
+  });
+  const signIn = { status: async () => ({ state: 'needed' }) };
+  const blocked = await setupStatus(root, signIn);
+  assert.match(blocked.route.auth, /^No API key .* set CODEX_API_KEY=unused/);
+  assert.equal(blocked.signIn, undefined);
+
+  process.env.CODEX_API_KEY = 'unused';
+  t.after(() => delete process.env.CODEX_API_KEY);
+  const ready = await setupStatus(root, signIn);
+  assert.equal(ready.route.auth, 'No API key (this provider has none configured)');
+  assert.equal(ready.signIn, undefined);
+});

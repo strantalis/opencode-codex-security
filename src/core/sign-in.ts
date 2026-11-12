@@ -26,7 +26,7 @@ const read = (path: string) => readFile(path).catch(() => undefined);
  * Looks at files only. The SDK's own status check would copy the Codex CLI session as a side
  * effect. A copy the SDK already made is byte-identical to the CLI's file, and still shared.
  */
-async function storedState(): Promise<SignInStatus['state']> {
+export async function storedState(): Promise<SignInStatus['state']> {
   const stateDirectory =
     process.env.CODEX_SECURITY_STATE_DIR || join(codexHome(), 'state', 'plugins', 'codex-security');
   const [own, cli] = await Promise.all([
