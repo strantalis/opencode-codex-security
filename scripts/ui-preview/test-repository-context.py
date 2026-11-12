@@ -24,7 +24,6 @@ async def main():
         await expect(page.get_by_role('combobox', name='Profile')).to_have_value('work')
 
         # History distinguishes targets with the same basename.
-        await page.locator('.gs-runs > summary').click()
         await expect(page.locator('.gs-runs')).to_contain_text('/Projects/other-team/atlas')
         await expect(page.locator('.gs-runs')).to_contain_text('/Projects/atlas')
 
@@ -60,24 +59,19 @@ async def main():
         await expect(page.locator('.gs-review').first).to_contain_text('/Projects/other-team/atlas')
         await page.get_by_role('button', name='Close', exact=True).click()
 
-        # Policy and validation area: the validation is listed; a policy draft asks questions.
-        await page.get_by_role('button', name='Policy and reviews').click()
-        await expect(page.get_by_role('article', name='Selected operation')).to_contain_text('Confirmed in source')
-        await page.get_by_role('button', name='New policy draft', exact=True).click()
-        await page.get_by_role('textbox', name='Operation repository').fill('/Projects/other-team/atlas')
-        await page.get_by_role('button', name='Review policy draft', exact=True).click()
+        # A validation stays on its finding, and the panel offers no policy form.
+        await expect(page.locator('.gs-other')).to_have_count(0)
+        await expect(page.get_by_role('button', name='Draft policy')).to_have_count(0)
+
+        # A policy draft started in the conversation is reviewed and answered here.
+        await page.goto('http://127.0.0.1:5197/?scenario=policy-waiting')
+        await expect(page.get_by_text('A policy draft is waiting for your answers.')).to_be_visible()
+        await expect(page.locator('.gs-other')).to_have_attribute('open', '')
         detail = page.get_by_role('article', name='Selected operation')
-        await expect(detail).to_contain_text('/Projects/other-team/atlas')
-        await detail.get_by_role('button', name='Start mock run').click()
-        await expect(page.locator('.gs-tabs .gs-badge')).to_have_text('1')
         await page.get_by_role('textbox', name='Answer security questions').fill('Admins only; uploads need sign-in.')
         await page.get_by_role('button', name='Send answer', exact=True).click()
         await expect(detail).to_contain_text('Not written to disk')
-        await expect(page.locator('.gs-tabs .gs-badge')).to_have_count(0)
-        await page.get_by_role('button', name='New policy draft', exact=True).click()
-        await expect(page.get_by_role('textbox', name='Operation repository')).to_have_value('/Projects/atlas')
-        await page.get_by_role('button', name='Back', exact=True).click()
-        await page.get_by_role('button', name='Scans', exact=True).click()
+        await expect(page.get_by_text('A policy draft is waiting for your answers.')).to_have_count(0)
 
         await page.evaluate("document.body.classList.add('narrow')")
         await page.set_viewport_size({'width': 360, 'height': 844})
@@ -88,7 +82,7 @@ async def main():
         await page.screenshot(path=str(out / 'repository-context-narrow.png'), full_page=True)
         assert not errors, errors
         await browser.close()
-        print(json.dumps({'passed': ['setup card profile switch', 'same-basename targets distinguished', 'validation from finding shows result inline', 'scope/context cleared on target change', 'new scan defaults to workspace', 'prepared draft keeps its target', 'validation listed under policy and validation', 'policy questions, answer and draft', 'new policy resets target', 'narrow no overflow', 'no browser errors']}))
+        print(json.dumps({'passed': ['setup card profile switch', 'same-basename targets distinguished', 'validation from finding shows result inline', 'scope/context cleared on target change', 'new scan defaults to workspace', 'prepared draft keeps its target', 'validation listed under policy and validation', 'policy questions, answer and draft', 'no policy form in the panel', 'narrow no overflow', 'no browser errors']}))
 
 
 asyncio.run(main())

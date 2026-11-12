@@ -105,7 +105,7 @@ export function SecurityView(props: Props) {
           </span>
           <span style={{ fg: props.tab === 'operations' ? c.accent() : c.muted() }}>
             {'   '}
-            {props.tab === 'operations' ? <b>Operations</b> : 'Operations'}{' '}
+            {props.tab === 'operations' ? <b>Activity</b> : 'Activity'}{' '}
             {props.store.operations().length}
           </span>
           <Show when={active()}>
@@ -444,8 +444,8 @@ export function SecurityView(props: Props) {
           when={props.operation}
           fallback={
             <text>
-              No policy drafts or validations yet. Press p to draft a policy, or v on a finding to
-              validate it.
+              Nothing here yet. Press v on a finding to validate it, or ask in the conversation for
+              a policy draft.
             </text>
           }
         >

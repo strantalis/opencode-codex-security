@@ -1,51 +1,101 @@
-import { For } from 'solid-js';
+import { createMemo, createSignal, For, Show } from 'solid-js';
 import type { ScanState } from '../types';
 import { depthLabel, runTitle, scanScope } from '../scan-display';
 import { shortTime, statusLabel } from './format';
 
-/** Collapsed scan history; choosing a run closes it. */
+const shown = 3;
+/** Enough scans that scrolling to find one is slower than typing. */
+const filterFrom = 5;
+const outcome = (run: ScanState) =>
+  run.status === 'completed' || run.partial
+    ? `${run.findings.length} ${run.findings.length === 1 ? 'finding' : 'findings'}${run.partial ? ' so far' : ''}`
+    : statusLabel(run.status);
+
+/** Every scan at a glance: running ones first, the selected one highlighted. */
 export function RunList(props: {
   runs: ScanState[];
   selectedId?: string;
   onSelect(runId: string | undefined): void;
 }) {
-  let element: HTMLDetailsElement | undefined;
+  const [all, setAll] = createSignal(false);
+  const [query, setQuery] = createSignal('');
+  const words = () => query().toLowerCase().split(/\s+/).filter(Boolean);
+  const matches = (run: ScanState) => {
+    const text = [
+      runTitle(run),
+      run.repository,
+      run.plan?.scopePaths.join(' '),
+      run.plan?.changes,
+      depthLabel(run),
+      outcome(run),
+      statusLabel(run.status),
+    ]
+      .join(' ')
+      .toLowerCase();
+    return words().every((word) => text.includes(word));
+  };
+  const ordered = createMemo(() => [
+    ...props.runs.filter((run) => run.status === 'running'),
+    ...props.runs.filter((run) => run.status !== 'running'),
+  ]);
+  // The selected scan is always in view, even when it is further down than the short list.
+  const visible = () =>
+    words().length
+      ? ordered().filter(matches)
+      : all()
+        ? ordered()
+        : ordered().filter((run, index) => index < shown || run.runId === props.selectedId);
+  const hidden = () => ordered().length - visible().length;
+  // Only worth a line when the scans are not all of the same repository.
+  const several = () => new Set(props.runs.map((run) => run.repository)).size > 1;
   return (
-    <details ref={(el) => (element = el)} class="gs-runs" aria-label="Scan history">
-      <summary>
-        <span>Switch scan</span>
-        <span class="gs-muted">{props.runs.length} recent</span>
-      </summary>
+    <section class="gs-runs" aria-label="Scans">
+      <Show when={props.runs.length >= filterFrom}>
+        <input
+          class="gs-filter"
+          type="search"
+          value={query()}
+          onInput={(event) => setQuery(event.currentTarget.value)}
+          placeholder={`Filter ${props.runs.length} scans by repository, title or status`}
+          aria-label="Filter scans"
+          spellcheck={false}
+        />
+      </Show>
+      <Show when={words().length && !visible().length}>
+        <p class="gs-muted gs-small">No scan matches “{query()}”.</p>
+      </Show>
       <ul class="gs-list">
-        <For each={props.runs}>
+        <For each={visible()}>
           {(run) => (
             <li>
               <button
-                class="gs-list-item"
+                class="gs-list-item gs-run-row"
                 aria-pressed={props.selectedId === run.runId}
-                onClick={() => {
-                  props.onSelect(run.runId);
-                  if (element) element.open = false;
-                }}
+                onClick={() => props.onSelect(run.runId)}
               >
-                <span class="gs-list-top">
+                <span class="gs-dot" data-status={run.status} aria-hidden="true" />
+                <span class="gs-run-main">
                   <span class="gs-list-title">{runTitle(run)}</span>
-                  <span class="gs-status" data-status={run.status}>
-                    {statusLabel(run.status)}
+                  <span class="gs-list-meta">
+                    {depthLabel(run)} · {scanScope(run)} · {shortTime(run.startedAt)}
                   </span>
+                  <Show when={several()}>
+                    <span class="gs-list-meta gs-mono">{run.repository}</span>
+                  </Show>
                 </span>
-                <span class="gs-list-meta">{run.repository}</span>
-                <span class="gs-list-meta">
-                  {depthLabel(run)} · {scanScope(run)} · {shortTime(run.startedAt)}
-                  {run.status === 'completed'
-                    ? ` · ${run.findings.length} ${run.findings.length === 1 ? 'finding' : 'findings'}`
-                    : ''}
+                <span class="gs-status" data-status={run.status}>
+                  {outcome(run)}
                 </span>
               </button>
             </li>
           )}
         </For>
       </ul>
-    </details>
+      <Show when={!words().length && (hidden() > 0 || all())}>
+        <button class="gs-link gs-small" onClick={() => setAll((value) => !value)}>
+          {all() ? 'Show fewer' : `Show ${hidden()} more`}
+        </button>
+      </Show>
+    </section>
   );
 }

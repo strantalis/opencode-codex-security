@@ -1,4 +1,4 @@
-import { createSignal, Show } from 'solid-js';
+import { createSignal, For, Show } from 'solid-js';
 import { asState, type ScanState } from '../types';
 import type { ScanPlan } from '../core/scan-plan';
 import {
@@ -14,6 +14,7 @@ import {
   runPhaseLabel,
   runTitle,
   scanScope,
+  scopeItems,
   timeLimitLabel,
   usageLabel,
   userError,
@@ -23,6 +24,8 @@ import { shortTime } from './format';
 import { Findings } from './Findings';
 import { RunActivity, RunInfo } from './RunActivity';
 import type { OperationPort, SecurityPort, SecurityStore } from './store';
+
+const maxPaths = 3;
 
 /** One scan. Mount one instance per run so disclosures reset when the selection changes. */
 export function RunDetail(props: {
@@ -36,6 +39,11 @@ export function RunDetail(props: {
   onReview?(plan: ScanPlan): void;
 }) {
   const run = () => props.run;
+  const paths = () =>
+    scopeItems(run())
+      .filter((item) => item.path)
+      .map((item) => item.text);
+  const [allPaths, setAllPaths] = createSignal(false);
   const [cancelling, setCancelling] = createSignal(false);
   const [error, setError] = createSignal('');
   const cancel = async () => {
@@ -65,18 +73,40 @@ export function RunDetail(props: {
     <article class="gs-detail" aria-label="Selected scan">
       <header class="gs-detail-title">
         <h3>{runTitle(run())}</h3>
-        <p class="gs-tags">
+        <p class="gs-meta">
           <span class="gs-tag" data-kind="depth">
             {depthLabel(run())} scan
           </span>
-          <span class="gs-tag">{scanScope(run())}</span>
-          <Show when={run().model ?? run().plan?.settings.codex.model}>
-            <span class="gs-tag">{run().model ?? run().plan?.settings.codex.model}</span>
-          </Show>
-          <Show when={run().startedAt}>
-            <span class="gs-tag">Started {shortTime(run().startedAt)}</span>
-          </Show>
+          <span>
+            {[
+              paths().length
+                ? `${paths().length} ${paths().length === 1 ? 'path' : 'paths'}`
+                : scanScope(run()),
+              run().model ?? run().plan?.settings.codex.model,
+              run().startedAt ? `started ${shortTime(run().startedAt)}` : '',
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
         </p>
+        <Show when={paths().length}>
+          <ul class="gs-paths" aria-label="Paths in scope">
+            <For each={allPaths() ? paths() : paths().slice(0, maxPaths)}>
+              {(path) => (
+                <li>
+                  <code>{path}</code>
+                </li>
+              )}
+            </For>
+            <Show when={paths().length > maxPaths}>
+              <li>
+                <button class="gs-link" onClick={() => setAllPaths((value) => !value)}>
+                  {allPaths() ? 'Show fewer' : `Show all ${paths().length}`}
+                </button>
+              </li>
+            </Show>
+          </ul>
+        </Show>
         <p class="gs-mono gs-muted">{run().repository}</p>
       </header>
       <div class="gs-progress-heading" role="status" aria-live="polite">
@@ -104,23 +134,25 @@ export function RunDetail(props: {
       </Show>
       <div class="gs-scan-actions">
         <span class="gs-muted gs-tabular">{usageLabel(run())}</span>
-        <Show when={run().status === 'running'}>
-          <button class="gs-link" disabled={cancelling()} onClick={() => void cancel()}>
-            {cancelling() ? 'Stopping…' : 'Cancel scan'}
-          </button>
-        </Show>
-        <Show when={props.onReview && !resumeProblem(run())}>
-          <button class="gs-link" onClick={() => void resume()}>
-            Resume
-          </button>
-        </Show>
-        <Show when={run().status !== 'running' && props.onAgain && run().plan}>
-          {(plan) => (
-            <button class="gs-link" onClick={() => props.onAgain?.(plan())}>
-              Run again
+        <span class="gs-link-row">
+          <Show when={run().status === 'running'}>
+            <button class="gs-link" disabled={cancelling()} onClick={() => void cancel()}>
+              {cancelling() ? 'Stopping…' : 'Cancel scan'}
             </button>
-          )}
-        </Show>
+          </Show>
+          <Show when={props.onReview && !resumeProblem(run())}>
+            <button class="gs-link" onClick={() => void resume()}>
+              Resume
+            </button>
+          </Show>
+          <Show when={run().status !== 'running' && props.onAgain && run().plan}>
+            {(plan) => (
+              <button class="gs-link" onClick={() => props.onAgain?.(plan())}>
+                Run again
+              </button>
+            )}
+          </Show>
+        </span>
       </div>
       <Show when={error() || run().error}>
         <p class="gs-alert" role="alert">

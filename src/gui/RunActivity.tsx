@@ -7,7 +7,7 @@ import {
   deepProgressLabel,
   dispatchLabel,
   reconnectLabel,
-  scanScope,
+  scopeItems,
   usageContext,
   trustedAccessLabel,
   targetChangedLabel,
@@ -129,7 +129,15 @@ export function RunInfo(props: { run: ScanState }) {
           <dt>Repository</dt>
           <dd class="gs-mono">{run().repository}</dd>
           <dt>Scope</dt>
-          <dd>{scanScope(run())}</dd>
+          <dd>
+            <For each={scopeItems(run())}>
+              {(item) => (
+                <span class="gs-block" classList={{ 'gs-mono': item.path }}>
+                  {item.text}
+                </span>
+              )}
+            </For>
+          </dd>
           <Show when={run().model ?? run().plan?.settings.codex.model}>
             <dt>Model</dt>
             <dd>{run().model ?? run().plan?.settings.codex.model}</dd>

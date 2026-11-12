@@ -119,7 +119,7 @@ The fix is written and verified in a throwaway copy of your last commit. You get
 
 **Draft a security policy**
 
-A `SECURITY.md` for a repository or one component. It can ask you questions along the way, and it is never written for you.
+Ask for a `SECURITY.md` for a repository or one component. The model relays any questions the draft raises, shows you the result, and offers to put it on a branch. Nothing is written unless you say so.
 
 **Discuss**
 
@@ -150,7 +150,7 @@ Everything is in [docs/CONFIG.md](docs/CONFIG.md).
 
 ## In the terminal
 
-`/security` opens the view, `/security-scan` starts a scan, `/security-policy` drafts a policy and `/security-validate` re-checks a finding. Inside the view everything is a key, and the footer shows the ones that apply to what is selected:
+`/security` opens the view, `/security-scan` starts a scan and `/security-validate` re-checks a finding. Inside the view everything is a key, and the footer shows the ones that apply to what is selected:
 
 | Key       | Does                                                   |
 | --------- | ------------------------------------------------------ |
@@ -160,7 +160,7 @@ Everything is in [docs/CONFIG.md](docs/CONFIG.md).
 | `y` / `r` | Apply / discard a proposed fix                         |
 | `g`       | Discuss the finding in the conversation you came from  |
 | `e` / `u` | Run a scan again / resume a stopped Deep scan          |
-| `tab`     | Switch between scans and operations                    |
+| `tab`     | Switch between scans and other activity                |
 | `h`       | List every key available right now                     |
 
 <details>
