@@ -79,8 +79,10 @@ export function runRow(run: ScanState, now: number) {
     run.mode ?? 'standard',
   ];
   if (run.status === 'running') parts.push(elapsedLabel(run.startedAt, null, now));
-  else if (run.status === 'completed')
-    parts.push(`${run.findings.length} ${run.findings.length === 1 ? 'finding' : 'findings'}`);
+  else if (run.status === 'completed' || run.partial)
+    parts.push(
+      `${run.findings.length} ${run.findings.length === 1 ? 'finding' : 'findings'}${run.partial ? ' (partial)' : ''}`,
+    );
   return parts.filter(Boolean).join(' · ');
 }
 

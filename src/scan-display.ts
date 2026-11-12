@@ -73,10 +73,45 @@ export function hasPhaseProgress(run: ScanState) {
 }
 export function hasDeterminateProgress(run: ScanState) {
   const { done, total } = phaseCounts(run);
-  return hasPhaseProgress(run) && total > 0 && done <= total;
+  return hasPhaseProgress(run) && !beforeReview(run) && total > 0 && done <= total;
+}
+/** The time limit of a scan, for the review and the running view. */
+export function timeLimitLabel(scan: { mode?: string; maxTimeMinutes?: number } | undefined) {
+  const minutes = scan?.maxTimeMinutes;
+  if (!minutes) return scan?.mode === 'deep' ? 'SDK default' : 'None';
+  const amount = minutes >= 120 ? `${Math.round(minutes / 6) / 10}h` : `${minutes}m`;
+  return scan?.mode === 'deep' ? `${amount} of discovery` : `${amount} target, not a hard stop`;
+}
+/** Why a scan cannot be resumed, or '' when it can. Only the SDK's Deep scans resume. */
+export function resumeProblem(run: ScanState) {
+  if (run.status !== 'error' && run.status !== 'cancelled')
+    return 'Only a scan that stopped before finishing can be resumed.';
+  if ((run.mode ?? run.plan?.settings.scan.mode) !== 'deep')
+    return 'Only Deep scans can be resumed. Run this Standard scan again instead.';
+  if (!run.scanId || !run.scanDirectory)
+    return 'This scan stopped before it saved anything to resume from. Run it again instead.';
+  if (run.plan?.contextFiles.length)
+    return 'A scan with context files cannot be resumed here. Run it again instead.';
+  if (run.plan?.mock) return 'A mock scan cannot be resumed.';
+  return '';
+}
+/** What to say above findings that came from a scan that did not finish. */
+export function partialLabel(run: ScanState) {
+  if (!run.partial) return '';
+  const count = run.findings.length;
+  return `Partial results. This scan stopped before it finished; ${count === 1 ? '1 finding was' : `${count} findings were`} saved up to that point. Code it had not reached may hold more.`;
+}
+/** Files are counted as they are reviewed, which starts after the threat model. */
+function beforeReview(run: ScanState) {
+  const phase = run.telemetry?.phaseProgress?.phase;
+  return (phase === 'preflight' || phase === 'threat_model') && phaseCounts(run).done === 0;
 }
 export function progressLabel(run: ScanState) {
   const { done, total, unit } = phaseCounts(run);
+  if (beforeReview(run))
+    return total > 0
+      ? `Mapping the architecture · ${total} ${unit} to review next`
+      : 'Mapping the architecture';
   return total > 0
     ? `${done} of ${total} ${unit}`
     : done > 0

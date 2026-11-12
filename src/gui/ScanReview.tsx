@@ -1,5 +1,5 @@
 import { Show } from 'solid-js';
-import { scopeLabel } from '../scan-display';
+import { scopeLabel, timeLimitLabel } from '../scan-display';
 import type { ScanPlan } from '../core/scan-plan';
 import { describeCostLimit, describeInferenceRoute, inferenceDestination } from '../plan-view';
 import type { SecurityStore } from './store';
@@ -15,7 +15,12 @@ export function ScanReview(props: {
   const full = () => props.store.running() >= props.store.catalog.maxConcurrent;
   return (
     <div class="gs-review">
-      <h3>Review scan</h3>
+      <h3>{props.plan.resume ? 'Resume scan' : 'Review scan'}</h3>
+      <Show when={props.plan.resume}>
+        <p class="gs-note">
+          Continues the interrupted Deep scan in its original session. Work it had finished is kept.
+        </p>
+      </Show>
       <dl class="gs-facts">
         <dt>Repository</dt>
         <dd>{props.plan.repository}</dd>
@@ -23,6 +28,8 @@ export function ScanReview(props: {
         <dd>{scopeLabel(props.plan)}</dd>
         <dt>Depth</dt>
         <dd>{props.plan.settings.scan.mode === 'deep' ? 'Deep' : 'Standard'}</dd>
+        <dt>Time limit</dt>
+        <dd>{timeLimitLabel(props.plan.settings.scan)}</dd>
         <Show when={props.plan.scanPrompt}>
           <dt>Focus</dt>
           <dd>{props.plan.scanPrompt}</dd>
@@ -71,11 +78,19 @@ export function ScanReview(props: {
           disabled={props.busy || full() || expired()}
           onClick={() => props.onStart()}
         >
-          {props.busy ? 'Starting…' : props.plan.mock ? 'Start mock scan' : 'Approve and start'}
+          {props.busy
+            ? 'Starting…'
+            : props.plan.mock
+              ? 'Start mock scan'
+              : props.plan.resume
+                ? 'Approve and resume'
+                : 'Approve and start'}
         </button>
-        <button class="gs-button" disabled={props.busy} onClick={() => props.onEdit()}>
-          Edit scan
-        </button>
+        <Show when={!props.plan.resume}>
+          <button class="gs-button" disabled={props.busy} onClick={() => props.onEdit()}>
+            Edit scan
+          </button>
+        </Show>
       </div>
     </div>
   );

@@ -286,7 +286,10 @@ test('policy and validation each ask permission; answers need it too', async (t)
   assert.match(calls.validation[0].finding, /export const ok = true;/);
   // The denied policy preview stays listed until it expires.
   assert.equal((await call('security_operations')).operations.length, 3);
-  await assert.rejects(call('security_validate', { runId, findingId: 'nope' }), /completed scan/);
+  await assert.rejects(
+    call('security_validate', { runId, findingId: 'nope' }),
+    /scan that has results/,
+  );
 });
 
 test('RPC returns input problems as declared setup errors', async (t) => {

@@ -3,12 +3,12 @@ import type { Plugin } from '@opencode/plugin/tui';
 import { createSignal, For, Show } from 'solid-js';
 import type { ScanInputs, ScanPlan } from '../core/scan-plan';
 import { describeInferenceRoute, describePlan, isAbsoluteLocalDirectory } from '../plan-view';
-import { scopeLabel, userError } from '../scan-display';
+import { scopeLabel, timeLimitLabel, userError } from '../scan-display';
 import type { Colors } from './theme';
 import { costLine, splitList } from './text';
 
 type Depth = 'default' | 'standard' | 'deep';
-type Edit = 'target' | 'scope' | 'focus' | 'context';
+type Edit = 'target' | 'scope' | 'focus' | 'context' | 'time';
 type Action = 'start' | 'back' | Edit;
 
 const nextDepth: Record<Depth, Depth> = { default: 'standard', standard: 'deep', deep: 'default' };
@@ -176,6 +176,21 @@ async function edit(ctx: Plugin.Context, field: Edit, plan: ScanPlan) {
     const { scanPrompt: _previous, ...rest } = inputs;
     return value.trim() ? { ...rest, scanPrompt: value.trim() } : rest;
   }
+  if (field === 'time') {
+    const value = await ctx.ui.dialog.prompt({
+      title: 'Time limit',
+      description:
+        'Minutes of investigation. A Standard scan treats it as a target. Leave empty for no limit.',
+      value: inputs.maxTimeMinutes?.toString() ?? '',
+      placeholder: '20',
+    });
+    if (value === undefined) return;
+    const { maxTimeMinutes: _previous, ...rest } = inputs;
+    if (!value.trim()) return rest;
+    const minutes = Number(value);
+    if (!(minutes > 0)) throw new Error('Enter the time limit as a number of minutes.');
+    return { ...rest, maxTimeMinutes: minutes };
+  }
   const value = await ctx.ui.dialog.prompt({
     title: 'Context files',
     description: 'Repository-relative docs to include, separated by commas.',
@@ -212,6 +227,7 @@ function Review(props: {
       { bind: 's', title: 'Change scope', enabled: idle, run: () => props.onAction('scope') },
       { bind: 'f', title: 'Change focus', enabled: idle, run: () => props.onAction('focus') },
       { bind: 'c', title: 'Change context', enabled: idle, run: () => props.onAction('context') },
+      { bind: 'm', title: 'Change time limit', enabled: idle, run: () => props.onAction('time') },
       { bind: 'i', title: 'Toggle settings', run: props.onSettings },
     ],
   }));
@@ -221,6 +237,7 @@ function Review(props: {
     ['Repository', props.plan.repository],
     ['Depth', depth()],
     ['Scope', scopeLabel(props.plan)],
+    ['Time limit', timeLimitLabel(props.plan.settings.scan)],
     ['Focus', props.plan.scanPrompt || '—'],
     ['Context', props.plan.contextFiles.map((file) => file.path).join(', ') || '—'],
     ['Route', describeInferenceRoute(props.plan.settings)],
@@ -261,7 +278,8 @@ function Review(props: {
         <text fg={props.color.muted()}>{describePlan(props.plan)}</text>
       </Show>
       <text fg={props.color.muted()}>
-        y start · t target · d depth · s scope · f focus · c context · i settings · esc back
+        y start · t target · d depth · s scope · m time limit · f focus · c context · i settings ·
+        esc back
       </text>
     </box>
   );

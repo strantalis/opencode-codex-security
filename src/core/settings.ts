@@ -20,6 +20,9 @@ const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
 export const codexHome = () => process.env.CODEX_HOME || join(homedir(), '.codex');
+/** Where the SDK keeps its own sign-in, scan directories and history. */
+export const stateDirectory = () =>
+  process.env.CODEX_SECURITY_STATE_DIR || join(codexHome(), 'state', 'plugins', 'codex-security');
 export const codexConfigPath = () => join(codexHome(), 'config.toml');
 export const settingsPath = () =>
   join(

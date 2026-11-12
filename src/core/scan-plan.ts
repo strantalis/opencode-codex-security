@@ -21,6 +21,10 @@ export interface ScanInputs {
   changes?: string;
   scanPrompt?: string;
   contextFiles?: string[];
+  /** Minutes of investigation. Advisory for Standard; a discovery deadline for Deep. */
+  maxTimeMinutes?: number;
+  /** Continue an interrupted Deep scan instead of starting a new one. Other inputs are ignored. */
+  resumeRunId?: string;
 }
 /** Where inference goes, as the SDK resolved it. For display only. */
 export interface Route {
@@ -45,11 +49,18 @@ export interface ScanPlan {
   expiresAt: string;
   mock: boolean;
   inputs: ScanInputs;
+  /** Set when this continues an interrupted Deep scan in its original session. */
+  resume?: { runId: string; scanId: string };
 }
 
 /** Execution-only configuration. Never serialize this into RPC, events or history. */
 export interface PreparedScanPlan extends ScanPlan {
-  sdk: { codexOverrides: JsonObject; auth: ScanAuthMode };
+  sdk: {
+    codexOverrides: JsonObject;
+    auth: ScanAuthMode;
+    /** The SDK scan to continue and the output directory it must reuse. */
+    resume?: { scanId: string; outputDir: string };
+  };
 }
 export function publicScanPlan(plan: ScanPlan): ScanPlan {
   const copy = structuredClone(plan) as ScanPlan & { sdk?: unknown };
@@ -69,10 +80,14 @@ function parseInputs(value: unknown): ScanInputs {
     !['undefined', 'string'].includes(typeof data.changes) ||
     !strings(data.scopePaths) ||
     !strings(data.contextFiles) ||
-    ![undefined, 'standard', 'deep'].includes(data.mode as string)
+    ![undefined, 'standard', 'deep'].includes(data.mode as string) ||
+    !(
+      data.maxTimeMinutes === undefined ||
+      (typeof data.maxTimeMinutes === 'number' && data.maxTimeMinutes > 0)
+    )
   )
     throw new SecurityInputError(
-      'Scan inputs are repository, scopePaths, changes, scanPrompt, contextFiles and mode (standard or deep).',
+      'Scan inputs are repository, scopePaths, changes, scanPrompt, contextFiles, mode (standard or deep) and maxTimeMinutes.',
     );
   if (data.changes && (data.scopePaths as string[] | undefined)?.length)
     throw new SecurityInputError('Scan either paths or changes, not both.');
@@ -196,7 +211,10 @@ export async function prepareScan(
   const repository = await resolveRepository(workspace, input.repository);
   const settings = await loadSettings(input.mode);
   const contextFiles = [...new Set(input.contextFiles ?? [])];
-  const scanSettings = { ...settings.scan };
+  const scanSettings = {
+    ...settings.scan,
+    ...(input.maxTimeMinutes ? { maxTimeMinutes: input.maxTimeMinutes } : {}),
+  };
   if (purpose === 'validation') delete scanSettings.maxCostUsd;
   const changes = input.changes?.trim() || undefined;
   const target = await scanTarget({ scopePaths: input.scopePaths, changes });

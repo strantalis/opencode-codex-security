@@ -306,3 +306,11 @@ test('a changes scan targets a diff, and cannot be combined with paths', async (
   await assert.rejects(prepareScan(root, { changes: 'no-such-ref' }), /no-such-ref|ref|revision/i);
   await assert.rejects(prepareScan(root, { changes: 'HEAD~1', mode: 'deep' }), /standard|deep/i);
 });
+
+test('a time limit chosen for one scan reaches the SDK settings', async (t) => {
+  const root = await project(t);
+  const limited = await prepareScan(root, { maxTimeMinutes: 20 });
+  assert.equal(limited.settings.scan.maxTimeMinutes, 20);
+  assert.equal((await prepareScan(root, {})).settings.scan.maxTimeMinutes, undefined);
+  await assert.rejects(prepareScan(root, { maxTimeMinutes: 0 }), /maxTimeMinutes/);
+});
