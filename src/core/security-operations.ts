@@ -23,6 +23,7 @@ import {
   type PatchWorkspace,
   type PatchWorkspaceFactory,
 } from './patch-workspace.ts';
+import { loadSdk } from './sdk.ts';
 
 export type SecurityOperationKind = 'policy' | 'validation' | 'fix';
 export type SecurityOperationStatus =
@@ -131,7 +132,7 @@ type Entry = {
   };
 };
 const realClient: SecurityOperationsFactory = async (config) =>
-  new (await import('@openai/codex-security')).CodexSecurity(config);
+  new (await loadSdk()).CodexSecurity(config);
 const active = (state: SecurityOperationState) =>
   state.status === 'running' || state.status === 'awaiting_answers';
 const textLimit = 48_000;
@@ -346,7 +347,7 @@ export class SecurityOperationsService {
         // Computed in Node with no model call. The SDK refuses if SECURITY.md changed since the
         // draft read it; the draft has been paid for, so return it without a diff instead.
         const diff = replacesExisting
-          ? await import('@openai/codex-security')
+          ? await loadSdk()
               .then((sdk) => sdk.securityPolicyDiff(result, undefined, signal))
               .catch(() => undefined)
           : undefined;

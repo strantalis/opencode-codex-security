@@ -24,13 +24,13 @@ import { scanTarget, type PreparedScanPlan } from './scan-plan.ts';
 import { userMessage } from './errors.ts';
 import { savedScan } from './partial-results.ts';
 import type { Finding, ScanState } from '../types.js';
+import { loadSdk } from './sdk.ts';
 
 export type SecurityClient = Pick<CodexSecurity, 'run' | 'close'>;
 export type SecurityFactory = (
   config: CodexSecurityConfig,
 ) => SecurityClient | Promise<SecurityClient>;
-const realClient: SecurityFactory = async (config) =>
-  new (await import('@openai/codex-security')).CodexSecurity(config);
+const realClient: SecurityFactory = async (config) => new (await loadSdk()).CodexSecurity(config);
 function initial(repository: string, revision = 0, instanceId = ''): ScanState {
   return {
     telemetry: emptyTelemetry(),
