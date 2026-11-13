@@ -1,7 +1,7 @@
-import { createSignal, Show } from 'solid-js';
+import { createSignal, For, Show } from 'solid-js';
 import { asState } from '../types';
 import type { ScanInputs, ScanPlan } from '../core/scan-plan';
-import { splitPaths, userError } from '../scan-display';
+import { reasoningEfforts, splitPaths, userError } from '../scan-display';
 import { ScanReview } from './ScanReview';
 import type { SecurityPort, SecurityStore } from './store';
 
@@ -41,6 +41,9 @@ export function ScanComposer(props: {
     initial?.contextFiles.map((file) => file.path).join('\n') ?? '',
   );
   const [minutes, setMinutes] = createSignal(initial?.inputs.maxTimeMinutes?.toString() ?? '');
+  const [effort, setEffort] = createSignal(initial?.inputs.reasoningEffort ?? '');
+  const [cost, setCost] = createSignal(initial?.inputs.maxCostUsd?.toString() ?? '');
+  const [model, setModel] = createSignal(initial?.inputs.model ?? '');
   const [preview, setPreview] = createSignal<ScanPlan | undefined>(
     props.edit ? undefined : initial,
   );
@@ -73,6 +76,9 @@ export function ScanComposer(props: {
         contextFiles: splitPaths(documents()),
         ...(mode() !== 'default' ? { mode: mode() as 'standard' | 'deep' } : {}),
         ...(Number(minutes()) > 0 ? { maxTimeMinutes: Number(minutes()) } : {}),
+        ...(effort() ? { reasoningEffort: effort() } : {}),
+        ...(Number(cost()) > 0 ? { maxCostUsd: Number(cost()) } : {}),
+        ...(model().trim() ? { model: model().trim() } : {}),
       };
       const next = asState(await props.port.prepare(input));
       if (!next.plan) throw new Error('The server did not return a scan preview.');
@@ -142,6 +148,33 @@ export function ScanComposer(props: {
                 <span class="gs-help">Deep takes longer and costs more.</span>
               </label>
               <label>
+                Reasoning effort
+                <select
+                  value={effort()}
+                  onChange={(e) => setEffort(e.currentTarget.value)}
+                  aria-label="Reasoning effort"
+                >
+                  <option value="">Default from settings</option>
+                  <For each={reasoningEfforts}>
+                    {(level) => <option value={level}>{level}</option>}
+                  </For>
+                </select>
+                <span class="gs-help">Lower is faster and cheaper; higher looks harder.</span>
+              </label>
+              <label>
+                Cost limit <span class="gs-muted">US dollars, optional</span>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="any"
+                  value={cost()}
+                  onInput={(e) => setCost(e.currentTarget.value)}
+                  placeholder="Default from settings"
+                  aria-label="Cost limit in US dollars"
+                />
+                <span class="gs-help">Stops the scan when its estimated cost passes this.</span>
+              </label>
+              <label>
                 Time limit <span class="gs-muted">minutes, optional</span>
                 <input
                   type="number"
@@ -209,6 +242,20 @@ export function ScanComposer(props: {
               <Show when={scope() === 'uncommitted' || scope() === 'since'}>
                 <p class="gs-help">Change scans run at Standard depth.</p>
               </Show>
+              <details class="gs-disclosure" open={!!model()}>
+                <summary>Model</summary>
+                <label>
+                  Model
+                  <input
+                    value={model()}
+                    onInput={(e) => setModel(e.currentTarget.value)}
+                    placeholder="Default from settings"
+                    aria-label="Model"
+                    spellcheck={false}
+                  />
+                  <span class="gs-help">For this scan only. Your provider must offer it.</span>
+                </label>
+              </details>
               <details class="gs-disclosure">
                 <summary>Context files</summary>
                 <label>

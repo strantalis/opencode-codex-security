@@ -103,7 +103,7 @@ For the multi-repository case the model clones what is not checked out locally, 
 
 **Scan**
 
-Standard or Deep. The whole repository, selected paths, your uncommitted changes, or everything since a branch or commit. Set a time limit if you want one. Two scans can run at once.
+Standard or Deep. The whole repository, selected paths, your uncommitted changes, or everything since a branch or commit. For each scan you can pick the reasoning effort, a cost limit and a time limit. Two scans can run at once.
 
 **Review findings**
 

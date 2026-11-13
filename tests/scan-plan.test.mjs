@@ -314,3 +314,22 @@ test('a time limit chosen for one scan reaches the SDK settings', async (t) => {
   assert.equal((await prepareScan(root, {})).settings.scan.maxTimeMinutes, undefined);
   await assert.rejects(prepareScan(root, { maxTimeMinutes: 0 }), /maxTimeMinutes/);
 });
+
+test('model, reasoning effort and cost limit can be chosen for one scan', async (t) => {
+  const root = await project(t);
+  const usual = await prepareScan(root, {});
+  const chosen = await prepareScan(root, {
+    model: 'gpt-5.6-terra',
+    reasoningEffort: 'low',
+    maxCostUsd: 2,
+  });
+  assert.equal(chosen.settings.codex.model, 'gpt-5.6-terra');
+  assert.equal(chosen.settings.codex.reasoningEffort, 'low');
+  assert.equal(chosen.settings.scan.maxCostUsd, 2);
+  assert.equal(chosen.sdk.codexOverrides.model_reasoning_effort, 'low');
+  // Kept in the inputs, so running the scan again or editing it carries them over.
+  assert.equal(chosen.inputs.reasoningEffort, 'low');
+  assert.notEqual(usual.settings.codex.reasoningEffort, 'low');
+  assert.equal(usual.settings.scan.maxCostUsd, undefined);
+  await assert.rejects(prepareScan(root, { maxCostUsd: 0 }), /maxCostUsd/);
+});

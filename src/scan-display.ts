@@ -95,6 +95,8 @@ export function timeLimitLabel(scan: { mode?: string; maxTimeMinutes?: number } 
   const amount = minutes >= 120 ? `${Math.round(minutes / 6) / 10}h` : `${minutes}m`;
   return scan?.mode === 'deep' ? `${amount} of discovery` : `${amount} target, not a hard stop`;
 }
+/** Reasoning efforts offered in the review. Others can be set in config or by the scan tool. */
+export const reasoningEfforts = ['low', 'medium', 'high', 'xhigh'] as const;
 /** Why a scan cannot be resumed, or '' when it can. */
 export function resumeProblem(run: ScanState) {
   if (run.status !== 'error' && run.status !== 'cancelled')
