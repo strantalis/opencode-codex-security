@@ -40,17 +40,21 @@ async def main():
         await expect(page.get_by_role('heading', name='Reviewing source', exact=True)).to_be_visible()
         await expect(page.locator('progress')).to_have_attribute('value', '3')
         await expect(page.get_by_text('Partial estimate USD 0.24', exact=True).first).to_be_visible()
-        await expect(page.locator('.gs-workers')).not_to_be_visible()
+        # Activity is open while a scan runs, and leads with the scan's latest note.
+        await expect(page.locator('.gs-workers')).to_be_visible()
+        await expect(page.locator('.gs-update')).to_contain_text('strongest candidate')
         await expect(page.get_by_text('3 of 10 reviews', exact=True)).to_be_visible()
         await shot('hierarchy-running-desktop')
 
-        # Keyboard disclosure, then a server event: progress updates and the disclosure stays open.
+        # Closing it from the keyboard sticks across a server event; reopening works too.
         await page.locator('.gs-activity > summary').focus()
         await page.keyboard.press('Enter')
-        await expect(page.locator('.gs-workers')).to_be_visible()
+        await expect(page.locator('.gs-workers')).not_to_be_visible()
         await server_event()
         await expect(page.locator('progress')).to_have_attribute('value', '4')
         await expect(page.get_by_text('4 of 10 reviews', exact=True)).to_be_visible()
+        await expect(page.locator('.gs-workers')).not_to_be_visible()
+        await page.keyboard.press('Enter')
         await expect(page.locator('.gs-workers')).to_be_visible()
         await page.locator('.gs-info > summary').click()
         await expect(page.get_by_text('Measured subtotal only', exact=False)).to_be_visible()
@@ -69,8 +73,10 @@ async def main():
         await page.locator('.gs-coverage > summary').click()
         await expect(page.get_by_text('Production identity-provider configuration was not available', exact=False)).to_be_visible()
 
+        # A running scan opens with only its activity showing.
         await select('Review upload handling')
-        assert await page.locator('.gs-detail details[open]').count() == 0
+        assert await page.locator('.gs-detail details[open]').count() == 1
+        await expect(page.locator('.gs-activity')).to_have_attribute('open', '')
         assert await page.locator('progress').count() == 0
         await expect(page.get_by_role('heading', name='Building threat model')).to_be_visible()
         await page.get_by_role('button', name='New scan', exact=True).click()
@@ -105,7 +111,7 @@ async def main():
         await page.locator('.gs-coverage > summary').click()
         await expect(page.get_by_text('The scan did not report what it reviewed.', exact=True)).to_be_visible()
         assert not errors, errors
-        print(json.dumps({'passed': ['running stage and phase progress', 'collapsed diagnostics', 'keyboard disclosure', 'server event updates progress and keeps disclosure', 'selection resets disclosure', 'findings above fold', 'finding evidence', 'coverage details', 'unknown progress', 'new scan dismissal', 'cancel affects selected scan only', 'narrow no overflow', 'finalization', 'deep consolidation', 'failed scan', 'informational-only result', 'missing coverage', 'no browser errors'], 'screenshots': str(EVIDENCE)}))
+        print(json.dumps({'passed': ['running stage and phase progress', 'activity open while running', 'keyboard disclosure', 'server event updates progress and keeps disclosure', 'selection resets disclosure', 'findings above fold', 'finding evidence', 'coverage details', 'unknown progress', 'new scan dismissal', 'cancel affects selected scan only', 'narrow no overflow', 'finalization', 'deep consolidation', 'failed scan', 'informational-only result', 'missing coverage', 'no browser errors'], 'screenshots': str(EVIDENCE)}))
         await browser.close()
 
 

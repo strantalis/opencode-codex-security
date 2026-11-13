@@ -7,6 +7,8 @@ import type { Finding, ScanState } from '../types';
 import {
   activityActor,
   activityRows,
+  activityText,
+  latestUpdate,
   activityStatusLabel,
   coverageLabel,
   deepProgressLabel,
@@ -209,10 +211,13 @@ export function SecurityView(props: Props) {
         </Show>
         <Show when={activityRows(run()).length}>
           <text>Activity</text>
+          <Show when={latestUpdate(run())}>
+            <text>{latestUpdate(run())}</text>
+          </Show>
           <For each={workerActivityRows(run()).slice(0, 5)}>
             {(activity) => (
               <Label>
-                {activityActor(activity.worker)} · {activity.label} ·{' '}
+                {activityActor(activity.worker)} · {activityText(activity)} ·{' '}
                 {activityStatusLabel(activity.status, run())}
               </Label>
             )}

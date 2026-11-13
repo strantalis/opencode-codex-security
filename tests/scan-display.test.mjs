@@ -15,6 +15,8 @@ import {
   deepProgressLabel,
   findingsPendingLabel,
   activityRows,
+  activityText,
+  latestUpdate,
   workerActivityRows,
   activityActor,
   activityStatusLabel,
@@ -119,6 +121,22 @@ test('activity keeps safe labels and worker identity without inferring worker co
     activityRows(state).map((row) => row.id),
     ['b', 'a'],
   );
+  assert.equal(activityText(state.telemetry.activity[0]), 'Reading source');
+  assert.equal(latestUpdate(state), undefined);
+  state.telemetry.activity.push({
+    id: 'c',
+    kind: 'message',
+    label: 'Scan update',
+    detail: 'Two candidates confirmed in the billing API.',
+    status: 'completed',
+    updatedAt: '2026-11-10T00:00:02Z',
+  });
+  assert.equal(
+    activityText(state.telemetry.activity[2]),
+    'Two candidates confirmed in the billing API.',
+  );
+  assert.equal(latestUpdate(state), 'Two candidates confirmed in the billing API.');
+  state.telemetry.activity.pop();
   assert.equal(activityActor(), 'Coordinator');
   assert.equal(activityActor(0), 'Worker 0');
   assert.equal(workerSummary(state), '2 worker sessions observed');

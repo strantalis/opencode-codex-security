@@ -17,6 +17,8 @@ export interface ScanActivityEntry {
   kind: 'command' | 'tool' | 'reasoning' | 'message';
   status: 'running' | 'completed' | 'failed';
   label: string;
+  /** What the step said, for the user's own screen. Never returned to the session model. */
+  detail?: string;
   paths: string[];
   worker?: number;
   startedAt: string;
@@ -133,6 +135,17 @@ function activityLabel(kind: ScanActivityEntry['kind'], description: string): st
   if (executable === 'git') return 'Repository command';
   return kind === 'tool' ? 'Tool call' : 'Command';
 }
+/** One redacted line of what a step said. Opaque tool payloads are reduced to the tool's name. */
+function activityDetail(kind: ScanActivityEntry['kind'], description: string): string | undefined {
+  const text = safeReportText(description, 4000).replace(/\s+/g, ' ').trim();
+  if (!text) return;
+  if (kind === 'tool') {
+    const [name = '', payload = ''] = text.split(' · ', 2);
+    if (name === 'spawn_agent') return 'Starting a worker';
+    if (/\S{60,}/.test(payload)) return name;
+  }
+  return text.length > 400 ? `${text.slice(0, 399)}…` : text;
+}
 export function recordActivity(
   telemetry: ScanTelemetry,
   value: CallbackValue<'onActivity'>,
@@ -159,6 +172,9 @@ export function recordActivity(
     kind: value.kind,
     status: value.status,
     label: activityLabel(value.kind, value.description ?? ''),
+    ...(activityDetail(value.kind, value.description ?? '')
+      ? { detail: activityDetail(value.kind, value.description ?? '') }
+      : {}),
     paths: safeActivityPaths(value.paths, repository),
     ...(worker === undefined ? {} : { worker }),
     startedAt: previous?.startedAt ?? now,

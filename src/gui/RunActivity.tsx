@@ -3,6 +3,8 @@ import type { ScanState } from '../types';
 import {
   activityActor,
   activityRows,
+  activityText,
+  latestUpdate,
   activityStatusLabel,
   deepProgressLabel,
   dispatchLabel,
@@ -21,8 +23,15 @@ import { clockTime } from './format';
 export function RunActivity(props: { run: ScanState }) {
   const run = () => props.run;
   return (
-    <details class="gs-section gs-activity" aria-label="Scan activity">
+    <details
+      class="gs-section gs-activity"
+      aria-label="Scan activity"
+      open={run().status === 'running'}
+    >
       <summary>Activity</summary>
+      <Show when={latestUpdate(run())}>
+        <p class="gs-update">{latestUpdate(run())}</p>
+      </Show>
       <Show when={workerSummary(run()) || dispatchLabel(run())}>
         <p class="gs-muted">
           {[workerSummary(run()), dispatchLabel(run())].filter(Boolean).join(' · ')}
@@ -41,7 +50,7 @@ export function RunActivity(props: { run: ScanState }) {
             {(activity) => (
               <li data-activity-id={activity.id}>
                 <span class="gs-worker-name">{activityActor(activity.worker)}</span>
-                <span class="gs-worker-label">{activity.label}</span>
+                <span class="gs-worker-label">{activityText(activity)}</span>
                 <span class="gs-status" data-status={activity.status}>
                   {activityStatusLabel(activity.status, run())}
                 </span>
@@ -59,7 +68,7 @@ export function RunActivity(props: { run: ScanState }) {
                 <li>
                   <time dateTime={activity.updatedAt}>{clockTime(activity.updatedAt)}</time>
                   <span>
-                    {activityActor(activity.worker)} · {activity.label} ·{' '}
+                    {activityActor(activity.worker)} · {activityText(activity)} ·{' '}
                     {activityStatusLabel(activity.status, run())}
                     <Show when={activity.paths.length}>
                       <span class="gs-mono gs-muted gs-block">{activity.paths.join(', ')}</span>
