@@ -96,6 +96,10 @@ test('a provider failure says whether trying again can help', () => {
     /^The model provider stopped answering and the retries ran out\. stream disconnected/,
   );
   assert.equal(providerFailure('Python 3.10 is required.'), 'Python 3.10 is required.');
+  assert.equal(
+    providerFailure('stream disconnected\nResume when connected: codex-security scans resume abc'),
+    'stream disconnected',
+  );
 });
 
 test('progress before review starts names the phase instead of counting zero files', () => {
@@ -122,7 +126,7 @@ test('the time limit reads as a target for Standard and a deadline for Deep', ()
   assert.equal(timeLimitLabel({ mode: 'deep' }), 'SDK default');
 });
 
-test('an interrupted Deep scan resumes in its original session and directory', async (t) => {
+test('an interrupted scan resumes in its original session and directory', async (t) => {
   const { PlannedScanService } = await import('../src/core/planned-scan.ts');
   const { project } = await import('./helpers/project.mjs');
   const root = await project(t);
@@ -133,7 +137,8 @@ test('an interrupted Deep scan resumes in its original session and directory', a
         seen.push({ resumeScanId: options.resumeScanId, outputDir: options.outputDir });
         options.onOutputDirReady('/state/scans/deep-1');
         options.onLifecycle({ scanId: 'sdk-deep' });
-        if (seen.length !== 2) throw new Error('interrupted');
+        if (seen.length === 3) throw new Error('refused');
+        if (seen.length !== 2) throw new (class ScanInterruptedError extends Error {})('dropped');
         return { findings: { scanId: 'sdk-deep', findings: [] } };
       },
       async close() {},
@@ -154,10 +159,17 @@ test('an interrupted Deep scan resumes in its original session and directory', a
     { resumeScanId: 'sdk-deep', outputDir: '/state/scans/deep-1' },
   ]);
 
-  // Standard scans, and scans that finished, have nothing to resume.
+  // A scan that finished has nothing to resume. A stopped Standard scan resumes as Standard.
   await assert.rejects(service.prepare({ resumeRunId: resumed.runId }), /stopped before finishing/);
   const standard = await service.wait(
     (await service.start({ planId: (await service.prepare({})).plan.id })).runId,
   );
-  await assert.rejects(service.prepare({ resumeRunId: standard.runId }), /Only Deep scans/);
+  // A scan the provider refused is closed by the SDK. One that lost its connection is not.
+  await assert.rejects(service.prepare({ resumeRunId: standard.runId }), /cannot be resumed/);
+  const dropped = await service.wait(
+    (await service.start({ planId: (await service.prepare({})).plan.id })).runId,
+  );
+  const again = await service.prepare({ resumeRunId: dropped.runId });
+  assert.equal(again.plan.settings.scan.mode, 'standard');
+  assert.equal(again.plan.resume.scanId, 'sdk-deep');
 });

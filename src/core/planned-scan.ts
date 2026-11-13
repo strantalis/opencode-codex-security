@@ -213,8 +213,8 @@ export class PlannedScanService {
     return state;
   }
   /**
-   * A preview that continues an interrupted Deep scan. The SDK resumes only Deep scans, in the
-   * original session and output directory, and compares the target with the one it saved.
+   * A preview that continues an interrupted scan. The SDK resumes it in the original session and
+   * output directory, and compares the target with the one it saved.
    */
   async #prepareResume(runId: string): Promise<PreparedScanPlan> {
     const run = this.#archived.get(runId);
@@ -223,7 +223,7 @@ export class PlannedScanService {
     const previous = run!.plan!;
     const plan = await prepareScan(
       this.#project,
-      { ...previous.inputs, repository: previous.repository, mode: 'deep' },
+      { ...previous.inputs, repository: previous.repository, mode: previous.settings.scan.mode },
       this.#mock,
     );
     return {

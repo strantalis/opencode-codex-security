@@ -95,12 +95,12 @@ export function timeLimitLabel(scan: { mode?: string; maxTimeMinutes?: number } 
   const amount = minutes >= 120 ? `${Math.round(minutes / 6) / 10}h` : `${minutes}m`;
   return scan?.mode === 'deep' ? `${amount} of discovery` : `${amount} target, not a hard stop`;
 }
-/** Why a scan cannot be resumed, or '' when it can. Only the SDK's Deep scans resume. */
+/** Why a scan cannot be resumed, or '' when it can. */
 export function resumeProblem(run: ScanState) {
   if (run.status !== 'error' && run.status !== 'cancelled')
     return 'Only a scan that stopped before finishing can be resumed.';
-  if ((run.mode ?? run.plan?.settings.scan.mode) !== 'deep')
-    return 'Only Deep scans can be resumed. Run this Standard scan again instead.';
+  if (!run.resumable)
+    return 'This scan failed rather than losing its connection, so it cannot be resumed. Run it again instead.';
   if (!run.scanId || !run.scanDirectory)
     return 'This scan stopped before it saved anything to resume from. Run it again instead.';
   if (run.plan?.contextFiles.length)

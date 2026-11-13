@@ -240,7 +240,7 @@ function repositoryFindings(value: unknown): ScanOutcomeSummary['repositoryFindi
 /**
  * Project only final returned SDK metadata. This never reads artifacts or serializes a ScanResult,
  * turnResult, report, finding evidence, command, or arbitrary reviewState extension.
- * SDK 0.9.1 can remove reviewState during sealing and does not retain options.coverage. Missing
+ * The SDK can remove reviewState during sealing and does not retain options.coverage. Missing
  * detail therefore stays unavailable; even a populated reviewState cannot establish completeness.
  */
 export function summarizeScanResult(result: ScanResult, repository: string): ScanOutcomeSummary {

@@ -27,7 +27,7 @@
     "test:runtime": "node --test tests/sdk-runtime.test.mjs"
   },
   "dependencies": {
-    "@openai/codex-security": "0.9.1",
+    "@openai/codex-security": "0.10.0",
     "@opencode/plugin": "2.2.6",
     "smol-toml": "1.9.1"
   },
