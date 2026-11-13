@@ -3,12 +3,12 @@ import type { Plugin } from '@opencode/plugin/tui';
 import { createSignal, For, Show } from 'solid-js';
 import type { ScanInputs, ScanPlan } from '../core/scan-plan';
 import { describeInferenceRoute, describePlan, isAbsoluteLocalDirectory } from '../plan-view';
-import { scopeLabel, timeLimitLabel, userError } from '../scan-display';
+import { reasoningEfforts, scopeLabel, timeLimitLabel, userError } from '../scan-display';
 import type { Colors } from './theme';
 import { costLine, splitList } from './text';
 
 type Depth = 'default' | 'standard' | 'deep';
-type Edit = 'target' | 'scope' | 'focus' | 'context' | 'time';
+type Edit = 'target' | 'scope' | 'focus' | 'context' | 'time' | 'effort' | 'cost' | 'model';
 type Action = 'start' | 'back' | Edit;
 
 const nextDepth: Record<Depth, Depth> = { default: 'standard', standard: 'deep', deep: 'default' };
@@ -191,6 +191,45 @@ async function edit(ctx: Plugin.Context, field: Edit, plan: ScanPlan) {
     if (!(minutes > 0)) throw new Error('Enter the time limit as a number of minutes.');
     return { ...rest, maxTimeMinutes: minutes };
   }
+  if (field === 'effort') {
+    const { reasoningEffort: _previous, ...rest } = inputs;
+    const choice = await ctx.ui.dialog.select<string>({
+      title: 'Reasoning effort',
+      current: inputs.reasoningEffort ?? '',
+      options: [
+        { title: 'Default from settings', value: '' },
+        ...reasoningEfforts.map((level) => ({ title: level, value: level as string })),
+      ],
+    });
+    if (choice === undefined) return;
+    return choice ? { ...rest, reasoningEffort: choice } : rest;
+  }
+  if (field === 'cost') {
+    const value = await ctx.ui.dialog.prompt({
+      title: 'Cost limit',
+      description:
+        'US dollars. The scan stops when its estimated cost passes this. Leave empty for the configured limit.',
+      value: inputs.maxCostUsd?.toString() ?? '',
+      placeholder: '5',
+    });
+    if (value === undefined) return;
+    const { maxCostUsd: _previous, ...rest } = inputs;
+    if (!value.trim()) return rest;
+    const dollars = Number(value);
+    if (!(dollars > 0)) throw new Error('Enter the cost limit as a number of dollars.');
+    return { ...rest, maxCostUsd: dollars };
+  }
+  if (field === 'model') {
+    const value = await ctx.ui.dialog.prompt({
+      title: 'Model',
+      description: 'For this scan only. Leave empty for the configured model.',
+      value: inputs.model ?? '',
+      placeholder: plan.settings.codex.model,
+    });
+    if (value === undefined) return;
+    const { model: _previous, ...rest } = inputs;
+    return value.trim() ? { ...rest, model: value.trim() } : rest;
+  }
   const value = await ctx.ui.dialog.prompt({
     title: 'Context files',
     description: 'Repository-relative docs to include, separated by commas.',
@@ -228,6 +267,9 @@ function Review(props: {
       { bind: 'f', title: 'Change focus', enabled: idle, run: () => props.onAction('focus') },
       { bind: 'c', title: 'Change context', enabled: idle, run: () => props.onAction('context') },
       { bind: 'm', title: 'Change time limit', enabled: idle, run: () => props.onAction('time') },
+      { bind: 'r', title: 'Change reasoning', enabled: idle, run: () => props.onAction('effort') },
+      { bind: 'l', title: 'Change cost limit', enabled: idle, run: () => props.onAction('cost') },
+      { bind: 'o', title: 'Change model', enabled: idle, run: () => props.onAction('model') },
       { bind: 'i', title: 'Toggle settings', run: props.onSettings },
     ],
   }));
@@ -238,6 +280,10 @@ function Review(props: {
     ['Depth', depth()],
     ['Scope', scopeLabel(props.plan)],
     ['Time limit', timeLimitLabel(props.plan.settings.scan)],
+    [
+      'Model',
+      `${props.plan.settings.codex.model} · ${props.plan.settings.codex.reasoningEffort} reasoning`,
+    ],
     ['Focus', props.plan.scanPrompt || '—'],
     ['Context', props.plan.contextFiles.map((file) => file.path).join(', ') || '—'],
     ['Route', describeInferenceRoute(props.plan.settings)],
@@ -278,8 +324,8 @@ function Review(props: {
         <text fg={props.color.muted()}>{describePlan(props.plan)}</text>
       </Show>
       <text fg={props.color.muted()}>
-        y start · t target · d depth · s scope · m time limit · f focus · c context · i settings ·
-        esc back
+        y start · t target · d depth · s scope · r reasoning · l cost limit · m time limit · o model
+        · f focus · c context · i settings · esc back
       </text>
     </box>
   );

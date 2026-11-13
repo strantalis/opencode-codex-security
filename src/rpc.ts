@@ -35,6 +35,21 @@ export const scanInputSchema = {
       description:
         'Minutes to spend investigating. Standard scans have no limit unless this is set, and treat it as a target; Deep scans stop discovery at it.',
     },
+    model: {
+      type: 'string',
+      description: 'Model for this scan only. Omit to use the configured model.',
+    },
+    reasoningEffort: {
+      type: 'string',
+      description:
+        'Reasoning effort for this scan only, such as low, medium, high or xhigh. Lower is faster and cheaper. Omit to use the configured effort.',
+    },
+    maxCostUsd: {
+      type: 'number',
+      exclusiveMinimum: 0,
+      description:
+        'Stop this scan when its estimated cost passes this many US dollars. Omit to use the configured limit, if any.',
+    },
     resumeRunId: {
       type: 'string',
       description:

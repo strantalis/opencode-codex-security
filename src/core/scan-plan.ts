@@ -24,6 +24,10 @@ export interface ScanInputs {
   contextFiles?: string[];
   /** Minutes of investigation. Advisory for Standard; a discovery deadline for Deep. */
   maxTimeMinutes?: number;
+  /** For this scan only, instead of the configured model, reasoning effort and cost limit. */
+  model?: string;
+  reasoningEffort?: string;
+  maxCostUsd?: number;
   /** Continue an interrupted Deep scan instead of starting a new one. Other inputs are ignored. */
   resumeRunId?: string;
 }
@@ -79,6 +83,12 @@ function parseInputs(value: unknown): ScanInputs {
     !['undefined', 'string'].includes(typeof data.repository) ||
     !['undefined', 'string'].includes(typeof data.scanPrompt) ||
     !['undefined', 'string'].includes(typeof data.changes) ||
+    !['undefined', 'string'].includes(typeof data.model) ||
+    !['undefined', 'string'].includes(typeof data.reasoningEffort) ||
+    !(
+      data.maxCostUsd === undefined ||
+      (typeof data.maxCostUsd === 'number' && data.maxCostUsd > 0)
+    ) ||
     !strings(data.scopePaths) ||
     !strings(data.contextFiles) ||
     ![undefined, 'standard', 'deep'].includes(data.mode as string) ||
@@ -88,7 +98,7 @@ function parseInputs(value: unknown): ScanInputs {
     )
   )
     throw new SecurityInputError(
-      'Scan inputs are repository, scopePaths, changes, scanPrompt, contextFiles, mode (standard or deep) and maxTimeMinutes.',
+      'Scan inputs are repository, scopePaths, changes, scanPrompt, contextFiles, mode (standard or deep), maxTimeMinutes, model, reasoningEffort and maxCostUsd.',
     );
   if (data.changes && (data.scopePaths as string[] | undefined)?.length)
     throw new SecurityInputError('Scan either paths or changes, not both.');
@@ -215,11 +225,19 @@ export async function prepareScan(
   const scanSettings = {
     ...settings.scan,
     ...(input.maxTimeMinutes ? { maxTimeMinutes: input.maxTimeMinutes } : {}),
+    ...(input.maxCostUsd ? { maxCostUsd: input.maxCostUsd } : {}),
+  };
+  const codex = {
+    ...settings.codex,
+    ...(input.model?.trim() ? { model: input.model.trim() } : {}),
+    ...(input.reasoningEffort?.trim()
+      ? { model_reasoning_effort: input.reasoningEffort.trim() }
+      : {}),
   };
   if (purpose === 'validation') delete scanSettings.maxCostUsd;
   const changes = input.changes?.trim() || undefined;
   const target = await scanTarget({ scopePaths: input.scopePaths, changes });
-  return withSdk(settings.codex, async (client, sdk) => {
+  return withSdk(codex, async (client, sdk) => {
     const preflight = await client.preflight(repository, {
       ...scanSettings,
       auth: settings.auth,
@@ -236,11 +254,11 @@ export async function prepareScan(
       scanPrompt: input.scanPrompt ?? '',
       contextFiles: contextFiles.map((path) => ({ path })),
       settings: {
-        codex: (await routeFrom(sdk, settings.codex, preflight)).route,
+        codex: (await routeFrom(sdk, codex, preflight)).route,
         scan: { ...scanSettings, mode: preflight.mode },
       },
       globalConfigFile: settings.path,
-      sdk: { codexOverrides: settings.codex, auth: settings.auth },
+      sdk: { codexOverrides: codex, auth: settings.auth },
       expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
       mock,
       // No undefined members: the host only carries JSON values over RPC.

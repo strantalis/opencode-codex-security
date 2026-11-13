@@ -10,7 +10,7 @@ import {
 import { CodexScanService } from '../src/core/codex-adapter.ts';
 import { plan } from './helpers/plan.mjs';
 const now = '2026-11-10T10:00:00.000Z';
-test('activity preserves safe identities, mentions and terminal transitions, never raw descriptions or IDs', () => {
+test('activity keeps what each step said, redacted, and never raw IDs or outside paths', () => {
   const telemetry = emptyTelemetry();
   const activity = {
     id: 'SECRET reasoning-id',
@@ -34,11 +34,42 @@ test('activity preserves safe identities, mentions and terminal transitions, nev
   assert.deepEqual(telemetry.activity[0].paths, ['src/api.ts']);
   assert.equal(telemetry.activity[0].worker, 2);
   assert.equal(telemetry.activity[0].startedAt, now);
-  assert.doesNotMatch(JSON.stringify(telemetry), /SECRET|password/);
+  assert.equal(telemetry.activity[0].detail, 'cat src/api.ts; password=[REDACTED]');
+  assert.doesNotMatch(JSON.stringify(telemetry), /SECRET/);
+  // Tool payloads that are not readable text are reduced to the tool's name.
+  const tools = emptyTelemetry();
+  recordActivity(
+    tools,
+    { id: 't', kind: 'tool', status: 'running', description: `spawn_agent · ${'g'.repeat(300)}` },
+    '/tmp/project',
+    now,
+  );
+  recordActivity(
+    tools,
+    { id: 'u', kind: 'tool', status: 'running', description: `exec · ${'x'.repeat(80)}` },
+    '/tmp/project',
+    now,
+  );
+  recordActivity(
+    tools,
+    {
+      id: 'v',
+      kind: 'message',
+      status: 'completed',
+      description: `Checked\n the ${'a '.repeat(400)}`,
+    },
+    '/tmp/project',
+    now,
+  );
+  assert.deepEqual(
+    tools.activity.map((item) => item.detail?.slice(0, 20)),
+    ['Starting a worker', 'exec', 'Checked the a a a a '],
+  );
+  assert.equal(tools.activity[2].detail.length, 400);
   for (let i = 0; i < 120; i++)
     recordActivity(
       telemetry,
-      { ...activity, id: String(i), kind: 'reasoning', description: 'SECRET' },
+      { ...activity, id: `SECRET-${i}`, kind: 'reasoning', description: 'Planning the review' },
       '/tmp/project',
       now,
     );

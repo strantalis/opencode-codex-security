@@ -110,6 +110,10 @@ Tell it the window your provider gives that model, and when to compact:
 
 Use the limit your provider reports for the model (the error message states it), and set the compaction limit to roughly 80% of it. These are native Codex settings, so they also work in `~/.codex/config.toml`, including inside a profile.
 
+## Settings for one scan
+
+The scan review lets you change the reasoning effort, cost limit, time limit and model for that scan only. In chat, ask for it: "scan this on low effort, stop at $5". Anything you leave alone comes from the files above.
+
 ## Time limits
 
 `scan.maxTimeMinutes` sets how long a scan investigates. A Standard scan has no limit by default and treats the value as a target: the model paces itself, and writing the report can run past it. A Deep scan stops discovery at the limit; without one the SDK's own default applies (96 hours). You can also set it for one scan in the scan review.

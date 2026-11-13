@@ -66,10 +66,22 @@ const run = (id, status, focus) => ({
   telemetry: {
     activity: [
       {
+        id: id + '-note',
+        kind: 'message',
+        status: 'completed',
+        label: 'Scan update',
+        detail:
+          'The strongest candidate so far is a missing tenant check on project updates. Checking whether a member of another workspace can reach it.',
+        paths: [],
+        startedAt: new Date(t - 6000).toISOString(),
+        updatedAt: new Date(t - 5000).toISOString(),
+      },
+      {
         id: id + '-reading',
         kind: 'command',
         status: status === 'running' ? 'running' : 'completed',
         label: 'Reading source',
+        detail: 'sed -n "1,260p" src/api/projects.ts',
         paths: ['src/api/projects.ts'],
         worker: 1,
         startedAt: new Date(t - 12000).toISOString(),
@@ -80,6 +92,7 @@ const run = (id, status, focus) => ({
         kind: 'command',
         status: 'completed',
         label: 'Searching source',
+        detail: 'rg -n "tenantId" src/api',
         paths: ['src/api'],
         worker: 2,
         startedAt: new Date(t - 14000).toISOString(),

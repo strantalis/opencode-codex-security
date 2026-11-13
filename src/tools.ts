@@ -245,7 +245,13 @@ export function registerTools(
       const state = await run(input);
       return {
         ...scanSummary(state),
-        ...(input.activity ? { events: state.events, activity: state.telemetry?.activity } : {}),
+        ...(input.activity
+          ? {
+              events: state.events,
+              // What each step said stays on the user's screen.
+              activity: state.telemetry?.activity.map(({ detail: _detail, ...entry }) => entry),
+            }
+          : {}),
       };
     },
   );

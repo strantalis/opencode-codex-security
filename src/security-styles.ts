@@ -971,6 +971,14 @@ export const securityStyles = `
   margin-bottom: 8px;
   font-size: 12px;
 }
+.gs-activity > .gs-update {
+  margin-bottom: 12px;
+  padding-left: 10px;
+  border-left: 2px solid var(--gs-accent);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
 .gs-workers {
   padding: 0;
   list-style: none;

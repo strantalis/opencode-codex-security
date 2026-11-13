@@ -95,6 +95,8 @@ export function timeLimitLabel(scan: { mode?: string; maxTimeMinutes?: number } 
   const amount = minutes >= 120 ? `${Math.round(minutes / 6) / 10}h` : `${minutes}m`;
   return scan?.mode === 'deep' ? `${amount} of discovery` : `${amount} target, not a hard stop`;
 }
+/** Reasoning efforts offered in the review. Others can be set in config or by the scan tool. */
+export const reasoningEfforts = ['low', 'medium', 'high', 'xhigh'] as const;
 /** Why a scan cannot be resumed, or '' when it can. */
 export function resumeProblem(run: ScanState) {
   if (run.status !== 'error' && run.status !== 'cancelled')
@@ -186,15 +188,28 @@ export function activityRows(run: ScanState) {
     b.updatedAt.localeCompare(a.updatedAt),
   );
 }
-/** Show each observed actor once; the disclosure retains the individual keyed activities. */
+/**
+ * Show each observed actor once; the disclosure retains the individual keyed activities. The
+ * scan's notes are shown above as the latest update, so they are not repeated here.
+ */
 export function workerActivityRows(run: ScanState) {
   const seen = new Set<number | 'coordinator'>();
   return activityRows(run).filter((activity) => {
+    if (activity.kind === 'message' && activity.detail) return false;
     const actor = activity.worker ?? 'coordinator';
     if (seen.has(actor)) return false;
     seen.add(actor);
     return true;
   });
+}
+/** What a step said when the scan reported it, otherwise its category. */
+export function activityText(activity: { label: string; detail?: string }) {
+  return activity.detail || activity.label;
+}
+/** The scan's most recent note about what it has found or is doing. */
+export function latestUpdate(run: ScanState) {
+  return activityRows(run).find((activity) => activity.kind === 'message' && activity.detail)
+    ?.detail;
 }
 export function activityActor(worker?: number) {
   return worker === undefined ? 'Coordinator' : `Worker ${worker}`;

@@ -103,7 +103,7 @@ For the multi-repository case the model clones what is not checked out locally, 
 
 **Scan**
 
-Standard or Deep. The whole repository, selected paths, your uncommitted changes, or everything since a branch or commit. Set a time limit if you want one. Two scans can run at once.
+Standard or Deep. The whole repository, selected paths, your uncommitted changes, or everything since a branch or commit. For each scan you can pick the reasoning effort, a cost limit and a time limit. Two scans can run at once.
 
 **Review findings**
 
@@ -130,7 +130,7 @@ Hand any finding to the conversation and have the model explain it.
 </table>
 
 <p align="center">
-  <img src="docs/images/desktop-running.png" alt="The Desktop panel while a scan is running, with a progress bar and an estimated cost" width="520">
+  <img src="docs/images/desktop-running.png" alt="The Desktop panel while a scan is running: the scan list, a progress bar, an estimated cost, and the activity log showing what the scan is doing" width="520">
 </p>
 
 ## Configuration
