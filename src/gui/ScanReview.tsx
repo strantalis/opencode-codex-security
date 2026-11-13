@@ -18,7 +18,7 @@ export function ScanReview(props: {
       <h3>{props.plan.resume ? 'Resume scan' : 'Review scan'}</h3>
       <Show when={props.plan.resume}>
         <p class="gs-note">
-          Continues the interrupted Deep scan in its original session. Work it had finished is kept.
+          Continues the interrupted scan in its original session. Work it had finished is kept.
         </p>
       </Show>
       <dl class="gs-facts">

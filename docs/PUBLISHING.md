@@ -79,4 +79,4 @@ Provenance identifies the staging workflow; `build-manifest.json` links the byte
 - [npm trust prerequisites](https://docs.npmjs.com/cli/v11/commands/npm-trust/)
 - [npm dual-use policy](https://docs.npmjs.com/policies/dual-use/)
 
-Verified November 10, 2026; recheck before release. Installed metadata identifies Codex Security 0.9.1 as Apache-2.0, OpenCode plugin/Solid as MIT, and OpenTUI native binaries as MIT AND LGPL-2.1-or-later. Dependencies stay external; this is not comprehensive legal clearance.
+Verified November 10, 2026; recheck before release. Installed metadata identifies Codex Security 0.10.0 as Apache-2.0, OpenCode plugin/Solid as MIT, and OpenTUI native binaries as MIT AND LGPL-2.1-or-later. Dependencies stay external; this is not comprehensive legal clearance.

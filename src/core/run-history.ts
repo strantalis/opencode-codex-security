@@ -43,6 +43,7 @@ export class RunHistory {
         if (s.status === 'running') {
           s.status = 'error';
           s.phase = 'Interrupted';
+          s.resumable = true;
           s.error =
             'This scan was still running when OpenCode last stopped, so its outcome is unknown.';
         }

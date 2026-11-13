@@ -31,7 +31,9 @@ export interface ScanState {
   archived?: boolean;
   /** Findings come from the last checkpoint of a scan that did not finish. */
   partial?: boolean;
-  /** Where the SDK keeps this scan's files. Needed to resume a Deep scan. */
+  /** The SDK left this scan open after a dropped connection or a restart, so it can continue. */
+  resumable?: boolean;
+  /** Where the SDK keeps this scan's files. Needed to resume it. */
   scanDirectory?: string;
   workers?: { phase: string; planned: number; started: number };
   deepProgress?: { completed: number; active: number; maximum: number; consolidating?: boolean };

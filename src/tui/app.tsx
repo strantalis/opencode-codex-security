@@ -142,7 +142,7 @@ export function createApp(ctx: Plugin.Context) {
       await store.refreshScans();
     });
 
-  /** Continue an interrupted Deep scan. The confirmation is the approval. */
+  /** Continue an interrupted scan. The confirmation is the approval. */
   const resumeScan = () =>
     store.perform(async () => {
       const target = run();

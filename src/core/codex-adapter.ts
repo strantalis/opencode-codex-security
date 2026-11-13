@@ -82,8 +82,10 @@ export function mapSdkFinding(finding: SdkFinding): Finding | null {
  * provider answered, and whether trying again can help.
  */
 export function providerFailure(message: string, reason?: string): string {
-  const answer = /^Reconnecting\.\.\. \d+\/\d+ \((.*)\)$/s.exec(message.trim())?.[1];
-  if (!answer) return message;
+  // The SDK appends its CLI's resume command; the views have their own.
+  const text = message.replace(/\nResume when connected: .*$/s, '').trim();
+  const answer = /^Reconnecting\.\.\. \d+\/\d+ \((.*)\)$/s.exec(text)?.[1];
+  if (!answer) return text;
   const status = /unexpected status (\d{3})/.exec(answer)?.[1];
   const refused =
     reason === 'authorization' ||
@@ -223,7 +225,7 @@ export class CodexScanService {
         target: await scanTarget(plan),
         ...(plan.scanPrompt ? { scanPrompt: plan.scanPrompt } : {}),
         knowledgeBasePaths: plan.contextFiles.map((file) => resolve(this.root, file.path)),
-        // Not in the SDK's public types: its CLI resumes a Deep scan with these two options.
+        // Not in the SDK's public types: its CLI resumes a scan with these two options.
         ...(plan.sdk.resume
           ? { resumeScanId: plan.sdk.resume.scanId, outputDir: plan.sdk.resume.outputDir }
           : {}),
@@ -391,6 +393,9 @@ export class CodexScanService {
         ? 'Cancelled; results incomplete'
         : 'Codex Security scan failed';
       const budget = signal.aborted ? undefined : scanBudgetFailure(error);
+      // The SDK keeps a scan open only when the connection dropped. A refusal or a failure closes it.
+      this.#state.resumable =
+        !signal.aborted && (error as Error)?.constructor?.name === 'ScanInterruptedError';
       if (budget) {
         this.#state.estimatedCostUsd = budget.estimatedCostUsd;
         const cost = costSummary((error as { cost: Parameters<typeof costSummary>[0] }).cost);
