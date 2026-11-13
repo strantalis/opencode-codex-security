@@ -130,7 +130,7 @@ Hand any finding to the conversation and have the model explain it.
 </table>
 
 <p align="center">
-  <img src="docs/images/desktop-running.png" alt="The Desktop panel while a scan is running, with a progress bar and an estimated cost" width="520">
+  <img src="docs/images/desktop-running.png" alt="The Desktop panel while a scan is running: the scan list, a progress bar, an estimated cost, and the activity log showing what the scan is doing" width="520">
 </p>
 
 ## Configuration
