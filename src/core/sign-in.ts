@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { CodexSecurity, CodexSecurityConfig } from '@openai/codex-security';
 import { userMessage } from './errors.ts';
 import { codexHome, loadSettings, stateDirectory } from './settings.ts';
+import { loadSdk } from './sdk.ts';
 
 /**
  * Whether Codex Security has a ChatGPT sign-in of its own. Only relevant when the route uses
@@ -41,8 +42,7 @@ export class SignIn {
   #pending?: { url: string; code?: string; cancel(): void };
   #error?: string;
   constructor(
-    createClient: LoginFactory = async (config) =>
-      new (await import('@openai/codex-security')).CodexSecurity(config),
+    createClient: LoginFactory = async (config) => new (await loadSdk()).CodexSecurity(config),
   ) {
     this.#factory = createClient;
   }

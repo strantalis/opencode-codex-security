@@ -12,6 +12,7 @@ import type {
 import { codexHome, loadSettings } from './settings.ts';
 import { SecurityInputError } from './errors.ts';
 import { storedState } from './sign-in.ts';
+import { loadSdk } from './sdk.ts';
 
 export interface ScanInputs {
   mode?: 'standard' | 'deep';
@@ -97,7 +98,7 @@ function parseInputs(value: unknown): ScanInputs {
 /** The SDK target for a plan: the whole repository, paths, or a diff. */
 export async function scanTarget(input: Pick<ScanInputs, 'scopePaths' | 'changes'>) {
   if (input.changes) {
-    const { DiffTarget } = await import('@openai/codex-security');
+    const { DiffTarget } = await loadSdk();
     return input.changes === 'uncommitted'
       ? DiffTarget.workingTree()
       : DiffTarget.refs({ base: input.changes });
@@ -141,7 +142,7 @@ export async function withSdk<T>(
   codexOverrides: JsonObject,
   use: (client: CodexSecurity, sdk: typeof import('@openai/codex-security')) => Promise<T>,
 ): Promise<T> {
-  const sdk = await import('@openai/codex-security');
+  const sdk = await loadSdk();
   const client = new sdk.CodexSecurity({ codexOverrides });
   try {
     return await use(client, sdk);
