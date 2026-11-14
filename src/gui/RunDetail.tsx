@@ -21,7 +21,7 @@ import {
 } from '../scan-display';
 import { Coverage } from './Coverage';
 import { shortTime } from './format';
-import { Findings } from './Findings';
+import { Findings, type HostUi } from './Findings';
 import { RunActivity, RunInfo } from './RunActivity';
 import type { OperationPort, SecurityPort, SecurityStore } from './store';
 
@@ -33,6 +33,7 @@ export function RunDetail(props: {
   port: SecurityPort;
   store: SecurityStore;
   validation?: OperationPort;
+  ui?: HostUi;
   /** Open a new scan filled in with this one's target and settings. */
   onAgain?(plan: ScanPlan): void;
   /** Review a prepared plan, such as one that resumes this scan. */
@@ -182,6 +183,7 @@ export function RunDetail(props: {
           store={props.store}
           validation={props.validation}
           discuss={props.port.discuss}
+          ui={props.ui}
         />
       </Show>
       <Show when={run().status === 'completed' || run().partial}>

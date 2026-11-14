@@ -24,6 +24,17 @@ export function safeReportText(value: unknown, max = 48_000): string {
     .slice(0, max);
 }
 
+/** Evidence snippets with their locations, sanitized like the joined evidence. */
+export function safeSnippets(items: unknown): NonNullable<Finding['snippets']> {
+  if (!Array.isArray(items)) return [];
+  return items.slice(0, 40).flatMap((item) => {
+    const code = safeReportText(item?.code, 24_000);
+    if (!code) return [];
+    const line = Number.isInteger(item?.startLine) ? item.startLine : 0;
+    return [{ path: safeReportText(item?.path, 4096), line, code }];
+  });
+}
+
 /** Whitelist and sanitize every free-text finding field, including local code evidence. */
 export function safeFinding(finding: Finding): Finding {
   return {

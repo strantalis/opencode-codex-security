@@ -38,7 +38,7 @@ import {
   workerSummary,
 } from '../scan-display';
 import type { Store } from './store';
-import type { Colors } from './theme';
+import { pathToFiletype, syntaxStyle, type Colors } from './theme';
 import {
   fit,
   operationRow,
@@ -336,8 +336,46 @@ export function SecurityView(props: Props) {
           </text>
         </box>
         <Section title="Summary" body={f().summary} />
-        <Section title="Evidence" body={f().evidence} />
-        <Section title="Remediation" body={f().remediation} />
+        <Show
+          when={syntaxStyle(props.ctx)}
+          keyed
+          fallback={<Section title="Evidence" body={f().evidence} />}
+        >
+          {(style) => (
+            <box flexDirection="column">
+              <Label>Evidence</Label>
+              <For each={f().snippets ?? [{ path: '', line: 0, code: f().evidence }]}>
+                {(snippet) => (
+                  <box flexDirection="column">
+                    <Show when={snippet.path}>
+                      <text fg={c.muted()}>
+                        {snippet.path}
+                        {snippet.line ? `:${snippet.line}` : ''}
+                      </text>
+                    </Show>
+                    <code
+                      content={snippet.code}
+                      filetype={pathToFiletype(snippet.path || f().path)}
+                      syntaxStyle={style}
+                    />
+                  </box>
+                )}
+              </For>
+            </box>
+          )}
+        </Show>
+        <Show
+          when={syntaxStyle(props.ctx)}
+          keyed
+          fallback={<Section title="Remediation" body={f().remediation} />}
+        >
+          {(style) => (
+            <box flexDirection="column">
+              <Label>Remediation</Label>
+              <markdown content={f().remediation} syntaxStyle={style} />
+            </box>
+          )}
+        </Show>
         <For each={props.findingWork}>
           {(op) => (
             <box flexDirection="column" gap={1}>
