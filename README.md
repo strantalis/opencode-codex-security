@@ -172,6 +172,8 @@ Everything is in [docs/CONFIG.md](docs/CONFIG.md).
 | `security_scan`                                     | Start a scan. Asks for your approval with the preview.                        |
 | `security_scans`, `security_scan_status`            | List scans and follow one.                                                    |
 | `security_scan_results`                             | Findings of a completed scan, or one finding in detail.                       |
+| `security_find_findings`                            | Search findings across every saved scan by text, severity, CWE or path.       |
+| `security_export`                                   | Write a completed scan as SARIF, CSV or JSON, or its threat model.            |
 | `security_policy`, `security_validate`              | Start a policy draft or a validation. Each asks first.                        |
 | `security_fix`, `security_apply_fix`                | Propose a fix for a finding, then apply or discard the diff. Each asks first. |
 | `security_operations`                               | Status, pending questions and results of those operations.                    |

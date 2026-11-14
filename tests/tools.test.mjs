@@ -68,13 +68,15 @@ const settled = async (read) => {
   assert.fail('did not settle');
 };
 
-test('thirteen tools are registered, with short descriptions', async (t) => {
+test('fifteen tools are registered, with short descriptions', async (t) => {
   const { tools } = await setup(t);
   assert.deepEqual(tools.map((tool) => tool.name).sort(), [
     'security_answer_questions',
     'security_apply_fix',
     'security_cancel_operation',
     'security_cancel_scan',
+    'security_export',
+    'security_find_findings',
     'security_fix',
     'security_operations',
     'security_policy',
@@ -220,6 +222,20 @@ test('security_scan asks permission with the preview, then runs and reports', as
   const detail = await call('security_scan_results', { runId, findingId: 'o1' });
   assert.equal(detail.finding.evidence, 'export const ok = true;');
   await assert.rejects(call('security_scan_results', { runId, findingId: 'nope' }), /No finding/);
+  const found = await call('security_find_findings', {
+    query: 'authorization missing',
+    cwe: '862',
+  });
+  assert.equal(found.total, 1);
+  assert.equal(found.matches[0].runId, runId);
+  assert.equal(found.matches[0].finding.id, 'o1');
+  assert.equal('evidence' in found.matches[0].finding, false);
+  assert.equal((await call('security_find_findings', { severity: 'low' })).total, 0);
+  assert.equal((await call('security_find_findings', { path: 'other/' })).total, 0);
+  await assert.rejects(
+    call('security_export', { runId, format: 'csv', output: 'findings.csv' }),
+    /completed scan|absolute path/,
+  );
   await assert.rejects(call('security_scan_status', { runId: 'nope' }), /Unknown scan run/);
   await assert.rejects(call('security_scan', { scopePaths: ['missing'] }), /does not exist/);
 });
