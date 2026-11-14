@@ -10,6 +10,8 @@ export interface Finding {
   cwe: string;
   summary: string;
   evidence: string;
+  /** The evidence as separate snippets with their locations. Older saved scans have none. */
+  snippets?: { path: string; line: number; code: string }[];
   remediation: string;
   confidence: string;
 }

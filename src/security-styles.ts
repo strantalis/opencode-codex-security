@@ -928,10 +928,19 @@ export const securityStyles = `
   gap: 10px;
   padding-bottom: 16px;
 }
+/* The host's Markdown and code blocks take the panel's text size. */
+.gs-finding-body [data-component='markdown'] {
+  font-size: inherit;
+  line-height: inherit;
+}
 .gs-finding-body h4 {
   margin-top: 4px;
   font-size: 12px;
   font-weight: 600;
+}
+.gs-snippet {
+  margin-bottom: -4px;
+  font-size: 12px;
 }
 .gs-severity {
   flex-shrink: 0;

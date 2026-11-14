@@ -15,6 +15,7 @@ test('published TUI exports precompiled ESM and keeps host runtimes external', a
   assert.deepEqual(imports.sort(), [
     '@opencode/plugin/rpc',
     '@opencode/plugin/tui',
+    '@opentui/core',
     '@opentui/solid',
     'solid-js',
   ]);

@@ -6,6 +6,7 @@ import solid from 'vite-plugin-solid';
 const hostModules = new Set([
   '@opencode/plugin/tui',
   '@opencode/plugin/rpc',
+  '@opentui/core',
   '@opentui/solid',
   'solid-js',
 ]);

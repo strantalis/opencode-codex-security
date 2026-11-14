@@ -90,6 +90,7 @@ export default Plugin.define({
                 <SecurityPanel
                   directory={directory}
                   port={port}
+                  ui={ctx.ui}
                   setup={{
                     load: () => rpc().setup({}, { location }),
                     setProfile: (input) => rpc().setProfile(input, { location }),

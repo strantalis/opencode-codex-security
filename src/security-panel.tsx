@@ -4,6 +4,7 @@ import { latestAvailableDraft } from './plan-view';
 import { projectName } from './scan-display';
 import { createSecurityStore, type OperationPort, type SecurityPort } from './gui/store';
 import { Operations } from './gui/Operations';
+import type { HostUi } from './gui/Findings';
 import { RunDetail } from './gui/RunDetail';
 import { RunList } from './gui/RunList';
 import { ScanComposer } from './gui/ScanComposer';
@@ -22,6 +23,8 @@ export function SecurityPanel(props: {
   port: SecurityPort;
   operations?: OperationPort;
   setup?: SetupPort;
+  /** The host's code and Markdown renderers, for findings. Plain text without them. */
+  ui?: HostUi;
   /** Fallback refresh interval when events are missed. Defaults to 30 seconds. */
   fallbackMs?: number;
 }) {
@@ -143,6 +146,7 @@ export function SecurityPanel(props: {
                   port={props.port}
                   store={store}
                   validation={validation()}
+                  ui={props.ui}
                   onAgain={(plan) => setComposer({ plan, edit: true })}
                   onReview={(plan) => setComposer({ plan })}
                 />

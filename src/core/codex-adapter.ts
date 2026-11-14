@@ -10,7 +10,7 @@ import {
   recordWarning,
 } from './run-telemetry.ts';
 import { summarizeScanResult } from './result-summary.ts';
-import { safeFinding } from './report-safety.ts';
+import { safeFinding, safeSnippets } from './report-safety.ts';
 import { randomUUID } from 'node:crypto';
 import { basename, resolve } from 'node:path';
 import type {
@@ -58,23 +58,26 @@ export function mapSdkFinding(finding: SdkFinding): Finding | null {
     return null;
   const location = finding.locations?.[0];
   const anchor = (finding as { identity?: { anchor?: string } }).identity?.anchor;
-  return safeFinding({
-    id:
-      finding.occurrenceId ||
-      finding.findingId ||
-      [anchor ?? finding.ruleId ?? finding.title, location?.path, location?.startLine].join(':'),
-    title: finding.title,
-    severity: level,
-    path: location?.path ?? '',
-    line: location?.startLine ?? 0,
-    cwe: (finding.taxonomy?.cwe ?? []).join(', '),
-    summary: finding.summary,
-    evidence: (finding.codeEvidence ?? finding.code_evidence ?? [])
-      .map((item) => item.code)
-      .join('\n\n'),
-    remediation: finding.remediation,
-    confidence: finding.confidence?.level,
-  });
+  const evidence = finding.codeEvidence ?? finding.code_evidence ?? [];
+  const snippets = safeSnippets(evidence);
+  return {
+    ...safeFinding({
+      id:
+        finding.occurrenceId ||
+        finding.findingId ||
+        [anchor ?? finding.ruleId ?? finding.title, location?.path, location?.startLine].join(':'),
+      title: finding.title,
+      severity: level,
+      path: location?.path ?? '',
+      line: location?.startLine ?? 0,
+      cwe: (finding.taxonomy?.cwe ?? []).join(', '),
+      summary: finding.summary,
+      evidence: evidence.map((item) => item.code).join('\n\n'),
+      remediation: finding.remediation,
+      confidence: finding.confidence?.level,
+    }),
+    ...(snippets.length ? { snippets } : {}),
+  };
 }
 
 /**
