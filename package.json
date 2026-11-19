@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@openai/codex-security": "0.10.0",
-    "@opencode/plugin": "2.2.6",
+    "@opencode/plugin": "2.3.0",
     "smol-toml": "1.9.1"
   },
   "devDependencies": {
