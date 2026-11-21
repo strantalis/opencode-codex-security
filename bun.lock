@@ -5,7 +5,7 @@
     "": {
       "name": "opencode-codex-security",
       "dependencies": {
-        "@openai/codex-security": "0.10.0",
+        "@openai/codex-security": "0.10.1",
         "@opencode/plugin": "2.3.0",
         "smol-toml": "1.9.1",
       },
@@ -276,7 +276,7 @@
 
     "@openai/codex-sdk": ["@openai/codex-sdk@0.167.1", "", { "dependencies": { "@openai/codex": "0.167.1" } }, "sha512-EJHNG/bZ+/rptIIZMigTgnqrukDAgc/rmUBXLeDrFwOeunno7tQ4sWt/VPzeRXnKGq6yd4jprpgRlzgpYvayzQ=="],
 
-    "@openai/codex-security": ["@openai/codex-security@0.10.0", "", { "dependencies": { "@inquirer/checkbox": "5.2.8", "@inquirer/confirm": "6.3.5", "@inquirer/input": "5.1.9", "@inquirer/search": "4.3.6", "@linear/sdk": "101.1.0", "@octokit/core": "7.0.8", "@openai/codex": "0.167.1", "@openai/codex-sdk": "0.167.1", "add-mcp": "2.6.1", "ajv": "8.20.0", "fflate": "0.8.3", "incur": "0.7.1", "ink": "8.0.0", "papaparse": "5.7.0", "pdfjs-dist": "6.5.438", "react": "19.3.1", "saxes": "6.0.0", "semver": "7.8.6", "smol-toml": "1.9.1", "string-width": "8.3.0", "strip-ansi": "7.2.0", "tokenx": "1.6.0", "yaml": "2.9.1", "yauzl": "3.4.0", "zod": "4.6.7" }, "bin": { "codex-security": "bin/codex-security.mjs", "cs": "bin/codex-security.mjs" } }, "sha512-DJWHqzqsqJHKPdP3i5OX/VXRlxYri/PpvJ6lN+PtUx0iEjs6o1ZrCa2cF4c0fuWW6+8TntDH/1ndujqtjyctXA=="],
+    "@openai/codex-security": ["@openai/codex-security@0.10.1", "", { "dependencies": { "@inquirer/checkbox": "5.2.8", "@inquirer/confirm": "6.3.5", "@inquirer/input": "5.1.9", "@inquirer/search": "4.3.6", "@linear/sdk": "101.1.0", "@octokit/core": "7.0.8", "@openai/codex": "0.167.1", "@openai/codex-sdk": "0.167.1", "add-mcp": "2.6.1", "ajv": "8.20.0", "fflate": "0.8.3", "incur": "0.7.1", "ink": "8.0.0", "papaparse": "5.7.0", "pdfjs-dist": "6.5.438", "react": "19.3.1", "saxes": "6.0.0", "semver": "7.8.6", "smol-toml": "1.9.1", "string-width": "8.3.0", "strip-ansi": "7.2.0", "tokenx": "1.6.0", "yaml": "2.9.1", "yauzl": "3.4.0", "zod": "4.6.7" }, "bin": { "cs": "bin/codex-security.mjs", "codex-security": "bin/codex-security.mjs" } }, "sha512-YkFrNXE1jht8j7NqZThO2Y+3B9+f2f4fX8eW5ZjQNsPpOPKfzsiGf0BALcVRVFYTTRCtR1PZujVmGekliG6pNw=="],
 
     "@openai/codex-win32-arm64": ["@openai/codex@0.167.1-win32-arm64", "", { "os": "win32", "cpu": "arm64" }, "sha512-KFUMwSMBlQmabCSbpfv7AgouF+kNJE8iNw/nYv+IgHbHCY0v1pAzLFdt3BscYRUD+KNOeJqnp6n4xwCteA5OcQ=="],
 
