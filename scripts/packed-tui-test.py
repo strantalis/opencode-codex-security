@@ -41,7 +41,7 @@ def main():
     with binary.open('rb') as executable:
         magic = executable.read(4)
     if magic not in [b'\x7fELF', b'\xcf\xfa\xed\xfe', b'\xfe\xed\xfa\xcf', b'\xca\xfe\xba\xbe']:
-        parser.error('--opencode must resolve to a native executable; run npm run setup:local or pass --opencode')
+        parser.error('--opencode must resolve to a native executable; run bun run setup:local or pass --opencode')
     runtime = Path(__file__).resolve().parents[1] / '.runtime'
     runtime.mkdir(exist_ok=True)
     isolated = Path(tempfile.mkdtemp(prefix='packed-tui-', dir=runtime))
