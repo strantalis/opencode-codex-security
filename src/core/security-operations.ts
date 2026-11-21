@@ -27,7 +27,12 @@ import { loadSdk } from './sdk.ts';
 
 export type SecurityOperationKind = 'policy' | 'validation' | 'fix';
 export type SecurityOperationStatus =
-  'prepared' | 'running' | 'awaiting_answers' | 'completed' | 'cancelled' | 'error';
+  | 'prepared'
+  | 'running'
+  | 'awaiting_answers'
+  | 'completed'
+  | 'cancelled'
+  | 'error';
 export interface SecurityOperationInputs {
   kind: SecurityOperationKind;
   repository?: string;

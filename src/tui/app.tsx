@@ -198,7 +198,8 @@ export function createApp(ctx: Plugin.Context) {
   };
 
   let scroller:
-    { scrollBy(delta: number): void; scrollChildIntoView(id: string): void } | undefined;
+    | { scrollBy(delta: number): void; scrollChildIntoView(id: string): void }
+    | undefined;
   const move = (delta: number) => {
     if (detail()) return scroller?.scrollBy(delta);
     if (tab() === 'operations') {

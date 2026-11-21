@@ -45,7 +45,7 @@ const artifact = {
   sourceCommit,
   sourceRepository: manifest.repository.url,
   nodeVersion: process.version,
-  lockfileSha256: sha256(await readFile(join(root, 'package-lock.json'))),
+  lockfileSha256: sha256(await readFile(join(root, 'bun.lock'))),
   archive: archive.filename,
   archiveSha256: sha256(await readFile(archivePath)),
   verification:

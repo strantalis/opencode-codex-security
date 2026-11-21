@@ -65,7 +65,7 @@ missing, tell me what it is.
 <details>
 <summary><b>Run it from source</b></summary>
 
-Clone this repository, run `npm ci --ignore-scripts && npm run build`, and set `package` to the checkout's absolute path. Run `npm run build` again after pulling changes.
+Clone this repository, run `bun install --frozen-lockfile --ignore-scripts && bun run build`, and set `package` to the checkout's absolute path. Run `bun run build` again after pulling changes.
 
 </details>
 
@@ -201,10 +201,10 @@ Context files for a scan may be absolute paths in other checkouts. Any UTF-8 tex
 ## Development
 
 ```sh
-npm ci --ignore-scripts
-npm run check        # lint, format, types, build, unit tests
-npm run setup:local  # one-time: isolated OpenCode under .runtime/
-npm run test:host    # the plugin inside a real OpenCode server, with a mock SDK
+bun install --frozen-lockfile --ignore-scripts
+bun run check        # lint, format, types, build, unit tests
+bun run setup:local  # one-time: isolated OpenCode under .runtime/
+bun run test:host    # the plugin inside a real OpenCode server, with a mock SDK
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/RELEASING.md](docs/RELEASING.md). Released under [Apache 2.0](LICENSE).

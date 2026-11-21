@@ -1,6 +1,6 @@
 """Opt-in browser QA of the actual panel with synthetic ports. Start Vite first.
 
-npx vite --config scripts/ui-preview/vite.config.mjs
+bun run vite --config scripts/ui-preview/vite.config.mjs
 python3 scripts/ui-preview/test-hierarchy.py
 Requires Playwright and its Chromium browser. Never calls a real scan or auth flow.
 """
