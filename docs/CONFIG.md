@@ -121,3 +121,15 @@ The scan review lets you change the reasoning effort, cost limit, time limit and
 ## Cost limits
 
 `scan.maxCostUsd` stops a scan or policy draft when the SDK's estimate passes the limit. Requests already in flight can exceed it. The SDK can only enforce a limit for models it has prices for, so a gateway alias it does not recognise fails at preview; remove the limit to run that model. Validation has no cost limit.
+
+## Experimental dependency advisory check
+
+Set the top-level `"experimentalDependencyAdvisory": true` in `codex-security.json`.
+Ask OpenCode to check a specific CVE against the workspace root's `bun.lock` (version 1) or
+`package-lock.json` (version 2 or 3). The check is off by default and never runs during a scan.
+
+OpenCode asks before reading the file and querying GitHub's public advisory database. Only the
+public CVE ID is sent to GitHub; locked versions are compared locally. A version match does not
+prove the affected code runs or is reachable. No match applies only to the reviewed advisory ranges
+and supported lockfile entries. Missing or unsupported advisory data can produce an inconclusive
+result. This check does not start the SDK's dependency investigator or AWS Continuum.

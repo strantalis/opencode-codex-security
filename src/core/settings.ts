@@ -10,6 +10,7 @@ export interface PluginSettings {
   codex: JsonObject;
   auth: ScanAuthMode;
   scan: ScanSettings;
+  experimentalDependencyAdvisory?: true;
   /** The selected Codex profile: `codex.profile` here, else `profile` in config.toml. */
   profile?: string;
   /** The plugin settings file, whether or not it exists. */
@@ -113,12 +114,18 @@ export async function loadSettings(mode?: 'standard' | 'deep'): Promise<PluginSe
     scan = {},
     auth = 'auto',
     useCodexConfig = true,
+    experimentalDependencyAdvisory,
     ...unknown
   } = record(file) ? file : { invalid: true };
   if (!record(codex) || !record(scan) || Object.keys(unknown).length)
     throw new SecurityInputError(
-      `${path} accepts "codex" and "scan" objects, "auth" and "useCodexConfig".`,
+      `${path} accepts "codex" and "scan" objects, "auth", "useCodexConfig", and "experimentalDependencyAdvisory".`,
     );
+  if (
+    experimentalDependencyAdvisory !== undefined &&
+    typeof experimentalDependencyAdvisory !== 'boolean'
+  )
+    throw new SecurityInputError('"experimentalDependencyAdvisory" must be a boolean.');
   if (!['auto', 'chatgpt', 'api-key'].includes(auth as string))
     throw new SecurityInputError('"auth" must be auto, chatgpt or api-key.');
   for (const [key, replacement] of Object.entries(renamed))
@@ -141,6 +148,7 @@ export async function loadSettings(mode?: 'standard' | 'deep'): Promise<PluginSe
     } as JsonObject,
     auth: auth as ScanAuthMode,
     scan: { ...scan, ...(mode ? { mode } : {}) } as ScanSettings,
+    ...(experimentalDependencyAdvisory === true ? { experimentalDependencyAdvisory: true } : {}),
     ...(typeof profile === 'string' ? { profile } : {}),
     path,
   };

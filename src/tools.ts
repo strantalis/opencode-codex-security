@@ -11,6 +11,17 @@ import type {
 } from './core/security-operations.ts';
 import { safeFinding } from './core/report-safety.ts';
 import { loadSdk } from './core/sdk.ts';
+import { loadSettings } from './core/settings.ts';
+import {
+  advisoryHost,
+  advisoryLockfilePath,
+  compareAdvisories,
+  getPublicAdvisories,
+  lockfiles,
+  normalizeCve,
+  readLockedNpmVersions,
+  type AdvisoryLockfile,
+} from './core/dependency-advisory.ts';
 import { SecurityInputError, userMessage } from './core/errors.ts';
 import { describeInferenceRoute, describePlan } from './plan-view.ts';
 import { scanInputSchema } from './rpc.ts';
@@ -213,6 +224,34 @@ export function registerTools(
         throw error;
       });
   };
+  add(
+    'security_check_dependency_advisory',
+    'Compare one published CVE against the locked npm versions in this workspace. Experimental and disabled by default. Requests permission before reading the selected lockfile and looking up the CVE on GitHub. Does not run code or assess exploitability.',
+    object({ cve: id('One public CVE ID.'), lockfile: { type: 'string', enum: lockfiles } }, [
+      'cve',
+      'lockfile',
+    ]),
+    async (input: { cve: string; lockfile: AdvisoryLockfile }, context) => {
+      if (!(await loadSettings()).experimentalDependencyAdvisory)
+        throw new SecurityInputError(
+          'Set "experimentalDependencyAdvisory": true to enable this check.',
+        );
+      const cve = normalizeCve(input.cve);
+      const workspace = ctx.location.directory;
+      const path = await advisoryLockfilePath(workspace, input.lockfile);
+      await permit(context, 'codex_security_dependency_advisory', [path, advisoryHost], {
+        cve,
+        read: path,
+        sentTo: advisoryHost,
+        sent: 'Public CVE ID only; lockfile stays local.',
+      });
+      if ((await advisoryLockfilePath(workspace, input.lockfile)) !== path)
+        throw new SecurityInputError('The chosen lockfile path changed.');
+      const locked = await readLockedNpmVersions(path, input.lockfile);
+      context.signal?.throwIfAborted();
+      return compareAdvisories(cve, locked, await getPublicAdvisories(cve, context.signal));
+    },
+  );
   const run = async (input: { runId: string }) => {
     await scans.ready();
     return scans.getState({ runId: input.runId });

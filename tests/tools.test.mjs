@@ -1,8 +1,9 @@
 import './helpers/isolated-codex.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { host, project, tick } from './helpers/project.mjs';
+import { configure, host, project, tick } from './helpers/project.mjs';
 import { createSecurityPlugin } from '../src/plugin.ts';
 
 const sdkFinding = {
@@ -68,13 +69,14 @@ const settled = async (read) => {
   assert.fail('did not settle');
 };
 
-test('fifteen tools are registered, with short descriptions', async (t) => {
+test('sixteen tools are registered, with short descriptions', async (t) => {
   const { tools } = await setup(t);
   assert.deepEqual(tools.map((tool) => tool.name).sort(), [
     'security_answer_questions',
     'security_apply_fix',
     'security_cancel_operation',
     'security_cancel_scan',
+    'security_check_dependency_advisory',
     'security_export',
     'security_find_findings',
     'security_fix',
@@ -401,4 +403,64 @@ test('a fix is proposed in the background and applied only with permission', asy
   const { reviews } = await call('security_scan_results', { runId });
   assert.equal(reviews.o1.fix.resolution, 'applied');
   assert.equal(reviews.o1.validation.disposition, 'reportable');
+});
+
+test('dependency advisory check is opt-in and sends only the CVE after permission', async (t) => {
+  const { root, call, deny, permissions, calls } = await setup(t);
+  const cve = 'CVE-2099-0001';
+  const check = (value = cve, lockfile = 'bun.lock') =>
+    call('security_check_dependency_advisory', { cve: value, lockfile });
+  const fetch = t.mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(url.origin, 'https://api.github.com');
+    assert.equal(url.pathname, '/advisories');
+    assert.deepEqual(
+      [...url.searchParams],
+      [
+        ['cve_id', cve],
+        ['ecosystem', 'npm'],
+        ['is_withdrawn', 'false'],
+        ['per_page', '100'],
+      ],
+    );
+    assert.equal(options.credentials, 'omit');
+    assert.equal(options.redirect, 'error');
+    assert.equal(options.body, undefined);
+    return Response.json([
+      {
+        cve_id: cve,
+        ghsa_id: 'GHSA-abcd-1234-efgh',
+        withdrawn_at: null,
+        description: 'Must not appear in the tool response.',
+        vulnerabilities: [
+          {
+            package: { name: 'internal-demo', ecosystem: 'npm' },
+            vulnerable_version_range: '>= 1.0.0, < 1.2.0',
+          },
+        ],
+      },
+    ]);
+  });
+  await writeFile(
+    join(root, 'bun.lock'),
+    '{"lockfileVersion":1,"packages":{"internal-demo":["internal-demo@1.1.0"],},}',
+  );
+  await assert.rejects(check, /experimentalDependencyAdvisory/);
+  await configure(t, { plugin: { experimentalDependencyAdvisory: true } });
+  await symlink(join(root, 'bun.lock'), join(root, 'package-lock.json'));
+  await assert.rejects(() => check(cve, 'package-lock.json'), /non-symlink/);
+  await assert.rejects(() => check('some arbitrary string'), /CVE ID/);
+  assert.equal(permissions.length, 0);
+  assert.equal(fetch.mock.calls.length, 0);
+  deny();
+  await assert.rejects(check, /Denied/);
+  assert.equal(fetch.mock.calls.length, 0);
+  deny(false);
+  const result = await check(cve.toLowerCase());
+  assert.equal(fetch.mock.calls.length, 1);
+  assert.equal(result.result, 'version_match');
+  assert.deepEqual(result.matches, [{ package: 'internal-demo', version: '1.1.0' }]);
+  assert.equal(permissions.at(-1).metadata.sentTo, 'https://api.github.com');
+  assert.ok(!JSON.stringify(result).includes('Must not appear'));
+  assert.equal(calls.scans.length, 0);
+  assert.equal(calls.validation.length, 0);
 });
