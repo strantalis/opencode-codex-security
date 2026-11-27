@@ -32,13 +32,13 @@
     "smol-toml": "1.9.1"
   },
   "devDependencies": {
-    "@opencode/cli": "2.3.2",
-    "@opentui/core": "0.9.7",
-    "@opentui/solid": "0.9.7",
+    "@opencode/cli": "2.4.1",
+    "@opentui/core": "0.9.9",
+    "@opentui/solid": "0.9.9",
     "@types/node": "^26.6.6",
-    "oxfmt": "^0.79.0",
+    "oxfmt": "^0.80.0",
     "oxlint": "^1.94.0",
-    "solid-js": "^1.9.0",
+    "solid-js": "^2.0.3",
     "typescript": "^7.0.2",
     "vite": "^8.3.6",
     "vite-plugin-solid": "^2.11.17"
